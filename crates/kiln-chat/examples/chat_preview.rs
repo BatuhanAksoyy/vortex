@@ -11,8 +11,8 @@ use gpui_kit::{
     px, size,
 };
 use kiln_agent::{
-    AgentBackend, AgentEvent, BlockKey, PermissionRequest, Remember, Session, SessionCommand,
-    SessionSpec, ToolCall,
+    AgentBackend, AgentEvent, BlockKey, ContextUsage, ModelOption, PermissionMode,
+    PermissionRequest, Remember, Session, SessionCommand, SessionInfo, SessionSpec, ToolCall,
 };
 use kiln_chat::ChatView;
 use serde_json::json;
@@ -32,25 +32,67 @@ impl AgentBackend for ScriptedBackend {
         Ok(Session {
             events,
             commands,
-            // Plays the turn once the first message arrives; keeps the
-            // command channel open so the turn stays "running".
             driver: Box::pin(play(script, events_tx, commands_rx)),
         })
     }
 }
 
+/// Plays the turn on the first message and answers the composer's requests
+/// the way the CLI does. The turn never ends, so it stays "running".
 async fn play(
     script: Vec<AgentEvent>,
     events: async_channel::Sender<AgentEvent>,
     commands: async_channel::Receiver<SessionCommand>,
 ) {
-    if commands.recv().await.is_err() {
-        return;
+    let _ = events.send(ready()).await;
+    let mut script = Some(script);
+    while let Ok(command) = commands.recv().await {
+        let replies = match command {
+            SessionCommand::Send(_) => script.take().unwrap_or_default(),
+            SessionCommand::RefreshContext => vec![AgentEvent::ContextUsage(ContextUsage {
+                used_tokens: 41_200,
+                max_tokens: 200_000,
+            })],
+            SessionCommand::SetMode(mode) => vec![AgentEvent::ModeChanged(mode)],
+            SessionCommand::SetModel(model) => vec![AgentEvent::ModelChanged(model)],
+            SessionCommand::Permission { .. } | SessionCommand::Interrupt => Vec::new(),
+        };
+        for event in replies {
+            let _ = events.send(event).await;
+        }
     }
-    for event in script {
-        let _ = events.send(event).await;
-    }
-    while commands.recv().await.is_ok() {}
+}
+
+fn ready() -> AgentEvent {
+    let option = |id: &str, resolved: &str, name: &str, description: &str| ModelOption {
+        id: id.into(),
+        resolved: resolved.into(),
+        name: name.into(),
+        description: description.into(),
+    };
+    AgentEvent::Ready(SessionInfo {
+        models: vec![
+            option(
+                "default",
+                "claude-opus-5-5",
+                "Default (recommended)",
+                "Opus 5.5 · Best for everyday, complex tasks",
+            ),
+            option(
+                "sonnet",
+                "claude-sonnet-5-5",
+                "Sonnet 5.5",
+                "Fast and capable",
+            ),
+            option(
+                "haiku",
+                "claude-haiku-5-5",
+                "Haiku 5.5",
+                "Fastest for quick answers",
+            ),
+        ],
+        mode: PermissionMode::AskBeforeEdits,
+    })
 }
 
 fn block(index: u64) -> BlockKey {

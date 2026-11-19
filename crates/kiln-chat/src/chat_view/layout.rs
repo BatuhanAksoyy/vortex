@@ -1,25 +1,22 @@
 //! The chat panel's layout, after the Claude Code VS Code panel: a title
-//! bar, the transcript timeline, and the composer (or the permission prompt
-//! in its place).
+//! bar, the transcript timeline, and the composer (in `composer`) or the
+//! permission prompt in its place.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Context, Focusable, StyleRefinement, TestSupportExt, Window,
+    AnyElement, Context, StyleRefinement, TestSupportExt, Window,
     component::{
-        ActiveTheme, Icon, IconName, Sizable, h_flex, input::Textarea,
-        message_scroller::MessageScroller, v_flex,
+        ActiveTheme, Icon, IconName, Sizable, h_flex, message_scroller::MessageScroller, v_flex,
     },
-    div, px, white,
+    div, px,
 };
 
-use super::{ChatView, Mode};
+use super::ChatView;
 use crate::{
     entry_view::{self, EntryContext},
     spinner,
     transcript::Status,
 };
-
-const SEND_BUTTON_SIZE: f32 = 26.;
 
 impl ChatView {
     fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -119,91 +116,6 @@ impl ChatView {
         };
         entry_view::render(entry, &context, cx)
     }
-
-    fn render_composer(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let running = self.status() == Status::Running;
-        let focused = self.composer.read(cx).focus_handle(cx).is_focused(window);
-        let mode = match self.mode {
-            Mode::AskBeforeEdits => "Ask before edits",
-            Mode::EditAutomatically => "Edit automatically",
-        };
-        let action = if running {
-            action_button(
-                "chat-stop",
-                IconName::Square,
-                cx.theme().muted_foreground,
-                cx,
-            )
-            .on_click(cx.listener(|this, _, window, cx| this.interrupt(window, cx)))
-        } else {
-            action_button("chat-send", IconName::ArrowUp, spinner::accent(), cx)
-                .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
-        };
-        let theme = cx.theme();
-        v_flex()
-            .rounded(theme.radius * 2.)
-            .border_1()
-            .border_color(if focused {
-                spinner::accent()
-            } else {
-                theme.border
-            })
-            .bg(theme.background)
-            .child(
-                div()
-                    .id("chat-composer")
-                    .test_support()
-                    .px_1()
-                    .pt_1()
-                    .child(Textarea::new(&self.composer).appearance(false)),
-            )
-            .child(
-                h_flex()
-                    .gap_3()
-                    .pl_3()
-                    .pr_1p5()
-                    .py_1p5()
-                    .border_t_1()
-                    .border_color(theme.border)
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .child(mode_label(mode))
-                    .when_some(self.transcript.model(), |this, model| {
-                        this.child(model.to_owned())
-                    })
-                    .child(div().flex_1())
-                    .child(action),
-            )
-            .into_any_element()
-    }
-}
-
-fn action_button(
-    id: &'static str,
-    icon: IconName,
-    background: gpui_kit::Hsla,
-    cx: &Context<ChatView>,
-) -> impl StatefulInteractiveElement + IntoElement {
-    div()
-        .id(id)
-        .test_support()
-        .flex()
-        .items_center()
-        .justify_center()
-        .size(px(SEND_BUTTON_SIZE))
-        .rounded(cx.theme().radius)
-        .bg(background)
-        .cursor_pointer()
-        .child(Icon::new(icon).small().text_color(white()))
-}
-
-fn mode_label(mode: &'static str) -> impl IntoElement {
-    h_flex()
-        .id("chat-mode")
-        .test_support()
-        .gap_1()
-        .child(Icon::new(gpui_kit::assets::IconName::Pencil).xsmall())
-        .child(mode)
 }
 
 impl Render for ChatView {

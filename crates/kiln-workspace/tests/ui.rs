@@ -13,6 +13,15 @@ mod workspace {
     };
     use kiln_workspace::Workspace;
 
+    /// The chat starts its agent when it opens; these tests need none.
+    struct NoAgent;
+
+    impl kiln_agent::AgentBackend for NoAgent {
+        fn spawn(&self, _: kiln_agent::SessionSpec) -> anyhow::Result<kiln_agent::Session> {
+            anyhow::bail!("no agent in workspace tests")
+        }
+    }
+
     fn open_workspace(
         cx: &mut TestAppContext,
         root: PathBuf,
@@ -29,7 +38,10 @@ mod workspace {
                     ..Default::default()
                 },
                 cx,
-                |window, cx| cx.new(|cx| Workspace::new(root, window, cx)),
+                |window, cx| {
+                    let backend = std::rc::Rc::new(NoAgent);
+                    cx.new(|cx| Workspace::new(root, backend, window, cx))
+                },
             )
             .expect("open test window")
         });

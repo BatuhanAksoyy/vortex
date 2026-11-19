@@ -61,7 +61,6 @@ pub struct Transcript {
     /// above the composer, not as transcript rows.
     pending: Vec<PermissionRequest>,
     status: Status,
-    model: Option<String>,
 }
 
 impl Transcript {
@@ -75,10 +74,6 @@ impl Transcript {
 
     pub fn status(&self) -> Status {
         self.status
-    }
-
-    pub fn model(&self) -> Option<&str> {
-        self.model.as_deref()
     }
 
     /// The conversation's name: its first message.
@@ -119,10 +114,6 @@ impl Transcript {
 
     pub fn apply(&mut self, event: AgentEvent) -> Change {
         match event {
-            AgentEvent::Started { model, .. } => {
-                self.model = Some(model);
-                Change::default()
-            }
             AgentEvent::TextDelta { block, text } => self.append_text(block, text, false),
             AgentEvent::ThinkingDelta { block, text } => self.append_text(block, text, true),
             AgentEvent::ToolCall(call) => self.push_tool(call),
@@ -135,8 +126,17 @@ impl Transcript {
                 self.pending.push(request);
                 Change::default()
             }
+            AgentEvent::CommandFailed(text) => self.push(Entry::Notice {
+                text,
+                is_error: true,
+            }),
             AgentEvent::TurnEnded(outcome) => self.end_turn(outcome),
             AgentEvent::Exited { error } => self.exit(error),
+            AgentEvent::Started { .. }
+            | AgentEvent::Ready(_)
+            | AgentEvent::ModelChanged(_)
+            | AgentEvent::ModeChanged(_)
+            | AgentEvent::ContextUsage(_) => Change::default(),
         }
     }
 

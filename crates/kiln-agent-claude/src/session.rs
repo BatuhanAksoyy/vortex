@@ -9,7 +9,7 @@ use futures::{
 use kiln_agent::{AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec};
 use serde_json::Value;
 
-use crate::{outgoing, translate::Translator};
+use crate::{control, outgoing, translate::Translator};
 
 const ARGS: &[&str] = &[
     "-p",
@@ -57,8 +57,14 @@ impl ClaudeBackend {
 impl AgentBackend for ClaudeBackend {
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
         let mut command = Command::new(&self.program);
+        command.args(ARGS);
+        if let Some(model) = &spec.model {
+            command.args(["--model", model]);
+        }
+        if let Some(mode) = spec.mode {
+            command.args(["--permission-mode", control::mode_name(mode)]);
+        }
         command
-            .args(ARGS)
             .current_dir(&spec.cwd)
             .envs(spec.env)
             .stdin(Stdio::piped())

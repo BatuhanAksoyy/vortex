@@ -4012,6 +4012,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "gpui-kit",
+ "kiln-agent-claude",
  "kiln-workspace",
  "log",
 ]
@@ -4090,7 +4091,7 @@ dependencies = [
  "anyhow",
  "futures",
  "gpui-kit",
- "kiln-agent-claude",
+ "kiln-agent",
  "kiln-chat",
  "kiln-keymap",
  "kiln-project",

@@ -17,7 +17,7 @@ use gpui_kit::{
         v_flex,
     },
 };
-use kiln_agent_claude::ClaudeBackend;
+use kiln_agent::AgentBackend;
 use kiln_chat::ChatView;
 use kiln_project::ListOptions;
 
@@ -40,6 +40,8 @@ const EDITOR_WIDTH_REMS: f32 = 40.0;
 
 pub struct Workspace {
     root: PathBuf,
+    /// Starts the agent behind the chat; injected so tests run no real CLI.
+    backend: Rc<dyn AgentBackend>,
     file_tree: Entity<FileTree>,
     editor_pane: Entity<EditorPane>,
     chat: Entity<ChatView>,
@@ -54,7 +56,12 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        root: PathBuf,
+        backend: Rc<dyn AgentBackend>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let workspace = cx.entity().downgrade();
         cx.set_global(ActiveWorkspace {
             window: window.window_handle(),
@@ -63,7 +70,7 @@ impl Workspace {
         cx.on_release(|_, cx| cx.quit()).detach();
         let file_tree = cx.new(FileTree::new);
         let editor_pane = cx.new(EditorPane::new);
-        let chat = new_chat(root.clone(), window, cx);
+        let chat = new_chat(root.clone(), backend.clone(), window, cx);
         let subscriptions = vec![
             cx.subscribe_in(
                 &file_tree,
@@ -83,6 +90,7 @@ impl Workspace {
         cx.defer_in(window, Self::load_project);
         Self {
             root,
+            backend,
             file_tree,
             editor_pane,
             chat,
@@ -232,8 +240,12 @@ async fn next_change(
     true
 }
 
-fn new_chat(root: PathBuf, window: &mut Window, cx: &mut Context<Workspace>) -> Entity<ChatView> {
-    let backend = Rc::new(ClaudeBackend::new("claude"));
+fn new_chat(
+    root: PathBuf,
+    backend: Rc<dyn AgentBackend>,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> Entity<ChatView> {
     cx.new(|cx| ChatView::new(backend, root, window, cx))
 }
 

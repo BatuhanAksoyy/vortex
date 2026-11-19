@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Drive `claude -p` over stream-json and record both directions as JSONL.
 
-usage: capture.py <case> <out.jsonl>   case: allow | deny | interrupt
+usage: capture.py <case> <out.jsonl>   case: allow | deny | interrupt | controls | plan
+
+"controls" sends no prompt, so it spends no usage: it changes the model and
+mode, asks for context usage, and sends one invalid mode to record an error.
+"plan" starts in plan mode and answers every tool call with a plain allow, to
+record how approving the plan (ExitPlanMode) leaves plan mode.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -15,6 +20,7 @@ PROMPTS = {
     "allow": "Run the shell command `touch kiln-fixture.txt` with the Bash tool, then reply with the single word done.",
     "deny": "Run the shell command `touch kiln-fixture.txt` with the Bash tool, then reply with the single word done.",
     "interrupt": "Write the numbers from 1 to 300, one per line, with no other text.",
+    "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
 case, out_path = sys.argv[1], sys.argv[2]
@@ -22,7 +28,8 @@ env = {k: v for k, v in os.environ.items() if k not in STRIP}
 proc = subprocess.Popen(
     ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
      "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio",
-     "--model", "haiku", "--no-session-persistence"],
+     "--model", "haiku", "--no-session-persistence"]
+    + (["--permission-mode", "plan"] if case == "plan" else []),
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     env=env, text=True, bufsize=1,
 )
@@ -42,10 +49,23 @@ def send(obj):
     proc.stdin.flush()
 
 
-send({"type": "control_request", "request_id": "init-1",
+send({"type": "control_request", "request_id": "initialize" if case == "controls" else "init-1",
       "request": {"subtype": "initialize", "hooks": None}})
-send({"type": "user", "message": {"role": "user", "content": PROMPTS[case]},
-      "parent_tool_use_id": None, "session_id": ""})
+# Ids follow Kiln's own scheme (`Translator::request_id`), so a replay can
+# issue the same commands and match the replies.
+CONTROLS = [
+    ("kiln-model-1", {"subtype": "set_model", "model": "sonnet"}),
+    ("kiln-mode-2", {"subtype": "set_permission_mode", "mode": "acceptEdits"}),
+    ("kiln-mode-3", {"subtype": "set_permission_mode", "mode": "not-a-mode"}),
+    ("kiln-context-4", {"subtype": "get_context_usage"}),
+]
+if case == "controls":
+    for request_id, request in CONTROLS:
+        send({"type": "control_request", "request_id": request_id, "request": request})
+else:
+    send({"type": "user", "message": {"role": "user", "content": PROMPTS[case]},
+          "parent_tool_use_id": None, "session_id": ""})
+awaiting = {request_id for request_id, _ in CONTROLS} if case == "controls" else set()
 
 deltas = 0
 interrupted = False
@@ -63,7 +83,7 @@ for line in proc.stdout:
     kind = msg.get("type")
     if kind == "control_request" and msg["request"].get("subtype") == "can_use_tool":
         req = msg["request"]
-        if case == "allow":
+        if case in ("allow", "plan"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
         else:
             response = {"behavior": "deny", "message": "The user denied this tool call."}
@@ -75,6 +95,10 @@ for line in proc.stdout:
             interrupted = True
             send({"type": "control_request", "request_id": "interrupt-1",
                   "request": {"subtype": "interrupt"}})
+    if kind == "control_response":
+        awaiting.discard(msg["response"].get("request_id"))
+        if case == "controls" and not awaiting:
+            break
     if kind == "result" or time.time() > deadline:
         break
 

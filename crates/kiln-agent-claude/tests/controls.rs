@@ -1,0 +1,111 @@
+//! Replays the captured control requests: model and mode changes, context
+//! usage, and the session info the CLI reports on start.
+
+// Inside a `cfg(test)` module so helpers may `unwrap`, like unit tests.
+#[cfg(test)]
+mod common;
+
+#[cfg(test)]
+mod controls {
+    use kiln_agent::{AgentEvent, ContextUsage, PermissionMode, SessionCommand, SessionInfo};
+    use kiln_agent_claude::Translator;
+
+    use super::common::{fixture_path, output_lines};
+
+    fn input_lines(name: &str) -> Vec<serde_json::Value> {
+        let text = std::fs::read_to_string(fixture_path(name)).unwrap();
+        text.lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter(|record| record["dir"] == "in")
+            .map(|record| record["msg"].clone())
+            .collect()
+    }
+
+    fn translate_after(translator: &mut Translator, name: &str) -> Vec<AgentEvent> {
+        output_lines(name)
+            .iter()
+            .flat_map(|line| translator.on_line(line))
+            .collect()
+    }
+
+    #[test]
+    fn controls_are_sent_as_recorded_and_their_replies_translated() {
+        let mut translator = Translator::default();
+        let sent: Vec<_> = [
+            SessionCommand::SetModel("sonnet".into()),
+            SessionCommand::SetMode(PermissionMode::EditAutomatically),
+            SessionCommand::SetMode(PermissionMode::AskBeforeEdits),
+            SessionCommand::RefreshContext,
+        ]
+        .into_iter()
+        .map(|command| translator.on_command(command).unwrap())
+        .collect();
+        let recorded = input_lines("controls");
+        for (message, recorded) in sent.iter().zip(&recorded[1..]) {
+            assert_eq!(message["request_id"], recorded["request_id"]);
+            assert_eq!(
+                message["request"]["subtype"],
+                recorded["request"]["subtype"]
+            );
+        }
+
+        let events = translate_after(&mut translator, "controls");
+        let Some(AgentEvent::Ready(SessionInfo { models, mode })) = events.first() else {
+            panic!("{events:#?}");
+        };
+        assert_eq!(*mode, PermissionMode::AskBeforeEdits);
+        let sonnet = models.iter().find(|model| model.id == "sonnet").unwrap();
+        assert_eq!(sonnet.resolved, "claude-sonnet-5-5");
+        assert!(events.contains(&AgentEvent::ModelChanged("claude-sonnet-5-5".into())));
+        assert!(events.contains(&AgentEvent::ModeChanged(PermissionMode::EditAutomatically)));
+        assert!(events.iter().any(
+            |e| matches!(e, AgentEvent::CommandFailed(message) if message.contains("permission mode"))
+        ));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            AgentEvent::ContextUsage(ContextUsage { max_tokens: 1_000_000, used_tokens }) if *used_tokens > 0
+        )));
+    }
+
+    #[test]
+    fn replies_to_requests_never_sent_are_ignored() {
+        let events = translate_after(&mut Translator::default(), "controls");
+        assert!(matches!(events.first(), Some(AgentEvent::Ready(_))));
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            AgentEvent::ModelChanged(_)
+                | AgentEvent::CommandFailed(_)
+                | AgentEvent::ContextUsage(_)
+        )));
+    }
+
+    #[test]
+    fn approving_the_plan_leaves_plan_mode() {
+        let mut translator = Translator::default();
+        let events = translate_after(&mut translator, "plan");
+        let approval = events
+            .iter()
+            .position(|e| matches!(e, AgentEvent::PermissionRequest(r) if r.tool == "ExitPlanMode"))
+            .unwrap();
+        let AgentEvent::PermissionRequest(request) = &events[approval] else {
+            unreachable!();
+        };
+        assert!(
+            request.input["plan"]
+                .as_str()
+                .is_some_and(|plan| !plan.is_empty())
+        );
+        assert_eq!(
+            request.remember, None,
+            "the plan offers nothing to remember"
+        );
+        let after: Vec<_> = events[approval..]
+            .iter()
+            .filter_map(|e| match e {
+                AgentEvent::ModeChanged(mode) => Some(*mode),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(after, [PermissionMode::AskBeforeEdits]);
+    }
+}

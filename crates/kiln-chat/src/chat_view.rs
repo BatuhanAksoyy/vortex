@@ -1,7 +1,9 @@
 //! The chat panel's state: one agent session, its transcript, the open
 //! permission prompt and the composer. Layout lives in `layout`.
 
+mod composer;
 mod layout;
+mod session;
 
 use std::{collections::HashSet, path::PathBuf, rc::Rc};
 
@@ -13,9 +15,10 @@ use gpui_kit::{
         message_scroller::MessageScrollerState,
     },
 };
-use kiln_agent::{AgentBackend, AgentEvent, Decision, Remember, SessionCommand, SessionSpec};
+use kiln_agent::{AgentBackend, SessionCommand};
 
 use crate::{
+    agent_state::AgentState,
     permission_prompt::{Answered, PermissionPrompt},
     spinner,
     transcript::{Change, Status, Transcript},
@@ -30,12 +33,6 @@ struct LiveSession {
     _events: Task<()>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Mode {
-    AskBeforeEdits,
-    EditAutomatically,
-}
-
 pub struct ChatView {
     backend: Rc<dyn AgentBackend>,
     cwd: PathBuf,
@@ -43,7 +40,7 @@ pub struct ChatView {
     /// Entries the user toggled away from their default expansion.
     toggled: HashSet<u64>,
     session: Option<LiveSession>,
-    mode: Mode,
+    agent: AgentState,
     /// Transcript rows plus one trailing row for the spinner.
     scroller: Entity<MessageScrollerState>,
     composer: Entity<TextareaState>,
@@ -72,20 +69,24 @@ impl ChatView {
                 this.send(window, cx);
             }
         });
-        Self {
+        let mut view = Self {
             backend,
             cwd,
             transcript: Transcript::default(),
             toggled: HashSet::new(),
             session: None,
-            mode: Mode::AskBeforeEdits,
+            agent: AgentState::default(),
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             composer,
             prompt: None,
             spinner_frame: 0,
             spinner: None,
             _subscriptions: vec![subscription],
-        }
+        };
+        // Started now, not on the first message: the composer shows the
+        // models, mode and context the agent reports when it starts.
+        view.ensure_session(window, cx);
+        view
     }
 
     #[must_use]
@@ -108,7 +109,7 @@ impl ChatView {
         if text.is_empty() || self.status() == Status::Running {
             return false;
         }
-        let Some(commands) = self.live_commands(window, cx) else {
+        let Some(commands) = self.ensure_session(window, cx) else {
             return false;
         };
         let change = self.transcript.push_user(text.clone());
@@ -117,9 +118,7 @@ impl ChatView {
     }
 
     pub fn interrupt(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(session) = &self.session {
-            let _ = session.commands.try_send(SessionCommand::Interrupt);
-        }
+        self.send_command(SessionCommand::Interrupt);
         cx.notify();
     }
 
@@ -128,11 +127,12 @@ impl ChatView {
         self.session = None;
         self.transcript = Transcript::default();
         self.toggled.clear();
-        self.mode = Mode::AskBeforeEdits;
+        self.agent.reset_context();
         self.scroller
             .update(cx, |scroller, cx| scroller.reset(1, cx));
         self.sync_prompt(window, cx);
         self.sync_spinner(cx);
+        self.ensure_session(window, cx);
         let focus = self.composer.read(cx).focus_handle(cx);
         window.focus(&focus, cx);
         cx.notify();
@@ -149,76 +149,12 @@ impl ChatView {
         let Some(request) = self.transcript.take_permission(&answered.request_id) else {
             return;
         };
-        if answered.decision == Decision::AllowAlways
-            && request.remember == Some(Remember::AcceptEdits)
-        {
-            self.mode = Mode::EditAutomatically;
-        }
-        if let Some(session) = &self.session {
-            let _ = session.commands.try_send(SessionCommand::Permission {
-                request_id: request.id,
-                decision: answered.decision.clone(),
-            });
-        }
+        self.send_command(SessionCommand::Permission {
+            request_id: request.id,
+            decision: answered.decision.clone(),
+        });
         self.sync_prompt(window, cx);
         cx.notify();
-    }
-
-    /// The running session's command channel, starting a session if needed.
-    fn live_commands(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<async_channel::Sender<SessionCommand>> {
-        if self.session.is_none() {
-            match self.start_session(window, cx) {
-                Ok(session) => self.session = Some(session),
-                Err(error) => {
-                    let change = self.transcript.apply(AgentEvent::Exited {
-                        error: Some(format!("{error:#}")),
-                    });
-                    self.apply_change(change, cx);
-                    return None;
-                }
-            }
-        }
-        self.session
-            .as_ref()
-            .map(|session| session.commands.clone())
-    }
-
-    fn start_session(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> anyhow::Result<LiveSession> {
-        let session = self.backend.spawn(SessionSpec {
-            cwd: self.cwd.clone(),
-            env: Vec::new(),
-        })?;
-        let events = session.events;
-        let events_task = cx.spawn_in(window, async move |this, cx| {
-            while let Ok(event) = events.recv().await
-                && this
-                    .update_in(cx, |this, window, cx| this.on_event(event, window, cx))
-                    .is_ok()
-            {}
-        });
-        Ok(LiveSession {
-            commands: session.commands,
-            _driver: cx.background_spawn(session.driver),
-            _events: events_task,
-        })
-    }
-
-    fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let exited = matches!(event, AgentEvent::Exited { .. });
-        let change = self.transcript.apply(event);
-        self.apply_change(change, cx);
-        if exited {
-            self.session = None;
-        }
-        self.sync_prompt(window, cx);
     }
 
     /// Shows the oldest unanswered permission request in place of the

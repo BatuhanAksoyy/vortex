@@ -9,6 +9,7 @@ use kiln_agent::{
 use serde_json::Value;
 
 use crate::{
+    control::{self, Asked},
     outgoing,
     wire::{self, Line},
 };
@@ -16,6 +17,8 @@ use crate::{
 #[derive(Default)]
 pub struct Translator {
     pending_permissions: HashMap<String, Pending>,
+    /// Requests Kiln sent and awaits a reply to, by request id.
+    asked: HashMap<String, Asked>,
     next_request: u64,
 }
 
@@ -46,12 +49,18 @@ impl Translator {
     pub fn on_command(&mut self, command: SessionCommand) -> Option<Value> {
         match command {
             SessionCommand::Send(text) => Some(outgoing::user_message(&text)),
-            SessionCommand::Interrupt => {
-                self.next_request += 1;
-                Some(outgoing::interrupt(&format!(
-                    "kiln-interrupt-{}",
-                    self.next_request
-                )))
+            SessionCommand::Interrupt => Some(outgoing::interrupt(&self.request_id("interrupt"))),
+            SessionCommand::SetModel(model) => {
+                let id = self.ask("model", Asked::Model);
+                Some(outgoing::set_model(&id, &model))
+            }
+            SessionCommand::SetMode(mode) => {
+                let id = self.ask("mode", Asked::Mode);
+                Some(outgoing::set_permission_mode(&id, control::mode_name(mode)))
+            }
+            SessionCommand::RefreshContext => {
+                let id = self.ask("context", Asked::Context);
+                Some(outgoing::get_context_usage(&id))
             }
             SessionCommand::Permission {
                 request_id,
@@ -68,6 +77,17 @@ impl Translator {
         }
     }
 
+    fn request_id(&mut self, kind: &str) -> String {
+        self.next_request += 1;
+        format!("kiln-{kind}-{}", self.next_request)
+    }
+
+    fn ask(&mut self, kind: &str, asked: Asked) -> String {
+        let id = self.request_id(kind);
+        self.asked.insert(id.clone(), asked);
+        id
+    }
+
     fn on_decoded(&mut self, line: Line) -> Vec<AgentEvent> {
         match line {
             Line::System(wire::System::Init { session_id, model }) => {
@@ -77,9 +97,42 @@ impl Translator {
             Line::Assistant(message) => tool_calls(message),
             Line::User(message) => tool_results(message),
             Line::ControlRequest(request) => self.control_request(request).into_iter().collect(),
+            Line::ControlResponse(response) => self
+                .control_response(response.response)
+                .into_iter()
+                .collect(),
+            Line::System(wire::System::Status { permission_mode }) => permission_mode
+                .as_deref()
+                .and_then(control::parse_mode)
+                .map(AgentEvent::ModeChanged)
+                .into_iter()
+                .collect(),
             Line::TurnResult(result) => vec![AgentEvent::TurnEnded(outcome(result))],
             Line::System(wire::System::Other) | Line::Other => Vec::new(),
         }
+    }
+
+    fn control_response(&mut self, reply: wire::Reply) -> Option<AgentEvent> {
+        match reply {
+            wire::Reply::Success {
+                request_id,
+                response,
+            } => control::on_success(self.asked_by(&request_id)?, response),
+            wire::Reply::Error { request_id, error } => {
+                self.asked_by(&request_id)?;
+                Some(AgentEvent::CommandFailed(error))
+            }
+            wire::Reply::Other => None,
+        }
+    }
+
+    /// What the reply `request_id` answers; the initialize request is sent by
+    /// the driver, not through a command, so it is known by its fixed id.
+    fn asked_by(&mut self, request_id: &str) -> Option<Asked> {
+        if request_id == outgoing::INITIALIZE_ID {
+            return Some(Asked::Initialize);
+        }
+        self.asked.remove(request_id)
     }
 
     fn control_request(&mut self, request: wire::ControlRequest) -> Option<AgentEvent> {

@@ -1,0 +1,107 @@
+//! The agent process behind the chat: starting it, folding its events in,
+//! and the commands the composer sends (model, mode, context usage).
+
+use gpui_kit::prelude::*;
+use gpui_kit::{Context, Window};
+use kiln_agent::{AgentEvent, PermissionMode, SessionCommand, SessionSpec};
+
+use super::{ChatView, LiveSession};
+use crate::agent_state::{AgentState, next_mode};
+
+impl ChatView {
+    pub fn set_model(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.agent.choose_model(id);
+        self.send_command(SessionCommand::SetModel(id.to_owned()));
+        cx.notify();
+    }
+
+    /// Asks the agent to switch modes. The composer follows when the agent
+    /// confirms; without a process the choice is kept for the next one.
+    pub fn set_mode(&mut self, mode: PermissionMode, cx: &mut Context<Self>) {
+        if !self.send_command(SessionCommand::SetMode(mode)) {
+            self.agent.apply(&AgentEvent::ModeChanged(mode));
+        }
+        cx.notify();
+    }
+
+    pub fn cycle_mode(&mut self, cx: &mut Context<Self>) {
+        self.set_mode(next_mode(self.agent.mode()), cx);
+    }
+
+    #[must_use]
+    pub fn mode(&self) -> PermissionMode {
+        self.agent.mode()
+    }
+
+    /// Sends `command` to the running process; `false` if there is none.
+    pub(super) fn send_command(&self, command: SessionCommand) -> bool {
+        self.session
+            .as_ref()
+            .is_some_and(|session| session.commands.try_send(command).is_ok())
+    }
+
+    /// The running session's command channel, starting a session if needed.
+    pub(super) fn ensure_session(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<async_channel::Sender<SessionCommand>> {
+        if self.session.is_none() {
+            match self.start_session(window, cx) {
+                Ok(session) => self.session = Some(session),
+                Err(error) => {
+                    let change = self.transcript.apply(AgentEvent::Exited {
+                        error: Some(format!("{error:#}")),
+                    });
+                    self.apply_change(change, cx);
+                    return None;
+                }
+            }
+        }
+        self.session
+            .as_ref()
+            .map(|session| session.commands.clone())
+    }
+
+    fn start_session(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> anyhow::Result<LiveSession> {
+        let session = self.backend.spawn(SessionSpec {
+            cwd: self.cwd.clone(),
+            env: Vec::new(),
+            model: self.agent.chosen_model().map(str::to_owned),
+            mode: self.agent.start_mode(),
+        })?;
+        let events = session.events;
+        let events_task = cx.spawn_in(window, async move |this, cx| {
+            while let Ok(event) = events.recv().await
+                && this
+                    .update_in(cx, |this, window, cx| this.on_event(event, window, cx))
+                    .is_ok()
+            {}
+        });
+        Ok(LiveSession {
+            commands: session.commands,
+            _driver: cx.background_spawn(session.driver),
+            _events: events_task,
+        })
+    }
+
+    fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if AgentState::wants_context_after(&event) {
+            self.send_command(SessionCommand::RefreshContext);
+        }
+        if self.agent.apply(&event) {
+            cx.notify();
+        }
+        let exited = matches!(event, AgentEvent::Exited { .. });
+        let change = self.transcript.apply(event);
+        self.apply_change(change, cx);
+        if exited {
+            self.session = None;
+        }
+        self.sync_prompt(window, cx);
+    }
+}

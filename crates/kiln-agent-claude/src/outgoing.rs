@@ -3,11 +3,31 @@
 use kiln_agent::Decision;
 use serde_json::{Value, json};
 
+pub const INITIALIZE_ID: &str = "initialize";
+
 pub fn initialize() -> Value {
     control_request(
-        "initialize",
+        INITIALIZE_ID,
         &json!({ "subtype": "initialize", "hooks": null }),
     )
+}
+
+pub fn set_model(request_id: &str, model: &str) -> Value {
+    control_request(
+        request_id,
+        &json!({ "subtype": "set_model", "model": model }),
+    )
+}
+
+pub fn set_permission_mode(request_id: &str, mode: &str) -> Value {
+    control_request(
+        request_id,
+        &json!({ "subtype": "set_permission_mode", "mode": mode }),
+    )
+}
+
+pub fn get_context_usage(request_id: &str) -> Value {
+    control_request(request_id, &json!({ "subtype": "get_context_usage" }))
 }
 
 pub fn interrupt(request_id: &str) -> Value {

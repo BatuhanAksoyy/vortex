@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use gpui_kit::{
     AppContext as _, Bounds, WindowBounds, WindowOptions, component::TitleBar, px, size,
 };
+use kiln_agent_claude::ClaudeBackend;
 use kiln_workspace::Workspace;
 
 fn main() {
@@ -24,7 +25,8 @@ fn main() {
                 ..TitleBar::window_options()
             };
             let opened = gpui_kit::open_window(options, cx, |window, cx| {
-                cx.new(|cx| Workspace::new(root, window, cx))
+                let backend = std::rc::Rc::new(ClaudeBackend::new("claude"));
+                cx.new(|cx| Workspace::new(root, backend, window, cx))
             });
             if let Err(error) = opened {
                 log::error!("cannot open the Kiln window: {error:#}");

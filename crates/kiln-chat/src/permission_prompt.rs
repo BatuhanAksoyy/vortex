@@ -13,11 +13,13 @@ use gpui_kit::{
         input::{Input, InputEvent, InputState},
         v_flex,
     },
-    div,
+    div, px,
 };
 use kiln_agent::{Decision, PermissionRequest, Remember};
 
 use crate::tool_format;
+
+const DETAIL_MAX_HEIGHT: f32 = 240.;
 
 pub struct Answered {
     pub request_id: String,
@@ -177,6 +179,16 @@ fn describe(request: &PermissionRequest, root: &Path) -> (String, String) {
                 command.unwrap_or(&detail).to_owned(),
             )
         }
+        ("ExitPlanMode", _) => {
+            let plan = request
+                .input
+                .get("plan")
+                .and_then(serde_json::Value::as_str);
+            (
+                "Claude's plan is ready. Start implementing?".to_owned(),
+                plan.unwrap_or_default().to_owned(),
+            )
+        }
         (tool, _) => (format!("Allow Claude to use {tool}?"), detail),
     }
 }
@@ -184,6 +196,25 @@ fn describe(request: &PermissionRequest, root: &Path) -> (String, String) {
 impl Focusable for PermissionPrompt {
     fn focus_handle(&self, _: &gpui_kit::App) -> FocusHandle {
         self.focus.clone()
+    }
+}
+
+impl PermissionPrompt {
+    /// What the call would do: the command, or Claude's plan; scrolls when
+    /// long so the options stay in view.
+    fn render_detail(&self, cx: &gpui_kit::App) -> impl IntoElement {
+        let theme = cx.theme();
+        div()
+            .id("permission-detail")
+            .max_h(px(DETAIL_MAX_HEIGHT))
+            .overflow_y_scroll()
+            .px_2()
+            .py_1()
+            .rounded(theme.radius)
+            .bg(theme.background)
+            .text_sm()
+            .font_family(theme.mono_font_family.clone())
+            .child(self.detail.clone())
     }
 }
 
@@ -216,16 +247,7 @@ impl Render for PermissionPrompt {
                     .child(self.title.clone()),
             )
             .when(!self.detail.is_empty(), |this| {
-                this.child(
-                    div()
-                        .px_2()
-                        .py_1()
-                        .rounded(theme.radius)
-                        .bg(theme.background)
-                        .text_sm()
-                        .font_family(theme.mono_font_family.clone())
-                        .child(self.detail.clone()),
-                )
+                this.child(self.render_detail(cx))
             })
             .when_some(self.request.description.clone(), |this, description| {
                 this.child(

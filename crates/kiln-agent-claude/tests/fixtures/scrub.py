@@ -7,9 +7,9 @@ Drops lines that only carry the capturing user's environment (hooks, the full
 command catalogue), shortens long lists and signatures, and replaces paths and
 identifiers with stable placeholders so replays are deterministic.
 """
-import json, re, sys
+import getpass, json, re, sys
 
-DROP_SYSTEM = {"hook_started", "hook_response", "commands_changed", "thinking_tokens", "status"}
+DROP_SYSTEM = {"hook_started", "hook_response", "commands_changed", "thinking_tokens"}
 KEEP_INIT = {"type", "subtype", "session_id", "cwd", "model", "permissionMode",
              "claude_code_version", "tools", "mcp_servers", "slash_commands", "uuid"}
 
@@ -29,8 +29,28 @@ def shrink(msg):
         msg["slash_commands"] = ["compact", "review"]
     response = (msg.get("response") or {}).get("response")
     if isinstance(response, dict) and "commands" in response:
-        msg["response"]["response"] = {"commands": [{"name": "compact", "description": "", "argumentHint": ""}]}
+        msg["response"]["response"] = initialize_reply(response)
+    if isinstance(response, dict) and "totalTokens" in response:
+        msg["response"]["response"] = {k: response[k] for k in CONTEXT_KEEP if k in response}
     return msg
+
+
+CONTEXT_KEEP = ("totalTokens", "maxTokens", "percentage", "model")
+
+
+def initialize_reply(response):
+    """Keeps what Kiln reads; the account is replaced, the rest describes the
+    capturing machine."""
+    return {
+        "commands": [{"name": "compact", "description": "Clear history but keep a summary",
+                      "argumentHint": "<optional instructions>", "aliases": [], "builtin": True}],
+        "models": [m for m in response.get("models", []) if m.get("value") in ("default", "sonnet", "haiku")],
+        "account": {"email": "user.redacted", "organization": "Redacted Org",
+                    "subscriptionType": response.get("account", {}).get("subscriptionType"),
+                    "apiProvider": "firstParty"},
+        "current_permission_mode": response.get("current_permission_mode"),
+        "claude_code_version": response.get("claude_code_version"),
+    }
 
 
 class Placeholders:
@@ -44,6 +64,9 @@ class Placeholders:
         text = re.sub(r'"signature": ?"[^"]*"', '"signature": "SIG"', text)
         text = re.sub(r'(?:/tmp|/home)/[^"\s]*?/work\b', "/work", text)
         text = re.sub(r"(?:/tmp|/home)/[A-Za-z0-9._/-]+", "/redacted", text)
+        # Streamed tool input splits paths across deltas, out of reach of the
+        # path patterns above; the user name can still show in a fragment.
+        text = text.replace(getpass.getuser(), "user")
         uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         return re.sub(uuid, lambda m: self.stable(m.group(0), "id"), text)
 

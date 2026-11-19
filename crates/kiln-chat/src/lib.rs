@@ -1,5 +1,6 @@
 //! The agent chat panel: transcript, permission prompts and the composer.
 
+mod agent_state;
 mod assets;
 mod chat_view;
 mod code_block;

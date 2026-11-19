@@ -13,6 +13,7 @@ pub enum Line {
     Assistant(Assistant),
     User(User),
     ControlRequest(ControlRequest),
+    ControlResponse(ControlResponse),
     #[serde(rename = "result")]
     TurnResult(TurnResult),
     #[serde(other)]
@@ -25,6 +26,11 @@ pub enum System {
     Init {
         session_id: String,
         model: String,
+    },
+    /// Sent when the session's state changes, e.g. its permission mode.
+    Status {
+        #[serde(default, rename = "permissionMode")]
+        permission_mode: Option<String>,
     },
     #[serde(other)]
     Other,
@@ -169,6 +175,29 @@ pub enum Request {
         description: Option<String>,
         #[serde(default)]
         permission_suggestions: Vec<Value>,
+    },
+    #[serde(other)]
+    Other,
+}
+
+/// The CLI's answer to a request Kiln sent.
+#[derive(Debug, Deserialize)]
+pub struct ControlResponse {
+    pub response: Reply,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "subtype", rename_all = "snake_case")]
+pub enum Reply {
+    Success {
+        request_id: String,
+        #[serde(default)]
+        response: Value,
+    },
+    Error {
+        request_id: String,
+        #[serde(default)]
+        error: String,
     },
     #[serde(other)]
     Other,

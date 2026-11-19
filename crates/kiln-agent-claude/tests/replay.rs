@@ -2,30 +2,18 @@
 
 // Inside a `cfg(test)` module so helpers may `unwrap`, like unit tests.
 #[cfg(test)]
+mod common;
+
+#[cfg(test)]
 mod replay {
-    use std::path::{Path, PathBuf};
+    use super::common::{fixture_path, output_lines};
 
     use kiln_agent::{
         AgentBackend as _, AgentEvent, Decision, SessionCommand, SessionSpec, TurnOutcome,
     };
     use kiln_agent_claude::{ClaudeBackend, Translator};
 
-    const FIXTURES: [&str; 3] = ["allow", "deny", "interrupt"];
-
-    fn fixture_path(name: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures")
-            .join(format!("{name}.jsonl"))
-    }
-
-    fn output_lines(name: &str) -> Vec<String> {
-        let text = std::fs::read_to_string(fixture_path(name)).unwrap();
-        text.lines()
-            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
-            .filter(|record| record["dir"] == "out")
-            .map(|record| record["msg"].to_string())
-            .collect()
-    }
+    const FIXTURES: [&str; 5] = ["allow", "deny", "interrupt", "controls", "plan"];
 
     fn translate(name: &str) -> Vec<AgentEvent> {
         let mut translator = Translator::default();
@@ -202,6 +190,8 @@ mod replay {
                     "KILN_FAKE_CLAUDE_FIXTURE".into(),
                     fixture_path(name).to_string_lossy().into_owned(),
                 )],
+                model: None,
+                mode: None,
             })
             .unwrap()
     }
@@ -304,7 +294,9 @@ mod live {
         std::fs::create_dir_all(&dir).unwrap();
         let spec = SessionSpec {
             cwd: dir.clone(),
-            env: vec![("ANTHROPIC_MODEL".into(), "haiku".into())],
+            env: Vec::new(),
+            model: Some("haiku".into()),
+            mode: None,
         };
         let kiln_agent::Session {
             events,

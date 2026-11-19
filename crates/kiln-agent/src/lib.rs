@@ -12,6 +12,10 @@ pub struct SessionSpec {
     pub cwd: PathBuf,
     /// Extra environment, e.g. the account's config directory.
     pub env: Vec<(String, String)>,
+    /// Model id or alias to start with; `None` keeps the agent's default.
+    pub model: Option<String>,
+    /// Permission mode to start in; `None` keeps the agent's default.
+    pub mode: Option<PermissionMode>,
 }
 
 pub trait AgentBackend {
@@ -34,6 +38,51 @@ pub enum SessionCommand {
         decision: Decision,
     },
     Interrupt,
+    /// Switches the model for the following turns.
+    SetModel(String),
+    SetMode(PermissionMode),
+    /// Asks for a fresh [`AgentEvent::ContextUsage`].
+    RefreshContext,
+}
+
+/// How much the agent may do without asking.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PermissionMode {
+    /// Asks before edits and most commands.
+    #[default]
+    AskBeforeEdits,
+    EditAutomatically,
+    /// Plans without changing anything until the plan is approved.
+    Plan,
+    /// A classifier approves most actions instead of asking.
+    Auto,
+    /// Denies whatever is not pre-approved instead of asking.
+    DontAsk,
+    BypassPermissions,
+}
+
+/// A model the agent offers, as it names and describes it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModelOption {
+    /// What to pass to [`SessionCommand::SetModel`], e.g. `sonnet`.
+    pub id: String,
+    /// The concrete model the id currently means.
+    pub resolved: String,
+    pub name: String,
+    pub description: String,
+}
+
+/// What the agent reports once it is ready, before any turn.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SessionInfo {
+    pub models: Vec<ModelOption>,
+    pub mode: PermissionMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ContextUsage {
+    pub used_tokens: u64,
+    pub max_tokens: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,6 +134,13 @@ pub enum AgentEvent {
         is_error: bool,
     },
     PermissionRequest(PermissionRequest),
+    Ready(SessionInfo),
+    /// The model in use changed; carries the concrete model id.
+    ModelChanged(String),
+    ModeChanged(PermissionMode),
+    ContextUsage(ContextUsage),
+    /// A model or mode change was refused; the message says why.
+    CommandFailed(String),
     TurnEnded(TurnOutcome),
     /// The agent process is gone; no further events follow.
     Exited {
