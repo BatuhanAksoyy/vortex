@@ -1,0 +1,28 @@
+// Kiln default settings. This file is the single source of default values.
+// Override any key in your user settings file or in `.kiln/settings.json`.
+{
+  "theme": {
+    // "system", "light" or "dark"
+    "mode": "system",
+    "light": "Kiln Light",
+    "dark": "Kiln Dark"
+  },
+  "ui": {
+    // Base size of the interface; every UI element scales with it.
+    "font_size": 14,
+    "font_family": ""
+  },
+  "editor": {
+    "font_size": 13,
+    // Empty means the platform monospace font.
+    "font_family": "",
+    "tab_size": 4,
+    "line_numbers": true,
+    "soft_wrap": false,
+    "indent_guides": true
+  },
+  "files": {
+    // Hidden from the file tree and quick open, in addition to .gitignore rules.
+    "exclude": [".git", ".DS_Store"]
+  }
+}

@@ -1,0 +1,11 @@
+cognitive-complexity-threshold = 15
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+type-complexity-threshold = 250
+excessive-nesting-threshold = 4
+max-fn-params-bools = 2
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+doc-valid-idents = ["VSCode", "GPUI", "JSONC", ".."]

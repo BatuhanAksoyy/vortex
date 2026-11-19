@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(/clippy.toml)",
+      "Edit(/rustfmt.toml)",
+      "Edit(/deny.toml)",
+      "Edit(/rust-toolchain.toml)",
+      "Edit(/quality/**)",
+      "Edit(/xtask/**)",
+      "Edit(/.github/workflows/**)",
+      "Edit(/.githooks/**)",
+      "Edit(/.claude/settings.json)",
+      "Write(/clippy.toml)",
+      "Write(/rustfmt.toml)",
+      "Write(/deny.toml)",
+      "Write(/rust-toolchain.toml)",
+      "Write(/quality/**)",
+      "Write(/xtask/**)",
+      "Write(/.github/workflows/**)",
+      "Write(/.githooks/**)",
+      "Write(/.claude/settings.json)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(git commit -n:*)",
+      "Bash(cargo xtask lock-config:*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && out=$(cargo xtask check --fast 2>&1) || { printf '%s\\n' \"$out\" | tail -40 >&2; exit 2; }",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}
