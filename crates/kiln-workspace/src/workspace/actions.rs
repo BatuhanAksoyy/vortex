@@ -117,6 +117,7 @@ impl Workspace {
     }
 
     fn open_folder(&mut self, root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.chat = super::new_chat(root.clone(), window, cx);
         self.root = root;
         self.editor_pane = cx.new(EditorPane::new);
         self.load_project(window, cx);

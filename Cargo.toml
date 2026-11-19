@@ -11,17 +11,23 @@ publish = false
 license = "UNLICENSED"
 
 [workspace.dependencies]
+kiln-agent = { path = "crates/kiln-agent" }
+kiln-agent-claude = { path = "crates/kiln-agent-claude" }
+kiln-chat = { path = "crates/kiln-chat" }
 kiln-keymap = { path = "crates/kiln-keymap" }
 kiln-project = { path = "crates/kiln-project" }
 kiln-settings = { path = "crates/kiln-settings" }
 kiln-workspace = { path = "crates/kiln-workspace" }
 
 anyhow = "1.0.104"
+async-channel = "2.5.0"
+async-process = "2.5.0"
 directories = "6.0.0"
 gpui-kit = { version = "=0.10.0", features = ["tree-sitter-languages"] }
 ignore = "0.4.34"
 log = "0.4.35"
 env_logger = "0.11.11"
+futures = "0.3.34"
 notify = "8.2.2"
 nucleo-matcher = "0.3.1"
 serde = { version = "1.0.229", features = ["derive"] }

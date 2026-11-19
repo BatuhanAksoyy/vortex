@@ -4017,6 +4017,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "kiln-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "serde_json",
+]
+
+[[package]]
+name = "kiln-agent-claude"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "async-process",
+ "futures",
+ "kiln-agent",
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "kiln-chat"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "gpui-kit",
+ "kiln-agent",
+ "serde_json",
+]
+
+[[package]]
 name = "kiln-keymap"
 version = "0.1.0"
 dependencies = [
@@ -4056,6 +4090,8 @@ dependencies = [
  "anyhow",
  "futures",
  "gpui-kit",
+ "kiln-agent-claude",
+ "kiln-chat",
  "kiln-keymap",
  "kiln-project",
  "kiln-settings",

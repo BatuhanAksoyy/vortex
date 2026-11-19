@@ -342,6 +342,10 @@ allow-expect-in-tests = true
 | **M4 Codex + koordinasyon** | Codex backend, `kiln_sessions_list`, `kiln_message_send` | |
 | **M5 Cila** | gh/glab, ajan bağlamı paneli + özetler, bildirimler, Windows | |
 
+**M1 dilimleri:** M1 tek seferde değil, kullanılabilir dilimlerle gelir.
+1. **M1a (ilk kullanılabilir):** Varsayılan hesapla tek Claude oturumu. Akan metin, tool kartları, izin kartı (Allow/Deny), composer, Stop.
+2. **M1b:** Hesaplar ve rozet, izin kuralları, subagent ağacı, kota ölçeri, sohbet içi arama, görsel/dosya yapıştırma, resume, eşzamanlı oturumlar.
+
 ## 19. Spike'lar ve riskler
 
 | # | Konu | Ne zaman |

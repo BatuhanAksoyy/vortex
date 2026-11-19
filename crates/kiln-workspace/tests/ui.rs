@@ -6,7 +6,7 @@ mod workspace {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use gpui_kit::test::{TestAppContextExt, TestWindowExt};
+    use gpui_kit::test::{TestAppContextExt, TestQueryExt, TestWindowExt};
     use gpui_kit::{
         AppContext, Bounds, Entity, TestAppContext, WindowBounds, WindowHandle, WindowOptions, px,
         size,
@@ -72,6 +72,16 @@ mod workspace {
 
         let active = cx.update(|cx| workspace.read(cx).active_file(cx));
         assert_eq!(active, Some(root.join("src/main.rs")));
+        let editor_height = cx
+            .update_window(any_window, |_, window, cx| {
+                window.render_frame(cx);
+                window.find_by_label("Editor main.rs").bounds().size.height
+            })
+            .expect("window");
+        assert!(
+            editor_height > px(600.),
+            "editor does not fill its pane: {editor_height:?}"
+        );
     }
 
     fn press(cx: &mut TestAppContext, window: gpui_kit::AnyWindowHandle, key: &str) {

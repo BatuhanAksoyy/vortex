@@ -8,8 +8,10 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-futures = "0.3.34"
+futures.workspace = true
 gpui-kit.workspace = true
+kiln-agent-claude.workspace = true
+kiln-chat.workspace = true
 kiln-keymap.workspace = true
 kiln-project.workspace = true
 kiln-settings.workspace = true

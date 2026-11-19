@@ -1,5 +1,6 @@
 use std::{
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
     time::Duration,
 };
@@ -16,6 +17,8 @@ use gpui_kit::{
         v_flex,
     },
 };
+use kiln_agent_claude::ClaudeBackend;
+use kiln_chat::ChatView;
 use kiln_project::ListOptions;
 
 use crate::{
@@ -33,12 +36,13 @@ type Scan = (Vec<kiln_project::TreeNode>, Arc<[PathBuf]>, bool);
 const MAX_PROJECT_ENTRIES: usize = 100_000;
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(150);
 const SIDEBAR_WIDTH_REMS: f32 = 18.0;
-const EDITOR_WIDTH_REMS: f32 = 52.0;
+const EDITOR_WIDTH_REMS: f32 = 40.0;
 
 pub struct Workspace {
     root: PathBuf,
     file_tree: Entity<FileTree>,
     editor_pane: Entity<EditorPane>,
+    chat: Entity<ChatView>,
     files: Arc<[PathBuf]>,
     sidebar_visible: bool,
     editor_visible: bool,
@@ -59,6 +63,7 @@ impl Workspace {
         cx.on_release(|_, cx| cx.quit()).detach();
         let file_tree = cx.new(FileTree::new);
         let editor_pane = cx.new(EditorPane::new);
+        let chat = new_chat(root.clone(), window, cx);
         let subscriptions = vec![
             cx.subscribe_in(
                 &file_tree,
@@ -80,9 +85,10 @@ impl Workspace {
             root,
             file_tree,
             editor_pane,
+            chat,
             files: Arc::from([]),
             sidebar_visible: true,
-            editor_visible: true,
+            editor_visible: false,
             focus_handle: cx.focus_handle(),
             config_watch: None,
             _subscriptions: subscriptions,
@@ -201,7 +207,7 @@ impl Workspace {
                         .child(self.file_tree.clone()),
                 )
             })
-            .child(resizable_panel().child(sessions_placeholder()))
+            .child(resizable_panel().child(self.chat.clone()))
             .when(self.editor_visible, |this| {
                 this.child(
                     resizable_panel()
@@ -226,13 +232,9 @@ async fn next_change(
     true
 }
 
-fn sessions_placeholder() -> impl IntoElement {
-    v_flex()
-        .size_full()
-        .items_center()
-        .justify_center()
-        .gap_2()
-        .child("Agent sessions arrive in the next milestone.")
+fn new_chat(root: PathBuf, window: &mut Window, cx: &mut Context<Workspace>) -> Entity<ChatView> {
+    let backend = Rc::new(ClaudeBackend::new("claude"));
+    cx.new(|cx| ChatView::new(backend, root, window, cx))
 }
 
 fn project_name(root: &Path) -> String {

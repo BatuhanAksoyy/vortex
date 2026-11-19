@@ -30,6 +30,8 @@ If you believe a threshold is wrong, stop and ask the user. Do not work around i
 
 - Claude (`kiln-agent-claude`) and Codex (`kiln-agent-codex`) protocols are not formally stable.
 - Every new event shape needs a captured real-world fixture under the crate's `tests/fixtures/` and a replay test.
+- Capture with `tests/fixtures/capture.py` in an empty directory outside the repo (never inside it: project hooks would run in the child), then run `scrub.py` on the result. Commit only scrubbed fixtures; `fixtures_hold_no_personal_data` enforces it.
+- Spawned CLIs must not inherit the parent Claude Code session's variables (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, …); see `PARENT_SESSION_VARS`.
 - Codex protocol types are generated from `codex app-server generate-json-schema`. Do not hand-edit them.
 
 ## Git

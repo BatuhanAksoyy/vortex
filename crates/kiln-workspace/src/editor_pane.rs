@@ -321,6 +321,7 @@ impl Render for EditorPane {
                 .readonly(tab.path.is_none())
                 .bordered(false)
                 .size_full()
+                .aria_label(format!("Editor {}", tab.title))
                 .font_family(cx.theme().mono_font_family.clone())
                 .text_size(cx.theme().mono_font_size)
                 .into_any_element(),
