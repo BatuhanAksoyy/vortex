@@ -24,18 +24,38 @@ pub fn user_message(text: &str) -> Value {
 }
 
 /// `input` is echoed back on allow: the CLI requires `updatedInput` and runs
-/// the tool with it.
-pub fn permission_response(request_id: &str, decision: Decision, input: &Value) -> Value {
-    let response = match decision {
-        Decision::Allow => json!({ "behavior": "allow", "updatedInput": input }),
-        Decision::Deny => {
-            json!({ "behavior": "deny", "message": "The user denied this tool call." })
+/// the tool with it. `remember` holds the CLI's own suggested permission
+/// updates; sending them back is what makes it stop asking.
+pub fn permission_response(
+    request_id: &str,
+    decision: &Decision,
+    input: &Value,
+    remember: Option<&Value>,
+) -> Value {
+    let response = match (decision, remember) {
+        (Decision::AllowAlways, Some(updates)) => json!({
+            "behavior": "allow",
+            "updatedInput": input,
+            "updatedPermissions": updates,
+        }),
+        (Decision::Allow | Decision::AllowAlways, _) => {
+            json!({ "behavior": "allow", "updatedInput": input })
+        }
+        (Decision::Deny { feedback }, _) => {
+            json!({ "behavior": "deny", "message": deny_message(feedback.as_deref()) })
         }
     };
     json!({
         "type": "control_response",
         "response": { "subtype": "success", "request_id": request_id, "response": response },
     })
+}
+
+fn deny_message(feedback: Option<&str>) -> String {
+    match feedback.map(str::trim).filter(|text| !text.is_empty()) {
+        Some(text) => format!("The user denied this tool call and said: {text}"),
+        None => "The user denied this tool call.".to_owned(),
+    }
 }
 
 fn control_request(request_id: &str, request: &Value) -> Value {

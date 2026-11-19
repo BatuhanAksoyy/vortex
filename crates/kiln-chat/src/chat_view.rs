@@ -1,22 +1,23 @@
+//! The chat panel's state: one agent session, its transcript, the open
+//! permission prompt and the composer. Layout lives in `layout`.
+
+mod layout;
+
 use std::{collections::HashSet, path::PathBuf, rc::Rc};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, Entity, FocusHandle, Focusable, Subscription, Task, TestSupportExt, Window,
+    Context, Entity, FocusHandle, Focusable, Subscription, Task, Window,
     component::{
-        ActiveTheme, IconName, Sizable,
-        button::{Button, ButtonVariants},
-        h_flex,
-        input::{InputEvent, Textarea, TextareaState},
-        message_scroller::{MessageScroller, MessageScrollerState},
-        v_flex,
+        input::{InputEvent, TextareaState},
+        message_scroller::MessageScrollerState,
     },
-    div,
 };
-use kiln_agent::{AgentBackend, AgentEvent, Decision, SessionCommand, SessionSpec};
+use kiln_agent::{AgentBackend, AgentEvent, Decision, Remember, SessionCommand, SessionSpec};
 
 use crate::{
-    entry_view::{self, EntryContext},
+    permission_prompt::{Answered, PermissionPrompt},
+    spinner,
     transcript::{Change, Status, Transcript},
 };
 
@@ -29,14 +30,26 @@ struct LiveSession {
     _events: Task<()>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    AskBeforeEdits,
+    EditAutomatically,
+}
+
 pub struct ChatView {
     backend: Rc<dyn AgentBackend>,
     cwd: PathBuf,
     transcript: Transcript,
-    expanded: HashSet<u64>,
+    /// Entries the user toggled away from their default expansion.
+    toggled: HashSet<u64>,
     session: Option<LiveSession>,
+    mode: Mode,
+    /// Transcript rows plus one trailing row for the spinner.
     scroller: Entity<MessageScrollerState>,
     composer: Entity<TextareaState>,
+    prompt: Option<(Entity<PermissionPrompt>, Subscription)>,
+    spinner_frame: usize,
+    spinner: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -50,7 +63,7 @@ impl ChatView {
         let composer = cx.new(|cx| {
             let mut state = TextareaState::new(window, cx)
                 .auto_grow(1, COMPOSER_MAX_ROWS)
-                .placeholder("Message Claude…");
+                .placeholder("Ask Claude to edit, explain or run something…");
             state.set_submit_on_enter(true, cx);
             state
         });
@@ -63,10 +76,14 @@ impl ChatView {
             backend,
             cwd,
             transcript: Transcript::default(),
-            expanded: HashSet::new(),
+            toggled: HashSet::new(),
             session: None,
-            scroller: cx.new(|cx| MessageScrollerState::new(0, cx)),
+            mode: Mode::AskBeforeEdits,
+            scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             composer,
+            prompt: None,
+            spinner_frame: 0,
+            spinner: None,
             _subscriptions: vec![subscription],
         }
     }
@@ -76,19 +93,27 @@ impl ChatView {
         self.transcript.status()
     }
 
+    /// Sends the composer's text.
     pub fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.composer.read(cx).value().trim().to_owned();
-        if text.is_empty() || self.status() == Status::Running {
-            return;
+        if self.submit(text, window, cx) {
+            self.composer
+                .update(cx, |composer, cx| composer.clean(window, cx));
         }
-        let Some(commands) = self.live_commands(cx) else {
-            return;
+    }
+
+    /// Sends `text` as the next message; `false` if it cannot be sent now
+    /// (empty, a turn is running, or the agent failed to start).
+    pub fn submit(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if text.is_empty() || self.status() == Status::Running {
+            return false;
+        }
+        let Some(commands) = self.live_commands(window, cx) else {
+            return false;
         };
         let change = self.transcript.push_user(text.clone());
         self.apply_change(change, cx);
-        let _ = commands.try_send(SessionCommand::Send(text));
-        self.composer
-            .update(cx, |composer, cx| composer.clean(window, cx));
+        commands.try_send(SessionCommand::Send(text)).is_ok()
     }
 
     pub fn interrupt(&mut self, _: &mut Window, cx: &mut Context<Self>) {
@@ -98,41 +123,55 @@ impl ChatView {
         cx.notify();
     }
 
-    pub fn decide(&mut self, request_id: &str, decision: Decision, cx: &mut Context<Self>) {
-        if !self.transcript.decide(request_id, decision) {
-            return;
-        }
-        if let Some(session) = &self.session {
-            let request_id = request_id.to_owned();
-            let _ = session.commands.try_send(SessionCommand::Permission {
-                request_id,
-                decision,
-            });
-        }
-        let updated = self.transcript.index_of_permission(request_id);
-        self.apply_change(
-            Change {
-                updated,
-                appended: 0,
-            },
-            cx,
-        );
+    /// Ends the session and starts over with an empty transcript.
+    pub fn new_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.session = None;
+        self.transcript = Transcript::default();
+        self.toggled.clear();
+        self.mode = Mode::AskBeforeEdits;
+        self.scroller
+            .update(cx, |scroller, cx| scroller.reset(1, cx));
+        self.sync_prompt(window, cx);
+        self.sync_spinner(cx);
+        let focus = self.composer.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+        cx.notify();
     }
 
     pub fn toggle_expanded(&mut self, id: u64, cx: &mut Context<Self>) {
-        if !self.expanded.remove(&id) {
-            self.expanded.insert(id);
+        if !self.toggled.remove(&id) {
+            self.toggled.insert(id);
         }
         self.scroller.update(cx, MessageScrollerState::remeasure);
+    }
+
+    fn answer(&mut self, answered: &Answered, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(request) = self.transcript.take_permission(&answered.request_id) else {
+            return;
+        };
+        if answered.decision == Decision::AllowAlways
+            && request.remember == Some(Remember::AcceptEdits)
+        {
+            self.mode = Mode::EditAutomatically;
+        }
+        if let Some(session) = &self.session {
+            let _ = session.commands.try_send(SessionCommand::Permission {
+                request_id: request.id,
+                decision: answered.decision.clone(),
+            });
+        }
+        self.sync_prompt(window, cx);
+        cx.notify();
     }
 
     /// The running session's command channel, starting a session if needed.
     fn live_commands(
         &mut self,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<async_channel::Sender<SessionCommand>> {
         if self.session.is_none() {
-            match self.start_session(cx) {
+            match self.start_session(window, cx) {
                 Ok(session) => self.session = Some(session),
                 Err(error) => {
                     let change = self.transcript.apply(AgentEvent::Exited {
@@ -148,15 +187,21 @@ impl ChatView {
             .map(|session| session.commands.clone())
     }
 
-    fn start_session(&self, cx: &mut Context<Self>) -> anyhow::Result<LiveSession> {
+    fn start_session(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> anyhow::Result<LiveSession> {
         let session = self.backend.spawn(SessionSpec {
             cwd: self.cwd.clone(),
             env: Vec::new(),
         })?;
         let events = session.events;
-        let events_task = cx.spawn(async move |this, cx| {
+        let events_task = cx.spawn_in(window, async move |this, cx| {
             while let Ok(event) = events.recv().await
-                && this.update(cx, |this, cx| this.on_event(event, cx)).is_ok()
+                && this
+                    .update_in(cx, |this, window, cx| this.on_event(event, window, cx))
+                    .is_ok()
             {}
         });
         Ok(LiveSession {
@@ -166,143 +211,101 @@ impl ChatView {
         })
     }
 
-    fn on_event(&mut self, event: AgentEvent, cx: &mut Context<Self>) {
+    fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
         let exited = matches!(event, AgentEvent::Exited { .. });
         let change = self.transcript.apply(event);
         self.apply_change(change, cx);
         if exited {
             self.session = None;
         }
+        self.sync_prompt(window, cx);
+    }
+
+    /// Shows the oldest unanswered permission request in place of the
+    /// composer. Focus follows only if the chat had it: a prompt must never
+    /// grab keys typed elsewhere, where a stray `1` would approve a tool call.
+    fn sync_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let pending = self.transcript.pending_permission();
+        let shown = self
+            .prompt
+            .as_ref()
+            .map(|(prompt, _)| prompt.read(cx).request_id().to_owned());
+        if pending.map(|request| request.id.as_str()) == shown.as_deref() {
+            return;
+        }
+        let had_focus = self.chat_focused(window, cx);
+        self.prompt = pending.cloned().map(|request| {
+            let prompt = cx.new(|cx| PermissionPrompt::new(request, &self.cwd, window, cx));
+            let subscription = cx.subscribe_in(&prompt, window, |this, _, answered, window, cx| {
+                this.answer(answered, window, cx);
+            });
+            (prompt, subscription)
+        });
+        if had_focus {
+            let focus = match &self.prompt {
+                Some((prompt, _)) => prompt.focus_handle(cx),
+                None => self.composer.read(cx).focus_handle(cx),
+            };
+            window.focus(&focus, cx);
+        }
+        cx.notify();
+    }
+
+    fn chat_focused(&self, window: &Window, cx: &gpui_kit::App) -> bool {
+        self.composer.read(cx).focus_handle(cx).is_focused(window)
+            || self
+                .prompt
+                .as_ref()
+                .is_some_and(|(prompt, _)| prompt.focus_handle(cx).contains_focused(window, cx))
     }
 
     fn apply_change(&mut self, change: Change, cx: &mut Context<Self>) {
+        let len = self.transcript.len();
         self.scroller.update(cx, |scroller, cx| {
             if let Some(index) = change.updated {
                 scroller.remeasure_items(index..index + 1, cx);
             }
             if change.appended > 0 {
-                scroller.append(change.appended, cx);
+                let tail = len - change.appended;
+                scroller.splice(tail..tail, change.appended, cx);
             }
         });
+        self.sync_spinner(cx);
         cx.notify();
     }
 
-    fn render_header(&self, cx: &Context<Self>) -> impl IntoElement {
-        let status = match self.status() {
-            Status::Idle if self.session.is_some() => "Ready",
-            Status::Idle => "Not started",
-            Status::Running => "Working…",
-            Status::Ended => "Ended",
-        };
-        h_flex()
-            .gap_2()
-            .px_3()
-            .py_2()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(div().child("Claude"))
-            .when_some(self.transcript.model(), |this, model| {
-                this.child(
-                    div()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(model.to_owned()),
-                )
-            })
-            .child(div().flex_1())
-            .child(
-                div()
-                    .id("chat-status")
-                    .test_support()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(status),
-            )
+    fn next_spinner_frame(&mut self, cx: &mut Context<Self>) {
+        self.spinner_frame += 1;
+        cx.notify();
     }
 
-    fn render_transcript(&self, cx: &Context<Self>) -> impl IntoElement {
-        if self.transcript.len() == 0 {
-            return v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .text_color(cx.theme().muted_foreground)
-                .child("Ask Claude about this project.")
-                .into_any_element();
-        }
-        let view = cx.entity().downgrade();
-        let row_view = view.clone();
-        MessageScroller::new(
-            "chat-transcript",
-            self.scroller.clone(),
-            move |index, _, cx| {
-                row_view
-                    .upgrade()
-                    .and_then(|view| {
-                        let this = view.read(cx);
-                        let (id, entry) = this.transcript.entry(index)?;
-                        let context = EntryContext {
-                            id,
-                            expanded: this.expanded.contains(&id),
-                            view: view.downgrade(),
-                        };
-                        Some(entry_view::render(entry, context, cx))
-                    })
-                    .unwrap_or_else(|| div().into_any_element())
-            },
-        )
-        .flex_1()
-        .px_3()
-        .into_any_element()
-    }
-
-    fn render_composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Runs the spinner's frame timer while a turn is in progress.
+    fn sync_spinner(&mut self, cx: &mut Context<Self>) {
         let running = self.status() == Status::Running;
-        let action = if running {
-            Button::new("chat-stop")
-                .icon(IconName::Square)
-                .small()
-                .tooltip("Stop")
-                .on_click(cx.listener(|this, _, window, cx| this.interrupt(window, cx)))
-        } else {
-            Button::new("chat-send")
-                .icon(IconName::ArrowUp)
-                .primary()
-                .small()
-                .tooltip("Send")
-                .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
-        };
-        h_flex()
-            .items_end()
-            .gap_2()
-            .p_3()
-            .border_t_1()
-            .border_color(cx.theme().border)
-            .child(
-                div()
-                    .id("chat-composer")
-                    .test_support()
-                    .flex_1()
-                    .child(Textarea::new(&self.composer)),
-            )
-            .child(action)
+        if running == self.spinner.is_some() {
+            return;
+        }
+        let tail = self.transcript.len();
+        self.scroller.update(cx, |scroller, cx| {
+            scroller.remeasure_items(tail..tail + 1, cx)
+        });
+        self.spinner = running.then(|| cx.spawn(Self::animate_spinner));
+    }
+
+    async fn animate_spinner(this: gpui_kit::WeakEntity<Self>, cx: &mut gpui_kit::AsyncApp) {
+        let mut alive = true;
+        while alive {
+            cx.background_executor().timer(spinner::FRAME).await;
+            alive = this.update(cx, Self::next_spinner_frame).is_ok();
+        }
     }
 }
 
 impl Focusable for ChatView {
     fn focus_handle(&self, cx: &gpui_kit::App) -> FocusHandle {
-        self.composer.read(cx).focus_handle(cx)
-    }
-}
-
-impl Render for ChatView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .id("chat")
-            .test_support()
-            .size_full()
-            .bg(cx.theme().background)
-            .child(self.render_header(cx))
-            .child(self.render_transcript(cx))
-            .child(self.render_composer(cx))
+        match &self.prompt {
+            Some((prompt, _)) => prompt.focus_handle(cx),
+            None => self.composer.read(cx).focus_handle(cx),
+        }
     }
 }

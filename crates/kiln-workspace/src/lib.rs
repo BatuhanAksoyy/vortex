@@ -11,6 +11,7 @@ mod workspace;
 
 use gpui_kit::App;
 
+pub use kiln_chat::Assets;
 pub use workspace::Workspace;
 
 /// Registers themes, configuration state and application-level commands.

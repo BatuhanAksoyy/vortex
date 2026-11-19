@@ -155,11 +155,14 @@ impl EditorPane {
         }
     }
 
+    /// Ignores a stale index: a tab's close button also clicks the tab bar,
+    /// which then reports the tab it just removed.
     fn activate(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(ix) else {
+            return;
+        };
+        tab.editor.update(cx, |editor, cx| editor.focus(window, cx));
         self.active = Some(ix);
-        self.tabs[ix]
-            .editor
-            .update(cx, |editor, cx| editor.focus(window, cx));
         cx.notify();
     }
 

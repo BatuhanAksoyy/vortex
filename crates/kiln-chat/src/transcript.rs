@@ -3,11 +3,9 @@
 
 use std::collections::HashMap;
 
-use kiln_agent::{AgentEvent, BlockKey, Decision, PermissionRequest, ToolCall, TurnOutcome};
-use serde_json::Value;
+use kiln_agent::{AgentEvent, BlockKey, PermissionRequest, ToolCall, TurnOutcome};
 
-/// Stable identity of an entry, used for element ids. Entries are never
-/// reordered, but ids stay meaningful even if that changes.
+/// Stable identity of an entry, used for element ids and expansion state.
 pub type EntryId = u64;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -24,10 +22,6 @@ pub enum Entry {
     Tool {
         call: ToolCall,
         result: Option<ToolResult>,
-    },
-    Permission {
-        request: PermissionRequest,
-        decision: Option<Decision>,
     },
     Notice {
         text: String,
@@ -63,7 +57,9 @@ pub struct Transcript {
     entries: Vec<(EntryId, Entry)>,
     next_id: EntryId,
     tools: HashMap<String, usize>,
-    permissions: HashMap<String, usize>,
+    /// Permission requests awaiting an answer, oldest first. They are shown
+    /// above the composer, not as transcript rows.
+    pending: Vec<PermissionRequest>,
     status: Status,
     model: Option<String>,
 }
@@ -85,31 +81,40 @@ impl Transcript {
         self.model.as_deref()
     }
 
+    /// The conversation's name: its first message.
+    pub fn title(&self) -> Option<&str> {
+        self.entries.iter().find_map(|(_, entry)| match entry {
+            Entry::User(text) => Some(text.as_str()),
+            _ => None,
+        })
+    }
+
+    /// Messages the user has sent; numbers the turns.
+    pub fn turns(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|(_, entry)| matches!(entry, Entry::User(_)))
+            .count()
+    }
+
     pub fn push_user(&mut self, text: String) -> Change {
         self.status = Status::Running;
         self.push(Entry::User(text))
     }
 
-    /// Records the user's answer; `false` if the request is unknown or
-    /// already answered.
-    pub fn decide(&mut self, request_id: &str, decision: Decision) -> bool {
-        let Some(&index) = self.permissions.get(request_id) else {
-            return false;
-        };
-        match &mut self.entries[index].1 {
-            Entry::Permission {
-                decision: slot @ None,
-                ..
-            } => {
-                *slot = Some(decision);
-                true
-            }
-            _ => false,
-        }
+    /// The permission request the user should answer next.
+    pub fn pending_permission(&self) -> Option<&PermissionRequest> {
+        self.pending.first()
     }
 
-    pub fn index_of_permission(&self, request_id: &str) -> Option<usize> {
-        self.permissions.get(request_id).copied()
+    /// Removes an answered request; `None` if it is unknown or was already
+    /// answered.
+    pub fn take_permission(&mut self, request_id: &str) -> Option<PermissionRequest> {
+        let index = self
+            .pending
+            .iter()
+            .position(|request| request.id == request_id)?;
+        Some(self.pending.remove(index))
     }
 
     pub fn apply(&mut self, event: AgentEvent) -> Change {
@@ -126,7 +131,10 @@ impl Transcript {
                 output,
                 is_error,
             } => self.finish_tool(&id, ToolResult { output, is_error }),
-            AgentEvent::PermissionRequest(request) => self.push_permission(request),
+            AgentEvent::PermissionRequest(request) => {
+                self.pending.push(request);
+                Change::default()
+            }
             AgentEvent::TurnEnded(outcome) => self.end_turn(outcome),
             AgentEvent::Exited { error } => self.exit(error),
         }
@@ -178,17 +186,10 @@ impl Transcript {
         }
     }
 
-    fn push_permission(&mut self, request: PermissionRequest) -> Change {
-        self.permissions
-            .insert(request.id.clone(), self.entries.len());
-        self.push(Entry::Permission {
-            request,
-            decision: None,
-        })
-    }
-
+    /// Unanswered requests die with their turn: the CLI no longer waits.
     fn end_turn(&mut self, outcome: TurnOutcome) -> Change {
         self.status = Status::Idle;
+        self.pending.clear();
         match outcome {
             TurnOutcome::Completed => Change::default(),
             TurnOutcome::Interrupted => self.push(Entry::Notice {
@@ -204,32 +205,13 @@ impl Transcript {
 
     fn exit(&mut self, error: Option<String>) -> Change {
         self.status = Status::Ended;
+        self.pending.clear();
         let (text, is_error) = match error {
             Some(error) => (format!("Session ended: {error}"), true),
             None => ("Session ended".to_owned(), false),
         };
         self.push(Entry::Notice { text, is_error })
     }
-}
-
-/// One-line description of a tool call, like the CLI's `Bash(npm test)`.
-pub fn tool_summary(name: &str, input: &Value) -> String {
-    const KEYS: &[&str] = &[
-        "command",
-        "file_path",
-        "path",
-        "pattern",
-        "url",
-        "query",
-        "description",
-        "prompt",
-    ];
-    let detail = KEYS
-        .iter()
-        .find_map(|key| input.get(*key).and_then(Value::as_str))
-        .unwrap_or_default();
-    let first_line = detail.lines().next().unwrap_or_default();
-    format!("{name}({first_line})")
 }
 
 #[cfg(test)]
@@ -260,6 +242,16 @@ mod tests {
         })
     }
 
+    fn permission(id: &str) -> AgentEvent {
+        AgentEvent::PermissionRequest(PermissionRequest {
+            id: id.into(),
+            tool: "Bash".into(),
+            input: json!({}),
+            description: None,
+            remember: None,
+        })
+    }
+
     #[test]
     fn deltas_of_one_block_extend_one_entry() {
         let mut transcript = Transcript::default();
@@ -277,13 +269,13 @@ mod tests {
         let mut transcript = Transcript::default();
         transcript.apply(call("t1"));
         transcript.apply(text(2, "working"));
-        let change = transcript.apply(AgentEvent::ToolResult {
+        let result = AgentEvent::ToolResult {
             id: "t1".into(),
             output: "a\nb".into(),
             is_error: false,
-        });
+        };
         assert_eq!(
-            change,
+            transcript.apply(result),
             Change {
                 updated: Some(0),
                 appended: 0
@@ -295,17 +287,32 @@ mod tests {
     }
 
     #[test]
-    fn a_permission_is_decided_once() {
+    fn permissions_queue_and_are_answered_once() {
         let mut transcript = Transcript::default();
-        transcript.apply(AgentEvent::PermissionRequest(PermissionRequest {
-            id: "p1".into(),
-            tool: "Bash".into(),
-            input: json!({}),
-            description: None,
-        }));
-        assert!(transcript.decide("p1", Decision::Allow));
-        assert!(!transcript.decide("p1", Decision::Deny));
-        assert!(!transcript.decide("unknown", Decision::Deny));
+        transcript.apply(permission("p1"));
+        transcript.apply(permission("p2"));
+        assert_eq!(transcript.len(), 0, "permissions are not transcript rows");
+        assert_eq!(
+            transcript.pending_permission().map(|r| r.id.as_str()),
+            Some("p1")
+        );
+        assert!(transcript.take_permission("p1").is_some());
+        assert!(transcript.take_permission("p1").is_none());
+        assert_eq!(
+            transcript.pending_permission().map(|r| r.id.as_str()),
+            Some("p2")
+        );
+    }
+
+    #[test]
+    fn unanswered_permissions_expire_with_the_turn() {
+        let mut transcript = Transcript::default();
+        transcript.apply(permission("p1"));
+        transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
+        assert!(transcript.pending_permission().is_none());
+        transcript.apply(permission("p2"));
+        transcript.apply(AgentEvent::Exited { error: None });
+        assert!(transcript.pending_permission().is_none());
     }
 
     #[test]
@@ -322,22 +329,6 @@ mod tests {
         assert_eq!(transcript.status(), Status::Ended);
         assert!(
             matches!(transcript.entry(2), Some((_, Entry::Notice { is_error: true, text })) if text.contains("boom"))
-        );
-    }
-
-    #[test]
-    fn summaries_pick_the_meaningful_argument() {
-        assert_eq!(
-            tool_summary("Bash", &json!({ "command": "npm test\nmore" })),
-            "Bash(npm test)"
-        );
-        assert_eq!(
-            tool_summary("Read", &json!({ "file_path": "src/main.rs" })),
-            "Read(src/main.rs)"
-        );
-        assert_eq!(
-            tool_summary("TodoWrite", &json!({ "todos": [] })),
-            "TodoWrite()"
         );
     }
 }

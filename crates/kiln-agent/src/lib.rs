@@ -36,10 +36,24 @@ pub enum SessionCommand {
     Interrupt,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Decision {
     Allow,
-    Deny,
+    /// Allow, and stop asking for calls like this one (see [`Remember`]).
+    AllowAlways,
+    /// Deny; `feedback` tells the agent what to do instead.
+    Deny {
+        feedback: Option<String>,
+    },
+}
+
+/// What [`Decision::AllowAlways`] would remember, when the agent offers it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Remember {
+    /// A permission rule for this kind of call, saved in project settings.
+    Rule,
+    /// Accept file edits without asking for the rest of the session.
+    AcceptEdits,
 }
 
 /// Identifies one streamed content block, so consecutive deltas can be
@@ -93,6 +107,7 @@ pub struct PermissionRequest {
     pub tool: String,
     pub input: Value,
     pub description: Option<String>,
+    pub remember: Option<Remember>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

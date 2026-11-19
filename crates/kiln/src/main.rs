@@ -10,7 +10,7 @@ fn main() {
     let root = project_root();
 
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(kiln_workspace::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
             kiln_workspace::init(cx);

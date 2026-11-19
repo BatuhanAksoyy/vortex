@@ -116,17 +116,67 @@ mod replay {
         );
     }
 
-    #[test]
-    fn permission_is_answered_once_with_the_original_input() {
+    /// Replays the "allow" fixture up to its permission request.
+    fn requested() -> (Translator, kiln_agent::PermissionRequest) {
         let mut translator = Translator::default();
-        let request_id = output_lines("allow")
+        let request = output_lines("allow")
             .iter()
             .flat_map(|line| translator.on_line(line))
             .find_map(|event| match event {
-                AgentEvent::PermissionRequest(request) => Some(request.id),
+                AgentEvent::PermissionRequest(request) => Some(request),
                 _ => None,
             })
             .unwrap();
+        (translator, request)
+    }
+
+    fn answer(
+        translator: &mut Translator,
+        request_id: &str,
+        decision: Decision,
+    ) -> serde_json::Value {
+        let response = translator
+            .on_command(SessionCommand::Permission {
+                request_id: request_id.into(),
+                decision,
+            })
+            .unwrap();
+        response["response"]["response"].clone()
+    }
+
+    #[test]
+    fn allow_always_sends_back_only_the_suggested_rule() {
+        let (mut translator, request) = requested();
+        assert_eq!(request.remember, Some(kiln_agent::Remember::Rule));
+        let body = answer(&mut translator, &request.id, Decision::AllowAlways);
+        assert_eq!(body["behavior"], "allow");
+        let updates = body["updatedPermissions"].as_array().unwrap();
+        assert_eq!(updates.len(), 1, "{updates:?}");
+        assert_eq!(updates[0]["type"], "addRules");
+        assert_eq!(
+            updates[0]["rules"][0]["ruleContent"],
+            "touch kiln-fixture.txt"
+        );
+    }
+
+    #[test]
+    fn deny_feedback_reaches_the_agent() {
+        let (mut translator, request) = requested();
+        let feedback = Some("use a scratch dir".to_owned());
+        let body = answer(&mut translator, &request.id, Decision::Deny { feedback });
+        assert_eq!(body["behavior"], "deny");
+        assert!(
+            body["message"]
+                .as_str()
+                .unwrap()
+                .ends_with("said: use a scratch dir")
+        );
+    }
+
+    #[test]
+    fn permission_is_answered_once_with_the_original_input() {
+        let (mut translator, request) = requested();
+        let request_id = request.id;
         let answer = |translator: &mut Translator| {
             translator.on_command(SessionCommand::Permission {
                 request_id: request_id.clone(),
@@ -201,7 +251,7 @@ mod replay {
         let events = run("deny", "touch it", |event| match event {
             AgentEvent::PermissionRequest(request) => Some(SessionCommand::Permission {
                 request_id: request.id.clone(),
-                decision: Decision::Deny,
+                decision: Decision::Deny { feedback: None },
             }),
             _ => None,
         });
@@ -227,7 +277,7 @@ mod replay {
         let events = run("allow", "touch it", |event| match event {
             AgentEvent::PermissionRequest(request) => Some(SessionCommand::Permission {
                 request_id: request.id.clone(),
-                decision: Decision::Deny,
+                decision: Decision::Deny { feedback: None },
             }),
             _ => None,
         });
@@ -249,7 +299,7 @@ mod live {
 
     #[test]
     #[ignore = "spends subscription usage and needs a logged-in `claude`"]
-    fn live_claude_allows_a_tool_call() {
+    fn live_claude_remembers_an_always_allowed_call() {
         let dir = std::env::temp_dir().join(format!("kiln-live-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let spec = SessionSpec {
@@ -271,7 +321,7 @@ mod live {
             let answer = match &event {
                 AgentEvent::PermissionRequest(request) => Some(SessionCommand::Permission {
                     request_id: request.id.clone(),
-                    decision: Decision::Allow,
+                    decision: Decision::AllowAlways,
                 }),
                 _ => None,
             };
@@ -295,6 +345,8 @@ mod live {
             "{seen:#?}"
         );
         assert!(dir.join("kiln-live.txt").exists());
+        let settings = std::fs::read_to_string(dir.join(".claude/settings.local.json")).unwrap();
+        assert!(settings.contains("touch kiln-live.txt"), "{settings}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

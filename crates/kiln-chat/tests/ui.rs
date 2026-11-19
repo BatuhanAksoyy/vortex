@@ -130,7 +130,17 @@ mod chat {
             tool: "Bash".into(),
             input: json!({ "command": "touch a.txt" }),
             description: None,
+            remember: None,
         })
+    }
+
+    fn deny(feedback: Option<&str>) -> SessionCommand {
+        SessionCommand::Permission {
+            request_id: "req-1".into(),
+            decision: Decision::Deny {
+                feedback: feedback.map(str::to_owned),
+            },
+        }
     }
 
     #[gpui_kit::test]
@@ -160,8 +170,8 @@ mod chat {
         );
         harness.emit(cx, permission());
         harness.with_window(cx, |window, cx| {
-            assert!(window.find_by_label("Allow").visible());
-            window.click(("Allow", 3_u64), cx);
+            assert!(window.find_by_label("Permission prompt").visible());
+            window.click("permission-yes", cx);
         });
         assert_eq!(
             harness.commands(),
@@ -172,8 +182,8 @@ mod chat {
         );
         harness.with_window(cx, |window, _| {
             assert!(
-                window.try_find_by_label("Allow").is_none(),
-                "buttons stay after deciding"
+                window.try_find_by_label("Permission prompt").is_none(),
+                "the prompt closes once answered"
             );
         });
 
@@ -187,6 +197,118 @@ mod chat {
         );
         harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
         assert_eq!(harness.status(cx), Status::Idle);
+    }
+
+    #[gpui_kit::test]
+    fn number_keys_answer_the_permission_prompt(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "make a file");
+        harness.commands();
+        harness.emit(cx, permission());
+        harness.with_window(cx, |window, cx| window.press("2", cx));
+        assert_eq!(
+            harness.commands(),
+            [SessionCommand::Permission {
+                request_id: "req-1".into(),
+                decision: Decision::Deny { feedback: None }
+            }]
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_permission_prompt_never_takes_keys_typed_elsewhere(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "make a file");
+        harness.commands();
+        harness.with_window(cx, gpui_kit::Window::blur);
+        harness.emit(cx, permission());
+        harness.with_window(cx, |window, cx| window.press("1", cx));
+        assert_eq!(harness.commands(), []);
+        harness.with_window(cx, |window, cx| window.click("permission-title", cx));
+        harness.with_window(cx, |window, cx| window.press("1", cx));
+        assert_eq!(
+            harness.commands(),
+            [SessionCommand::Permission {
+                request_id: "req-1".into(),
+                decision: Decision::Allow
+            }]
+        );
+    }
+
+    #[gpui_kit::test]
+    fn an_interrupted_turn_drops_its_permission_prompt(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "make a file");
+        harness.emit(cx, permission());
+        harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Interrupted));
+        harness.with_window(cx, |window, _| {
+            assert!(window.try_find_by_label("Permission prompt").is_none());
+        });
+    }
+
+    #[gpui_kit::test]
+    fn feedback_typed_in_the_prompt_reaches_the_agent(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "make a file");
+        harness.commands();
+        harness.emit(cx, permission());
+        harness.with_window(cx, |window, cx| window.click("permission-feedback", cx));
+        harness.with_window(cx, |window, cx| window.input("use /tmp instead", cx));
+        harness.with_window(cx, |window, cx| window.press("enter", cx));
+        assert_eq!(harness.commands(), [deny(Some("use /tmp instead"))]);
+    }
+
+    #[gpui_kit::test]
+    fn arrows_and_enter_pick_an_option(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "make a file");
+        harness.commands();
+        harness.emit(cx, permission());
+        harness.with_window(cx, |window, cx| window.press("down", cx));
+        harness.with_window(cx, |window, cx| window.press("enter", cx));
+        assert_eq!(harness.commands(), [deny(None)]);
+    }
+
+    #[gpui_kit::test]
+    fn dont_ask_again_is_offered_only_when_the_agent_can_remember(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "make a file");
+        harness.commands();
+        harness.emit(cx, permission());
+        harness.with_window(cx, |window, _| {
+            assert!(
+                window
+                    .try_find_by_label("Yes, and don't ask again")
+                    .is_none()
+            );
+        });
+        harness.with_window(cx, |window, cx| window.press("1", cx));
+        let mut remembered = permission();
+        if let AgentEvent::PermissionRequest(request) = &mut remembered {
+            request.id = "req-2".into();
+            request.remember = Some(kiln_agent::Remember::Rule);
+        }
+        harness.commands();
+        harness.emit(cx, remembered);
+        harness.with_window(cx, |window, cx| window.click("permission-always", cx));
+        assert_eq!(
+            harness.commands(),
+            [SessionCommand::Permission {
+                request_id: "req-2".into(),
+                decision: Decision::AllowAlways
+            }]
+        );
+    }
+
+    #[gpui_kit::test]
+    fn new_conversation_starts_a_fresh_process(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "one");
+        harness.with_window(cx, |window, cx| window.click("chat-new", cx));
+        assert_eq!(harness.status(cx), Status::Idle);
+        harness.type_and_send(cx, "two");
+        assert_eq!(harness.script.borrow().spawned, 2);
+        assert_eq!(harness.commands(), [SessionCommand::Send("two".into())]);
     }
 
     #[gpui_kit::test]

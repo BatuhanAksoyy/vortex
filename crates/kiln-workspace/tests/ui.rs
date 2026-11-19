@@ -119,6 +119,29 @@ mod workspace {
     }
 
     #[gpui_kit::test]
+    fn clicking_the_close_button_of_the_last_tab_closes_it(cx: &mut TestAppContext) {
+        let dir = project();
+        let root = std::fs::canonicalize(dir.path()).expect("canonical root");
+        let (window, workspace) = open_workspace(cx, root.clone());
+        let window = window.into();
+        press(cx, window, "ctrl-p");
+        type_text(cx, window, "README");
+        press(cx, window, "enter");
+        assert_eq!(
+            cx.update(|cx| workspace.read(cx).active_file(cx)),
+            Some(root.join("README.md"))
+        );
+
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            window.click(("close-tab", 0_u64), cx);
+        })
+        .expect("window");
+        cx.run_until_parked();
+        assert_eq!(cx.update(|cx| workspace.read(cx).active_file(cx)), None);
+    }
+
+    #[gpui_kit::test]
     fn close_editor_keeps_a_tab_with_unsaved_changes(cx: &mut TestAppContext) {
         let dir = project();
         let root = std::fs::canonicalize(dir.path()).expect("canonical root");

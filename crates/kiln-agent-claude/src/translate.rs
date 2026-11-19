@@ -3,7 +3,9 @@
 
 use std::collections::HashMap;
 
-use kiln_agent::{AgentEvent, BlockKey, PermissionRequest, SessionCommand, ToolCall, TurnOutcome};
+use kiln_agent::{
+    AgentEvent, BlockKey, PermissionRequest, Remember, SessionCommand, ToolCall, TurnOutcome,
+};
 use serde_json::Value;
 
 use crate::{
@@ -13,9 +15,15 @@ use crate::{
 
 #[derive(Default)]
 pub struct Translator {
-    /// Tool input per open permission request, echoed back on allow.
-    pending_permissions: HashMap<String, Value>,
+    pending_permissions: HashMap<String, Pending>,
     next_request: u64,
+}
+
+/// An open permission request: the tool input, echoed back on allow, and the
+/// permission updates that "allow always" sends.
+struct Pending {
+    input: Value,
+    remember: Option<Value>,
 }
 
 impl Translator {
@@ -49,8 +57,13 @@ impl Translator {
                 request_id,
                 decision,
             } => {
-                let input = self.pending_permissions.remove(&request_id)?;
-                Some(outgoing::permission_response(&request_id, decision, &input))
+                let pending = self.pending_permissions.remove(&request_id)?;
+                Some(outgoing::permission_response(
+                    &request_id,
+                    &decision,
+                    &pending.input,
+                    pending.remember.as_ref(),
+                ))
             }
         }
     }
@@ -74,17 +87,24 @@ impl Translator {
             tool_name,
             input,
             description,
+            permission_suggestions,
         } = request.request
         else {
             return None;
         };
+        let (remember, updates) = remember(&permission_suggestions).unzip();
+        let pending = Pending {
+            input: input.clone(),
+            remember: updates,
+        };
         self.pending_permissions
-            .insert(request.request_id.clone(), input.clone());
+            .insert(request.request_id.clone(), pending);
         Some(AgentEvent::PermissionRequest(PermissionRequest {
             id: request.request_id,
             tool: tool_name,
             input,
             description,
+            remember,
         }))
     }
 }
@@ -167,4 +187,26 @@ fn outcome(result: wire::TurnResult) -> TurnOutcome {
         return TurnOutcome::Interrupted;
     }
     TurnOutcome::Failed(result.result.unwrap_or(result.subtype))
+}
+
+/// The CLI suggests several updates per request. A saved rule is what "don't
+/// ask again" means; when it offers none (file edits), switching the session
+/// to accept edits is the equivalent.
+fn remember(suggestions: &[Value]) -> Option<(Remember, Value)> {
+    let of_type = |kind: &str| -> Vec<Value> {
+        suggestions
+            .iter()
+            .filter(|suggestion| suggestion.get("type").and_then(Value::as_str) == Some(kind))
+            .cloned()
+            .collect()
+    };
+    let rules = of_type("addRules");
+    if !rules.is_empty() {
+        return Some((Remember::Rule, Value::Array(rules)));
+    }
+    let accept_edits: Vec<Value> = of_type("setMode")
+        .into_iter()
+        .filter(|suggestion| suggestion.get("mode").and_then(Value::as_str) == Some("acceptEdits"))
+        .collect();
+    (!accept_edits.is_empty()).then(|| (Remember::AcceptEdits, Value::Array(accept_edits)))
 }

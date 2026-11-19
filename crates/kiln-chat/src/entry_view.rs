@@ -1,183 +1,243 @@
-//! Presentation of one transcript entry, styled after the Claude Code CLI:
-//! flat rows, tool calls as `Name(argument)` with indented output.
+//! One transcript entry, laid out like the Claude Code VS Code panel: user
+//! messages in a box, agent steps as a timeline of dots joined by a line.
+
+use std::path::Path;
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, SharedString, WeakEntity,
-    component::{
-        ActiveTheme, Icon, IconName, Sizable,
-        button::{Button, ButtonVariants},
-        h_flex,
-        text::TextView,
-        v_flex,
-    },
-    div,
+    AnyElement, App, Div, FontWeight, Hsla, SharedString, TestSupportExt, WeakEntity,
+    component::{ActiveTheme, h_flex, text::TextView, v_flex},
+    div, px,
 };
-use kiln_agent::Decision;
+use kiln_agent::ToolCall;
 
 use crate::{
     chat_view::ChatView,
-    transcript::{Entry, EntryId, ToolResult, tool_summary},
+    code_block::{self, CodeLine, LineKind},
+    tool_format::{self, EditDiff},
+    transcript::{Entry, EntryId, ToolResult},
 };
 
-/// Tool output lines shown before the card is expanded.
-const COLLAPSED_OUTPUT_LINES: usize = 6;
+/// Vertical centre of the first text line, where the dot sits.
+const DOT_CENTER: f32 = 12.;
+const DOT_SIZE: f32 = 7.;
+/// Left edge of the timeline line, centred under the dot.
+const LINE_LEFT: f32 = 3.;
 
-pub struct EntryContext {
+pub struct EntryContext<'a> {
     pub id: EntryId,
-    pub expanded: bool,
-    pub view: WeakEntity<ChatView>,
+    /// Whether the user toggled this row away from its default.
+    pub toggled: bool,
+    pub view: &'a WeakEntity<ChatView>,
+    pub root: &'a Path,
+    /// Whether the timeline continues into the previous / next row.
+    pub line_above: bool,
+    pub line_below: bool,
 }
 
-pub fn render(entry: &Entry, context: EntryContext, cx: &App) -> AnyElement {
+/// Rows that sit on the timeline; user messages and notices interrupt it.
+pub fn on_timeline(entry: &Entry) -> bool {
+    matches!(
+        entry,
+        Entry::Text { .. } | Entry::Thinking { .. } | Entry::Tool { .. }
+    )
+}
+
+pub fn render(entry: &Entry, context: &EntryContext, cx: &App) -> AnyElement {
     match entry {
         Entry::User(text) => user(text, cx),
-        Entry::Text { text, .. } => TextView::markdown(("text", context.id), text.clone())
-            .selectable(true)
-            .into_any_element(),
-        Entry::Thinking { text, .. } => div()
-            .italic()
-            .text_color(cx.theme().muted_foreground)
-            .child(format!("∴ {text}"))
-            .into_any_element(),
-        Entry::Tool { call, result } => tool(
-            &tool_summary(&call.name, &call.input),
-            result.as_ref(),
-            context,
-            cx,
-        ),
-        Entry::Permission { request, decision } => permission(
-            &request.id,
-            &tool_summary(&request.tool, &request.input),
-            *decision,
-            &context,
-            cx,
-        ),
         Entry::Notice { text, is_error } => notice(text, *is_error, cx),
+        Entry::Text { text, .. } => {
+            let body = TextView::markdown(("text", context.id), text.clone()).selectable(true);
+            timeline_row(cx.theme().muted_foreground, context, cx)
+                .child(body)
+                .into_any_element()
+        }
+        Entry::Thinking { text, .. } => thinking(text, context, cx),
+        Entry::Tool { call, result } => tool(call, result.as_ref(), context, cx),
     }
 }
 
-fn user(text: &str, cx: &App) -> AnyElement {
-    h_flex()
-        .items_start()
-        .gap_2()
-        .px_2()
-        .py_1()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().secondary)
-        .child(div().text_color(cx.theme().muted_foreground).child(">"))
-        .child(div().flex_1().child(text.to_owned()))
-        .into_any_element()
-}
-
-fn tool(summary: &str, result: Option<&ToolResult>, context: EntryContext, cx: &App) -> AnyElement {
-    let (icon, color) = match result {
-        None => (IconName::Loader, cx.theme().muted_foreground),
-        Some(ToolResult {
-            is_error: false, ..
-        }) => (IconName::CircleCheck, cx.theme().success),
-        Some(ToolResult { is_error: true, .. }) => (IconName::CircleX, cx.theme().danger),
+/// A row with its dot and its share of the timeline line; the caller adds
+/// the content.
+pub fn timeline_row(dot: Hsla, context: &EntryContext, cx: &App) -> Div {
+    let line = cx.theme().border;
+    let segment = match (context.line_above, context.line_below) {
+        (true, true) => Some(div().top_0().bottom_0()),
+        (true, false) => Some(div().top_0().h(px(DOT_CENTER))),
+        (false, true) => Some(div().top(px(DOT_CENTER)).bottom_0()),
+        (false, false) => None,
     };
-    let view = context.view;
-    let id = context.id;
-    let header = h_flex()
-        .id(("tool", id))
-        .gap_2()
-        .cursor_pointer()
-        .child(Icon::new(icon).small().text_color(color))
+    v_flex()
+        .relative()
+        .pl_5()
+        .pb_3()
+        .gap_1()
+        .when_some(segment, |this, segment| {
+            this.child(segment.absolute().left(px(LINE_LEFT)).w(px(1.)).bg(line))
+        })
         .child(
             div()
-                .font_family(cx.theme().mono_font_family.clone())
-                .truncate()
-                .child(summary.to_owned()),
+                .absolute()
+                .left(px(LINE_LEFT + 0.5 - DOT_SIZE / 2.))
+                .top(px(DOT_CENTER - DOT_SIZE / 2.))
+                .size(px(DOT_SIZE))
+                .rounded_full()
+                .bg(dot),
         )
-        .on_click(move |_, _, cx| {
-            let _ = view.update(cx, |view, cx| view.toggle_expanded(id, cx));
-        });
-    v_flex()
-        .gap_1()
-        .child(header)
-        .when_some(result, |this, result| {
-            this.child(output(&result.output, context.expanded, cx))
+}
+
+fn user(text: &str, cx: &App) -> AnyElement {
+    let theme = cx.theme();
+    h_flex()
+        .pb_3()
+        .child(
+            div()
+                .max_w_full()
+                .px_3()
+                .py_1p5()
+                .rounded(theme.radius * 1.5)
+                .border_1()
+                .border_color(theme.border)
+                .bg(theme.secondary)
+                .child(text.to_owned()),
+        )
+        .into_any_element()
+}
+
+fn thinking(text: &str, context: &EntryContext, cx: &App) -> AnyElement {
+    let expanded = context.toggled;
+    let muted = cx.theme().muted_foreground;
+    timeline_row(muted, context, cx)
+        .child(
+            div()
+                .id(("thinking", context.id))
+                .test_support()
+                .cursor_pointer()
+                .italic()
+                .text_color(muted)
+                .child(if expanded {
+                    "Thinking ▾"
+                } else {
+                    "Thinking ▸"
+                })
+                .on_click(toggle(context)),
+        )
+        .when(expanded, |this| {
+            this.child(div().italic().text_color(muted).child(text.to_owned()))
         })
         .into_any_element()
 }
 
-fn output(text: &str, expanded: bool, cx: &App) -> AnyElement {
-    let lines: Vec<&str> = text.lines().collect();
-    let shown = if expanded {
-        lines.len()
-    } else {
-        lines.len().min(COLLAPSED_OUTPUT_LINES)
-    };
-    let hidden = lines.len() - shown;
-    v_flex()
-        .pl_6()
-        .text_sm()
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_color(cx.theme().muted_foreground)
-        .children(
-            lines[..shown]
-                .iter()
-                .map(|line| div().child((*line).to_owned())),
-        )
-        .when(hidden > 0, |this| {
-            this.child(div().italic().child(format!("… {hidden} more lines")))
-        })
-        .into_any_element()
-}
-
-fn permission(
-    request_id: &str,
-    summary: &str,
-    decision: Option<Decision>,
+fn tool(
+    call: &ToolCall,
+    result: Option<&ToolResult>,
     context: &EntryContext,
     cx: &App,
 ) -> AnyElement {
-    let body = v_flex()
+    let theme = cx.theme();
+    let dot = match result {
+        None => theme.muted_foreground,
+        Some(result) if result.is_error => theme.danger,
+        Some(_) => theme.success,
+    };
+    let header = h_flex()
+        .id(("tool", context.id))
+        .test_support()
         .gap_2()
-        .p_3()
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().warning)
-        .child(div().child("Allow this tool call?"))
+        .cursor_pointer()
+        .on_click(toggle(context))
         .child(
             div()
-                .font_family(cx.theme().mono_font_family.clone())
-                .child(summary.to_owned()),
+                .flex_none()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(call.name.clone()),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .font_family(theme.mono_font_family.clone())
+                .text_sm()
+                .child(tool_format::detail(&call.input, context.root)),
         );
-    let footer: AnyElement = match decision {
-        Some(Decision::Allow) => status_label("Allowed", cx.theme().success),
-        Some(Decision::Deny) => status_label("Denied", cx.theme().danger),
-        None => decision_buttons(request_id, context.id, &context.view),
-    };
-    body.child(footer).into_any_element()
-}
-
-fn decision_buttons(request_id: &str, id: EntryId, view: &WeakEntity<ChatView>) -> AnyElement {
-    let button = |label: &'static str, decision: Decision| {
-        let view = view.clone();
-        let request_id = request_id.to_owned();
-        Button::new((label, id))
-            .label(label)
-            .small()
-            .on_click(move |_, _, cx| {
-                let _ = view.update(cx, |view, cx| view.decide(&request_id, decision, cx));
-            })
-    };
-    h_flex()
-        .gap_2()
-        .child(button("Allow", Decision::Allow).primary())
-        .child(button("Deny", Decision::Deny).ghost())
+    timeline_row(dot, context, cx)
+        .child(header)
+        .children(tool_body(call, result, context, cx))
         .into_any_element()
 }
 
-fn status_label(text: &'static str, color: gpui_kit::Hsla) -> AnyElement {
+fn tool_body(
+    call: &ToolCall,
+    result: Option<&ToolResult>,
+    context: &EntryContext,
+    cx: &App,
+) -> Vec<AnyElement> {
+    let id = ("tool-output", context.id);
+    if let Some(diff) = tool_format::edit_diff(&call.name, &call.input) {
+        let error = result.filter(|result| result.is_error);
+        let summary = error.map_or_else(|| diff.summary(), |result| result.output.clone());
+        return vec![
+            sub_line(&summary, error.is_some(), cx),
+            code_block::render(id, &diff_lines(&diff), diff.whole_file, cx),
+        ];
+    }
+    let Some(result) = result else {
+        return Vec::new();
+    };
+    let full = tool_format::shows_output(&call.name) != context.toggled;
+    if !full || result.output.trim().is_empty() {
+        return vec![sub_line(
+            &tool_format::summary(&call.name, &result.output),
+            result.is_error,
+            cx,
+        )];
+    }
+    let lines: Vec<CodeLine> = result
+        .output
+        .lines()
+        .map(|line| CodeLine::new(line, LineKind::Plain))
+        .collect();
+    vec![code_block::render(id, &lines, false, cx)]
+}
+
+fn diff_lines(diff: &EditDiff) -> Vec<CodeLine> {
+    let removed = diff
+        .removed
+        .iter()
+        .map(|line| CodeLine::new(line.as_str(), LineKind::Removed));
+    let added = diff
+        .added
+        .iter()
+        .map(|line| CodeLine::new(line.as_str(), LineKind::Added));
+    removed.chain(added).collect()
+}
+
+/// The `└ Read 256 lines` line under a tool header.
+fn sub_line(text: &str, is_error: bool, cx: &App) -> AnyElement {
+    let color = if is_error {
+        cx.theme().danger
+    } else {
+        cx.theme().muted_foreground
+    };
+    let first = text.lines().next().unwrap_or_default();
     div()
+        .pl_1()
         .text_sm()
+        .truncate()
         .text_color(color)
-        .child(SharedString::from(text))
+        .child(format!("└ {first}"))
         .into_any_element()
+}
+
+fn toggle(
+    context: &EntryContext,
+) -> impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut App) + 'static {
+    let view = context.view.clone();
+    let entry = context.id;
+    move |_, _, cx| {
+        let _ = view.update(cx, |view, cx| view.toggle_expanded(entry, cx));
+    }
 }
 
 fn notice(text: &str, is_error: bool, cx: &App) -> AnyElement {
@@ -187,8 +247,9 @@ fn notice(text: &str, is_error: bool, cx: &App) -> AnyElement {
         cx.theme().muted_foreground
     };
     div()
+        .pb_3()
         .text_sm()
         .text_color(color)
-        .child(text.to_owned())
+        .child(SharedString::from(text.to_owned()))
         .into_any_element()
 }

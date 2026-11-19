@@ -167,6 +167,8 @@ pub enum Request {
         input: Value,
         #[serde(default)]
         description: Option<String>,
+        #[serde(default)]
+        permission_suggestions: Vec<Value>,
     },
     #[serde(other)]
     Other,
