@@ -2,6 +2,8 @@
 //! and the commands the composer sends (model, mode, context usage).
 
 use gpui_kit::prelude::*;
+use std::time::SystemTime;
+
 use gpui_kit::{Context, Window};
 use kiln_agent::{AgentEvent, PermissionMode, SessionCommand, SessionSpec};
 
@@ -31,6 +33,35 @@ impl ChatView {
     #[must_use]
     pub fn mode(&self) -> PermissionMode {
         self.agent.mode()
+    }
+
+    /// Whether a usage limit stops messages now.
+    #[must_use]
+    pub fn is_limited(&self) -> bool {
+        self.agent.limit_at(SystemTime::now()).is_some()
+    }
+
+    /// Waits for the limit's reset time, then lifts it and asks for fresh
+    /// usage. A limit without a reset time lasts until the agent reports
+    /// otherwise.
+    fn sync_limit_timer(&mut self, cx: &mut Context<Self>) {
+        let wait = self
+            .agent
+            .limit_at(SystemTime::now())
+            .and_then(|limited| limited.until)
+            .and_then(|until| until.duration_since(SystemTime::now()).ok());
+        self.limit_timer = wait.map(|wait| {
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(wait).await;
+                let _ = this.update(cx, Self::end_limit);
+            })
+        });
+    }
+
+    fn end_limit(&mut self, cx: &mut Context<Self>) {
+        self.agent.end_limit();
+        self.send_command(SessionCommand::RefreshUsage);
+        cx.notify();
     }
 
     /// Sends `command` to the running process; `false` if there is none.
@@ -90,11 +121,14 @@ impl ChatView {
     }
 
     fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if AgentState::wants_context_after(&event) {
-            self.send_command(SessionCommand::RefreshContext);
+        for command in AgentState::refreshes_after(&event) {
+            self.send_command(command.clone());
         }
         if self.agent.apply(&event) {
             cx.notify();
+        }
+        if matches!(event, AgentEvent::Usage(_)) {
+            self.sync_limit_timer(cx);
         }
         let exited = matches!(event, AgentEvent::Exited { .. });
         let change = self.transcript.apply(event);

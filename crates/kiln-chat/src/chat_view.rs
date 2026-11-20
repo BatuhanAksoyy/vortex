@@ -2,6 +2,7 @@
 //! permission prompt and the composer. Layout lives in `layout`.
 
 mod composer;
+mod header;
 mod layout;
 mod session;
 
@@ -47,6 +48,8 @@ pub struct ChatView {
     prompt: Option<(Entity<PermissionPrompt>, Subscription)>,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
+    /// Lifts a usage limit when its reset time comes.
+    limit_timer: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -81,6 +84,7 @@ impl ChatView {
             prompt: None,
             spinner_frame: 0,
             spinner: None,
+            limit_timer: None,
             _subscriptions: vec![subscription],
         };
         // Started now, not on the first message: the composer shows the
@@ -104,9 +108,10 @@ impl ChatView {
     }
 
     /// Sends `text` as the next message; `false` if it cannot be sent now
-    /// (empty, a turn is running, or the agent failed to start).
+    /// (empty, a turn is running, a usage limit is reached, or the agent
+    /// failed to start).
     pub fn submit(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if text.is_empty() || self.status() == Status::Running {
+        if text.is_empty() || self.status() == Status::Running || self.is_limited() {
             return false;
         }
         let Some(commands) = self.ensure_session(window, cx) else {

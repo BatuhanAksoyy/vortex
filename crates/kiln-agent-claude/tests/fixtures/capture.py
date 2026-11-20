@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Drive `claude -p` over stream-json and record both directions as JSONL.
 
-usage: capture.py <case> <out.jsonl>   case: allow | deny | interrupt | controls | plan
+usage: capture.py <case> <out.jsonl>   case: allow | deny | interrupt | controls | plan | usage
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
-mode, asks for context usage, and sends one invalid mode to record an error.
+mode, asks for context and plan usage, and sends one invalid mode to record
+an error.
 "plan" starts in plan mode and answers every tool call with a plain allow, to
 record how approving the plan (ExitPlanMode) leaves plan mode.
+"usage" runs one tiny turn, then asks for plan usage, so the turn's
+rate_limit_event can be compared with the get_usage reply.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -20,6 +23,7 @@ PROMPTS = {
     "allow": "Run the shell command `touch kiln-fixture.txt` with the Bash tool, then reply with the single word done.",
     "deny": "Run the shell command `touch kiln-fixture.txt` with the Bash tool, then reply with the single word done.",
     "interrupt": "Write the numbers from 1 to 300, one per line, with no other text.",
+    "usage": "Reply with the single word ok.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -58,6 +62,7 @@ CONTROLS = [
     ("kiln-mode-2", {"subtype": "set_permission_mode", "mode": "acceptEdits"}),
     ("kiln-mode-3", {"subtype": "set_permission_mode", "mode": "not-a-mode"}),
     ("kiln-context-4", {"subtype": "get_context_usage"}),
+    ("kiln-usage-5", {"subtype": "get_usage"}),
 ]
 if case == "controls":
     for request_id, request in CONTROLS:
@@ -99,6 +104,12 @@ for line in proc.stdout:
         awaiting.discard(msg["response"].get("request_id"))
         if case == "controls" and not awaiting:
             break
+        if case == "usage" and msg["response"].get("request_id") == "kiln-usage-1":
+            break
+    if kind == "result" and case == "usage":
+        send({"type": "control_request", "request_id": "kiln-usage-1",
+              "request": {"subtype": "get_usage"}})
+        continue
     if kind == "result" or time.time() > deadline:
         break
 

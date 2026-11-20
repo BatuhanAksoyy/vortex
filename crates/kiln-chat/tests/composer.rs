@@ -30,6 +30,7 @@ mod composer {
                 option("sonnet", "claude-sonnet-5-5", "Sonnet 5.5"),
             ],
             mode: PermissionMode::AskBeforeEdits,
+            account: None,
         })
     }
 
@@ -45,7 +46,10 @@ mod composer {
         let harness = Harness::new(cx);
         harness.emit(cx, ready());
         harness.emit(cx, started());
-        assert_eq!(harness.commands(), [SessionCommand::RefreshContext]);
+        assert_eq!(
+            harness.commands(),
+            [SessionCommand::RefreshContext, SessionCommand::RefreshUsage]
+        );
         harness.emit(
             cx,
             AgentEvent::ContextUsage(ContextUsage {
@@ -64,7 +68,8 @@ mod composer {
             harness.commands(),
             [
                 SessionCommand::Send("hi".into()),
-                SessionCommand::RefreshContext
+                SessionCommand::RefreshContext,
+                SessionCommand::RefreshUsage
             ]
         );
     }

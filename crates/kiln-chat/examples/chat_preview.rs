@@ -1,9 +1,14 @@
 //! Opens the chat panel on a scripted turn, to look at the design without
 //! spending agent usage: `cargo run -p kiln-chat --example chat_preview`.
 //! `KILN_PREVIEW_THEME=dark` picks the dark theme; `KILN_PREVIEW_PROMPT=1`
-//! ends the turn on a permission prompt.
+//! ends the turn on a permission prompt; `KILN_PREVIEW_LIMIT=1` reports a
+//! reached usage limit.
 
-use std::{path::PathBuf, rc::Rc};
+use std::{
+    path::PathBuf,
+    rc::Rc,
+    time::{Duration, SystemTime},
+};
 
 use gpui_kit::{
     AppContext as _, Bounds, WindowBounds, WindowOptions,
@@ -11,8 +16,9 @@ use gpui_kit::{
     px, size,
 };
 use kiln_agent::{
-    AgentBackend, AgentEvent, BlockKey, ContextUsage, ModelOption, PermissionMode,
-    PermissionRequest, Remember, Session, SessionCommand, SessionInfo, SessionSpec, ToolCall,
+    Account, AgentBackend, AgentEvent, BlockKey, ContextUsage, Limited, ModelOption,
+    PermissionMode, PermissionRequest, Remember, Session, SessionCommand, SessionInfo, SessionSpec,
+    ToolCall, Usage, UsageWindow,
 };
 use kiln_chat::ChatView;
 use serde_json::json;
@@ -22,6 +28,7 @@ const ROOT: &str = "/work/claude-cafe";
 
 struct ScriptedBackend {
     prompt: bool,
+    limited: bool,
 }
 
 impl AgentBackend for ScriptedBackend {
@@ -32,7 +39,7 @@ impl AgentBackend for ScriptedBackend {
         Ok(Session {
             events,
             commands,
-            driver: Box::pin(play(script, events_tx, commands_rx)),
+            driver: Box::pin(play(script, usage(self.limited), events_tx, commands_rx)),
         })
     }
 }
@@ -41,6 +48,7 @@ impl AgentBackend for ScriptedBackend {
 /// the way the CLI does. The turn never ends, so it stays "running".
 async fn play(
     script: Vec<AgentEvent>,
+    usage: Usage,
     events: async_channel::Sender<AgentEvent>,
     commands: async_channel::Receiver<SessionCommand>,
 ) {
@@ -55,6 +63,7 @@ async fn play(
             })],
             SessionCommand::SetMode(mode) => vec![AgentEvent::ModeChanged(mode)],
             SessionCommand::SetModel(model) => vec![AgentEvent::ModelChanged(model)],
+            SessionCommand::RefreshUsage => vec![AgentEvent::Usage(usage)],
             SessionCommand::Permission { .. } | SessionCommand::Interrupt => Vec::new(),
         };
         for event in replies {
@@ -92,7 +101,28 @@ fn ready() -> AgentEvent {
             ),
         ],
         mode: PermissionMode::AskBeforeEdits,
+        account: Some(Account {
+            email: "dev@example.com".into(),
+            organization: "Example Org".into(),
+            plan: "Claude Max".into(),
+        }),
     })
+}
+
+fn usage(limited: bool) -> Usage {
+    let now = SystemTime::now();
+    let hours = |count: u64| Some(now + Duration::from_secs(count * 3600));
+    Usage {
+        session: Some(UsageWindow {
+            percent: if limited { 100 } else { 62 },
+            resets_at: hours(2),
+        }),
+        weekly: Some(UsageWindow {
+            percent: 31,
+            resets_at: hours(80),
+        }),
+        limited: limited.then(|| Limited { until: hours(2) }),
+    }
 }
 
 fn block(index: u64) -> BlockKey {
@@ -178,6 +208,7 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
 fn main() {
     let dark = std::env::var("KILN_PREVIEW_THEME").is_ok_and(|theme| theme == "dark");
     let prompt = std::env::var("KILN_PREVIEW_PROMPT").is_ok();
+    let limited = std::env::var("KILN_PREVIEW_LIMIT").is_ok();
     gpui_kit::application()
         .with_assets(kiln_chat::Assets)
         .run(move |cx| {
@@ -213,7 +244,8 @@ fn main() {
             };
             let opened = gpui_kit::open_window(options, cx, |window, cx| {
                 cx.new(|cx| {
-                    let backend: Rc<dyn AgentBackend> = Rc::new(ScriptedBackend { prompt });
+                    let backend: Rc<dyn AgentBackend> =
+                        Rc::new(ScriptedBackend { prompt, limited });
                     let mut view = ChatView::new(backend, PathBuf::from(ROOT), window, cx);
                     view.submit(
                         "can you add tests for the localization utils?".into(),

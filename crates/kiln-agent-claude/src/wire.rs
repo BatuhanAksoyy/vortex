@@ -14,6 +14,9 @@ pub enum Line {
     User(User),
     ControlRequest(ControlRequest),
     ControlResponse(ControlResponse),
+    RateLimitEvent {
+        rate_limit_info: Value,
+    },
     #[serde(rename = "result")]
     TurnResult(TurnResult),
     #[serde(other)]

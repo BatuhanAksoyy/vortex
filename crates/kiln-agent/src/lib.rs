@@ -2,7 +2,7 @@
 //! `kiln-agent-codex`) translates its own protocol into these types, so the UI
 //! never sees protocol details.
 
-use std::{future::Future, path::PathBuf, pin::Pin};
+use std::{future::Future, path::PathBuf, pin::Pin, time::SystemTime};
 
 use serde_json::Value;
 
@@ -43,6 +43,8 @@ pub enum SessionCommand {
     SetMode(PermissionMode),
     /// Asks for a fresh [`AgentEvent::ContextUsage`].
     RefreshContext,
+    /// Asks for a fresh [`AgentEvent::Usage`].
+    RefreshUsage,
 }
 
 /// How much the agent may do without asking.
@@ -77,6 +79,40 @@ pub struct ModelOption {
 pub struct SessionInfo {
     pub models: Vec<ModelOption>,
     pub mode: PermissionMode,
+    pub account: Option<Account>,
+}
+
+/// The account the agent is signed in with. Fields the agent leaves out are
+/// empty.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Account {
+    pub email: String,
+    pub organization: String,
+    /// The subscription, e.g. "Claude Pro".
+    pub plan: String,
+}
+
+/// How much of the subscription's usage limits is spent.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Usage {
+    /// The short window (five hours for Claude).
+    pub session: Option<UsageWindow>,
+    pub weekly: Option<UsageWindow>,
+    /// Set while a limit is reached and messages would be refused.
+    pub limited: Option<Limited>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsageWindow {
+    /// Whole percent used, 0–100.
+    pub percent: u8,
+    pub resets_at: Option<SystemTime>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limited {
+    /// When sending works again, if the agent says.
+    pub until: Option<SystemTime>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,6 +175,9 @@ pub enum AgentEvent {
     ModelChanged(String),
     ModeChanged(PermissionMode),
     ContextUsage(ContextUsage),
+    /// Usage limits, both when asked for and as the agent reports them
+    /// during a turn.
+    Usage(Usage),
     /// A model or mode change was refused; the message says why.
     CommandFailed(String),
     TurnEnded(TurnOutcome),

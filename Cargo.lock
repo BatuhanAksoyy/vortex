@@ -3917,6 +3917,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -4034,6 +4035,7 @@ dependencies = [
  "async-channel",
  "async-process",
  "futures",
+ "jiff",
  "kiln-agent",
  "log",
  "serde",
@@ -4047,6 +4049,7 @@ dependencies = [
  "anyhow",
  "async-channel",
  "gpui-kit",
+ "jiff",
  "kiln-agent",
  "serde_json",
 ]

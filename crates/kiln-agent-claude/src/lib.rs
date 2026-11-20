@@ -8,6 +8,7 @@ mod control;
 mod outgoing;
 mod session;
 mod translate;
+mod usage;
 mod wire;
 
 pub use session::ClaudeBackend;

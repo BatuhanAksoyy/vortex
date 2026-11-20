@@ -7,7 +7,9 @@ mod common;
 
 #[cfg(test)]
 mod controls {
-    use kiln_agent::{AgentEvent, ContextUsage, PermissionMode, SessionCommand, SessionInfo};
+    use kiln_agent::{
+        AgentEvent, ContextUsage, PermissionMode, SessionCommand, SessionInfo, Usage,
+    };
     use kiln_agent_claude::Translator;
 
     use super::common::{fixture_path, output_lines};
@@ -36,6 +38,7 @@ mod controls {
             SessionCommand::SetMode(PermissionMode::EditAutomatically),
             SessionCommand::SetMode(PermissionMode::AskBeforeEdits),
             SessionCommand::RefreshContext,
+            SessionCommand::RefreshUsage,
         ]
         .into_iter()
         .map(|command| translator.on_command(command).unwrap())
@@ -50,9 +53,15 @@ mod controls {
         }
 
         let events = translate_after(&mut translator, "controls");
-        let Some(AgentEvent::Ready(SessionInfo { models, mode })) = events.first() else {
+        let Some(AgentEvent::Ready(SessionInfo {
+            models,
+            mode,
+            account,
+        })) = events.first()
+        else {
             panic!("{events:#?}");
         };
+        assert_eq!(account.as_ref().unwrap().plan, "Claude Pro");
         assert_eq!(*mode, PermissionMode::AskBeforeEdits);
         let sonnet = models.iter().find(|model| model.id == "sonnet").unwrap();
         assert_eq!(sonnet.resolved, "claude-sonnet-5-5");
@@ -107,5 +116,73 @@ mod controls {
             })
             .collect();
         assert_eq!(after, [PermissionMode::AskBeforeEdits]);
+    }
+
+    #[test]
+    fn plan_usage_is_read_from_the_reply() {
+        let mut translator = Translator::default();
+        // The recorded request is the fifth Kiln sent: `kiln-usage-5`.
+        for _ in 0..5 {
+            translator.on_command(SessionCommand::RefreshUsage);
+        }
+        let events = translate_after(&mut translator, "controls");
+        let usage = events
+            .iter()
+            .find_map(|e| match e {
+                AgentEvent::Usage(usage) => Some(*usage),
+                _ => None,
+            })
+            .unwrap();
+        let (session, weekly) = (usage.session.unwrap(), usage.weekly.unwrap());
+        assert!(session.percent <= 100 && weekly.percent <= 100);
+        assert!(session.resets_at.is_some() && weekly.resets_at > session.resets_at);
+        assert_eq!(usage.limited, None);
+    }
+
+    #[test]
+    fn rate_limit_events_during_a_turn_report_usage() {
+        let events = translate_after(&mut Translator::default(), "plan");
+        let reports: Vec<Usage> = events
+            .iter()
+            .filter_map(|e| match e {
+                AgentEvent::Usage(usage) => Some(*usage),
+                _ => None,
+            })
+            .collect();
+        assert_ne!(reports.len(), 0);
+        assert!(
+            reports
+                .iter()
+                .all(|usage| usage.session.is_some() && usage.limited.is_none())
+        );
+    }
+
+    #[test]
+    fn a_failed_background_refresh_is_not_reported() {
+        let mut translator = Translator::default();
+        translator.on_command(SessionCommand::RefreshUsage);
+        let error = r#"{"type":"control_response","response":{"subtype":"error","request_id":"kiln-usage-1","error":"network"}}"#;
+        assert_eq!(translator.on_line(error), []);
+    }
+
+    #[test]
+    fn a_turns_usage_report_agrees_with_the_reply_after_it() {
+        let mut translator = Translator::default();
+        translator.on_command(SessionCommand::RefreshUsage);
+        let reports: Vec<Usage> = translate_after(&mut translator, "usage")
+            .into_iter()
+            .filter_map(|e| match e {
+                AgentEvent::Usage(usage) => Some(usage),
+                _ => None,
+            })
+            .collect();
+        let [during, reply] = reports[..] else {
+            panic!("{reports:#?}");
+        };
+        let percent = |usage: Usage| i16::from(usage.session.unwrap().percent);
+        assert!(
+            (percent(during) - percent(reply)).abs() <= 2,
+            "{during:?} vs {reply:?}"
+        );
     }
 }

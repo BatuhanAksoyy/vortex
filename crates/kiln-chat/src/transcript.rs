@@ -136,7 +136,8 @@ impl Transcript {
             | AgentEvent::Ready(_)
             | AgentEvent::ModelChanged(_)
             | AgentEvent::ModeChanged(_)
-            | AgentEvent::ContextUsage(_) => Change::default(),
+            | AgentEvent::ContextUsage(_)
+            | AgentEvent::Usage(_) => Change::default(),
         }
     }
 

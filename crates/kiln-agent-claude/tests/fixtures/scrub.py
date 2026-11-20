@@ -32,10 +32,24 @@ def shrink(msg):
         msg["response"]["response"] = initialize_reply(response)
     if isinstance(response, dict) and "totalTokens" in response:
         msg["response"]["response"] = {k: response[k] for k in CONTEXT_KEEP if k in response}
+    if isinstance(response, dict) and "rate_limits" in response:
+        msg["response"]["response"] = usage_reply(response)
     return msg
 
 
 CONTEXT_KEEP = ("totalTokens", "maxTokens", "percentage", "model")
+
+
+def usage_reply(response):
+    """Keeps the two windows Kiln reads; the rest is account detail."""
+    limits = response.get("rate_limits") or {}
+    window_keep = ("utilization", "resets_at", "locked_reason")
+    return {
+        "subscription_type": response.get("subscription_type"),
+        "rate_limits_available": response.get("rate_limits_available"),
+        "rate_limits": {name: {k: (limits.get(name) or {}).get(k) for k in window_keep}
+                        for name in ("five_hour", "seven_day")},
+    }
 
 
 def initialize_reply(response):

@@ -1,7 +1,7 @@
 //! Replies to the control requests Kiln sends (initialize, model and mode
 //! changes, context usage), and the CLI's names for permission modes.
 
-use kiln_agent::{AgentEvent, ContextUsage, ModelOption, PermissionMode, SessionInfo};
+use kiln_agent::{Account, AgentEvent, ContextUsage, ModelOption, PermissionMode, SessionInfo};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -12,6 +12,7 @@ pub enum Asked {
     Model,
     Mode,
     Context,
+    Usage,
 }
 
 pub fn mode_name(mode: PermissionMode) -> &'static str {
@@ -45,6 +46,18 @@ struct Initialized {
     models: Vec<WireModel>,
     #[serde(default)]
     current_permission_mode: String,
+    account: Option<WireAccount>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WireAccount {
+    #[serde(default)]
+    email: String,
+    #[serde(default)]
+    organization: String,
+    #[serde(default)]
+    subscription_type: String,
 }
 
 #[derive(Deserialize)]
@@ -74,6 +87,11 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
             Some(AgentEvent::Ready(SessionInfo {
                 models: init.models.into_iter().map(model_option).collect(),
                 mode: parse_mode(&init.current_permission_mode).unwrap_or_default(),
+                account: init.account.map(|account| Account {
+                    email: account.email,
+                    organization: account.organization,
+                    plan: account.subscription_type,
+                }),
             }))
         }
         Asked::Model => {
@@ -83,6 +101,7 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
         // The CLI also announces the new mode in a status line, which covers
         // changes Kiln did not ask for; that line is the one translated.
         Asked::Mode => None,
+        Asked::Usage => crate::usage::from_reply(&response).map(AgentEvent::Usage),
         Asked::Context => {
             let context: WireContext = decode(response)?;
             Some(AgentEvent::ContextUsage(ContextUsage {

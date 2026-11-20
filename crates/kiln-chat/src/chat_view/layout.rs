@@ -1,13 +1,11 @@
 //! The chat panel's layout, after the Claude Code VS Code panel: a title
-//! bar, the transcript timeline, and the composer (in `composer`) or the
-//! permission prompt in its place.
+//! bar (in `header`), the transcript timeline, and the composer (in
+//! `composer`) or the permission prompt in its place.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, Context, StyleRefinement, TestSupportExt, Window,
-    component::{
-        ActiveTheme, Icon, IconName, Sizable, h_flex, message_scroller::MessageScroller, v_flex,
-    },
+    component::{ActiveTheme, message_scroller::MessageScroller, v_flex},
     div, px,
 };
 
@@ -19,34 +17,6 @@ use crate::{
 };
 
 impl ChatView {
-    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let title = self
-            .transcript
-            .title()
-            .unwrap_or("New conversation")
-            .to_owned();
-        h_flex()
-            .gap_2()
-            .px_3()
-            .py_2()
-            .border_b_1()
-            .border_color(theme.border)
-            .child(div().flex_1().min_w_0().truncate().child(title))
-            .child(
-                div()
-                    .id("chat-new")
-                    .test_support()
-                    .aria_label("New conversation")
-                    .p_1()
-                    .rounded(theme.radius)
-                    .cursor_pointer()
-                    .hover(|style| style.bg(gpui_kit::black().opacity(0.08)))
-                    .child(Icon::new(IconName::Plus).small())
-                    .on_click(cx.listener(|this, _, window, cx| this.new_conversation(window, cx))),
-            )
-    }
-
     fn render_transcript(&self, cx: &Context<Self>) -> AnyElement {
         if self.transcript.len() == 0 {
             return v_flex()
@@ -131,6 +101,12 @@ impl Render for ChatView {
             .bg(cx.theme().background)
             .child(self.render_header(cx))
             .child(self.render_transcript(cx))
-            .child(div().px_3().pb_3().child(bottom))
+            .child(
+                div()
+                    .px_3()
+                    .pb_3()
+                    .children(self.render_limit_notice(cx))
+                    .child(bottom),
+            )
     }
 }

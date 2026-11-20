@@ -2,7 +2,11 @@
 //! the models it offers, the model and mode in use, and context usage. Kept
 //! across restarts so a new process starts with the user's choices.
 
-use kiln_agent::{AgentEvent, ContextUsage, ModelOption, PermissionMode};
+use std::time::SystemTime;
+
+use kiln_agent::{
+    Account, AgentEvent, ContextUsage, Limited, ModelOption, PermissionMode, SessionCommand, Usage,
+};
 
 /// Modes offered in the composer's menu. `DontAsk` and `BypassPermissions`
 /// are shown when the agent reports them but never offered.
@@ -27,6 +31,8 @@ pub struct AgentState {
     /// whatever mode the user's own settings say.
     mode: Option<PermissionMode>,
     context: Option<ContextUsage>,
+    account: Option<Account>,
+    usage: Usage,
 }
 
 impl AgentState {
@@ -36,6 +42,16 @@ impl AgentState {
             AgentEvent::Ready(info) => {
                 self.models.clone_from(&info.models);
                 self.mode = Some(info.mode);
+                self.account.clone_from(&info.account);
+            }
+            AgentEvent::Usage(usage) => {
+                // A report may leave a window out; the last known value
+                // stands until a report includes it.
+                self.usage = Usage {
+                    session: usage.session.or(self.usage.session),
+                    weekly: usage.weekly.or(self.usage.weekly),
+                    limited: usage.limited,
+                };
             }
             AgentEvent::Started { model, .. } | AgentEvent::ModelChanged(model) => {
                 self.model = Some(model.clone());
@@ -47,12 +63,37 @@ impl AgentState {
         true
     }
 
-    /// Whether the agent should be asked for context usage after `event`.
-    pub fn wants_context_after(event: &AgentEvent) -> bool {
-        matches!(
-            event,
-            AgentEvent::Ready(_) | AgentEvent::ModelChanged(_) | AgentEvent::TurnEnded(_)
-        )
+    /// What to ask the agent for after `event`, to keep the composer and
+    /// header current.
+    pub fn refreshes_after(event: &AgentEvent) -> &'static [SessionCommand] {
+        match event {
+            AgentEvent::Ready(_) | AgentEvent::TurnEnded(_) => {
+                &[SessionCommand::RefreshContext, SessionCommand::RefreshUsage]
+            }
+            AgentEvent::ModelChanged(_) => &[SessionCommand::RefreshContext],
+            _ => &[],
+        }
+    }
+
+    pub fn account(&self) -> Option<&Account> {
+        self.account.as_ref()
+    }
+
+    pub fn usage(&self) -> Usage {
+        self.usage
+    }
+
+    /// The limit in force at `now`; one whose reset time has passed is over
+    /// even before the agent reports again.
+    pub fn limit_at(&self, now: SystemTime) -> Option<Limited> {
+        self.usage
+            .limited
+            .filter(|limited| limited.until.is_none_or(|until| until > now))
+    }
+
+    /// Lifts the limit once its reset time has come.
+    pub fn end_limit(&mut self) {
+        self.usage.limited = None;
     }
 
     /// Forgets the conversation's usage; the models and choices stay.
@@ -191,6 +232,7 @@ mod tests {
                 option("sonnet", "claude-sonnet-5-5", "Sonnet 5.5"),
             ],
             mode: PermissionMode::AskBeforeEdits,
+            account: None,
         })
     }
 
@@ -260,6 +302,42 @@ mod tests {
             next_mode(PermissionMode::DontAsk),
             PermissionMode::AskBeforeEdits
         );
+    }
+
+    #[test]
+    fn a_partial_report_keeps_the_other_window() {
+        let window = |percent| kiln_agent::UsageWindow {
+            percent,
+            resets_at: None,
+        };
+        let mut state = AgentState::default();
+        state.apply(&AgentEvent::Usage(Usage {
+            session: Some(window(4)),
+            weekly: Some(window(19)),
+            limited: None,
+        }));
+        state.apply(&AgentEvent::Usage(Usage {
+            session: Some(window(5)),
+            weekly: None,
+            limited: None,
+        }));
+        assert_eq!(state.usage().weekly, Some(window(19)));
+        assert_eq!(state.usage().session, Some(window(5)));
+    }
+
+    #[test]
+    fn a_limit_ends_at_its_reset_time() {
+        let now = SystemTime::now();
+        let hour = std::time::Duration::from_secs(3600);
+        let mut state = AgentState::default();
+        state.apply(&AgentEvent::Usage(Usage {
+            limited: Some(Limited {
+                until: Some(now + hour),
+            }),
+            ..Usage::default()
+        }));
+        assert!(state.limit_at(now).is_some());
+        assert!(state.limit_at(now + hour).is_none());
     }
 
     #[test]

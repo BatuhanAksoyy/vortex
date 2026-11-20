@@ -26,6 +26,10 @@ pub fn set_permission_mode(request_id: &str, mode: &str) -> Value {
     )
 }
 
+pub fn get_usage(request_id: &str) -> Value {
+    control_request(request_id, &json!({ "subtype": "get_usage" }))
+}
+
 pub fn get_context_usage(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "get_context_usage" }))
 }

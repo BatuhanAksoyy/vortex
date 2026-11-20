@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::{
     control::{self, Asked},
-    outgoing,
+    outgoing, usage,
     wire::{self, Line},
 };
 
@@ -62,6 +62,10 @@ impl Translator {
                 let id = self.ask("context", Asked::Context);
                 Some(outgoing::get_context_usage(&id))
             }
+            SessionCommand::RefreshUsage => {
+                let id = self.ask("usage", Asked::Usage);
+                Some(outgoing::get_usage(&id))
+            }
             SessionCommand::Permission {
                 request_id,
                 decision,
@@ -97,6 +101,10 @@ impl Translator {
             Line::Assistant(message) => tool_calls(message),
             Line::User(message) => tool_results(message),
             Line::ControlRequest(request) => self.control_request(request).into_iter().collect(),
+            Line::RateLimitEvent { rate_limit_info } => usage::from_event(&rate_limit_info)
+                .map(AgentEvent::Usage)
+                .into_iter()
+                .collect(),
             Line::ControlResponse(response) => self
                 .control_response(response.response)
                 .into_iter()
@@ -118,10 +126,16 @@ impl Translator {
                 request_id,
                 response,
             } => control::on_success(self.asked_by(&request_id)?, response),
-            wire::Reply::Error { request_id, error } => {
-                self.asked_by(&request_id)?;
-                Some(AgentEvent::CommandFailed(error))
-            }
+            // Only changes the user asked for are worth showing as failed;
+            // background refreshes run every turn and just keep the old
+            // value.
+            wire::Reply::Error { request_id, error } => match self.asked_by(&request_id)? {
+                Asked::Model | Asked::Mode => Some(AgentEvent::CommandFailed(error)),
+                asked => {
+                    log::warn!("{asked:?} request failed: {error}");
+                    None
+                }
+            },
             wire::Reply::Other => None,
         }
     }

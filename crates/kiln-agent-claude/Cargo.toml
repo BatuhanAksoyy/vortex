@@ -10,6 +10,7 @@ license.workspace = true
 anyhow.workspace = true
 async-channel.workspace = true
 async-process.workspace = true
+jiff.workspace = true
 futures.workspace = true
 kiln-agent.workspace = true
 log.workspace = true

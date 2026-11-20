@@ -1,6 +1,8 @@
 //! The composer: the message box and its strip of mode menu, model menu,
 //! context meter and send/stop button.
 
+use std::time::SystemTime;
+
 use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, AnyElement, Context, Focusable, Hsla, SharedString, TestSupportExt, WeakEntity, Window,
@@ -16,7 +18,7 @@ use gpui_kit::{
 };
 use kiln_agent::{ModelOption, PermissionMode};
 
-use super::ChatView;
+use super::{ChatView, header::reset_label};
 use crate::{
     agent_state::{self, MENU_MODES},
     spinner,
@@ -148,11 +150,38 @@ impl ChatView {
             )
             .on_click(cx.listener(|this, _, window, cx| this.interrupt(window, cx)))
             .into_any_element()
+        } else if self.is_limited() {
+            round_button("chat-send", IconName::ArrowUp, cx.theme().muted, cx).into_any_element()
         } else {
             round_button("chat-send", IconName::ArrowUp, spinner::accent(), cx)
                 .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
                 .into_any_element()
         }
+    }
+
+    /// Shown above the composer while a usage limit stops messages; the
+    /// conversation stays readable.
+    pub(super) fn render_limit_notice(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
+        let now = SystemTime::now();
+        let limited = self.agent.limit_at(now)?;
+        let text = match limited.until {
+            Some(until) => format!("Usage limit reached · resets {}", reset_label(until, now)),
+            None => "Usage limit reached".to_owned(),
+        };
+        Some(
+            div()
+                .id("chat-limit")
+                .test_support()
+                .aria_label(SharedString::from(text.clone()))
+                .mb_2()
+                .px_3()
+                .py_1p5()
+                .rounded(cx.theme().radius * 2.)
+                .border_1()
+                .border_color(cx.theme().warning)
+                .text_sm()
+                .child(text),
+        )
     }
 }
 
