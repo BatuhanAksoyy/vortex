@@ -8,6 +8,8 @@ use gpui_kit::{Context, Window};
 use kiln_agent::{AgentEvent, PermissionMode, SessionCommand, SessionSpec};
 
 use super::{ChatView, LiveSession};
+
+const USAGE_POLL: std::time::Duration = std::time::Duration::from_mins(5);
 use crate::agent_state::{AgentState, next_mode};
 
 impl ChatView {
@@ -33,6 +35,21 @@ impl ChatView {
     #[must_use]
     pub fn mode(&self) -> PermissionMode {
         self.agent.mode()
+    }
+
+    /// Asks for fresh plan usage; usage spent elsewhere (another session,
+    /// claude.ai) shows only when asked for.
+    pub fn refresh_usage(&mut self, _: &mut Context<Self>) {
+        self.send_command(SessionCommand::RefreshUsage);
+    }
+
+    /// Keeps the header's usage current while the chat sits idle.
+    pub(super) async fn poll_usage(this: gpui_kit::WeakEntity<Self>, cx: &mut gpui_kit::AsyncApp) {
+        let mut alive = true;
+        while alive {
+            cx.background_executor().timer(USAGE_POLL).await;
+            alive = this.update(cx, Self::refresh_usage).is_ok();
+        }
     }
 
     /// Whether a usage limit stops messages now.

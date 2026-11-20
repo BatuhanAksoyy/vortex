@@ -31,6 +31,7 @@ struct ReplyWindow {
 struct Event {
     status: Option<String>,
     resets_at: Option<u64>,
+    error_code: Option<String>,
     #[serde(default)]
     unified_windows: EventWindows,
 }
@@ -76,9 +77,13 @@ pub fn from_event(info: &Value) -> Option<Usage> {
         percent: percent(window.utilization * 100.),
         resets_at: window.resets_at.map(unix_time),
     };
-    let limited = (event.status.as_deref() == Some("rejected")).then(|| Limited {
-        until: event.resets_at.map(unix_time),
-    });
+    // A model the plan does not include is refused the same way, but only
+    // that model is out of reach; sending with another one still works.
+    let refused_model = event.error_code.as_deref() == Some("credits_required");
+    let limited =
+        (event.status.as_deref() == Some("rejected") && !refused_model).then(|| Limited {
+            until: event.resets_at.map(unix_time),
+        });
     Some(Usage {
         session: event.unified_windows.five_hour.as_ref().map(window),
         weekly: event.unified_windows.seven_day.as_ref().map(window),

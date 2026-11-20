@@ -213,4 +213,7 @@ pub struct TurnResult {
     pub result: Option<String>,
     #[serde(default)]
     pub terminal_reason: Option<String>,
+    /// Set on turns the API refused, which still end with `success`.
+    #[serde(default)]
+    pub is_error: bool,
 }

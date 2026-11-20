@@ -50,6 +50,7 @@ pub struct ChatView {
     spinner: Option<Task<()>>,
     /// Lifts a usage limit when its reset time comes.
     limit_timer: Option<Task<()>>,
+    _usage_poll: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -85,6 +86,7 @@ impl ChatView {
             spinner_frame: 0,
             spinner: None,
             limit_timer: None,
+            _usage_poll: cx.spawn(Self::poll_usage),
             _subscriptions: vec![subscription],
         };
         // Started now, not on the first message: the composer shows the

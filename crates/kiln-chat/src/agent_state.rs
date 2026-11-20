@@ -33,6 +33,7 @@ pub struct AgentState {
     context: Option<ContextUsage>,
     account: Option<Account>,
     usage: Usage,
+    usage_updated_at: Option<SystemTime>,
 }
 
 impl AgentState {
@@ -52,6 +53,7 @@ impl AgentState {
                     weekly: usage.weekly.or(self.usage.weekly),
                     limited: usage.limited,
                 };
+                self.usage_updated_at = Some(SystemTime::now());
             }
             AgentEvent::Started { model, .. } | AgentEvent::ModelChanged(model) => {
                 self.model = Some(model.clone());
@@ -81,6 +83,11 @@ impl AgentState {
 
     pub fn usage(&self) -> Usage {
         self.usage
+    }
+
+    /// When usage was last reported.
+    pub fn usage_updated_at(&self) -> Option<SystemTime> {
+        self.usage_updated_at
     }
 
     /// The limit in force at `now`; one whose reset time has passed is over
@@ -122,18 +129,20 @@ impl AgentState {
         &self.models
     }
 
-    /// The option the composer shows as selected: the one the user picked,
-    /// else a named model (not the "default" alias) that resolves to the
-    /// model in use, else the default. The agent names the model in use only
-    /// once the first message starts a turn.
+    /// The option the composer shows as selected. The model the agent
+    /// reports wins over the user's pick: the agent may refuse or replace a
+    /// model the plan does not include. The pick shows when it resolves to
+    /// that model, else a named model (not the "default" alias) that does.
+    /// Before the agent names one, the pick or the default shows.
     pub fn selected_model(&self) -> Option<&ModelOption> {
         let by_id = |id: &str| self.models.iter().find(|option| option.id == id);
-        if let Some(chosen) = &self.chosen_model {
-            return by_id(chosen);
-        }
+        let chosen = self.chosen_model.as_deref().and_then(by_id);
         let Some(model) = self.model.as_deref() else {
-            return by_id(DEFAULT_MODEL);
+            return chosen.or_else(|| by_id(DEFAULT_MODEL));
         };
+        if let Some(chosen) = chosen.filter(|option| option.resolved == model) {
+            return Some(chosen);
+        }
         let resolves = |option: &&ModelOption| option.resolved == model;
         let named = self
             .models
@@ -260,6 +269,19 @@ mod tests {
             state.model_label().as_deref(),
             Some("Default (recommended)")
         );
+    }
+
+    #[test]
+    fn the_model_the_agent_reports_wins_over_the_pick() {
+        let mut state = AgentState::default();
+        state.apply(&ready());
+        state.choose_model("sonnet");
+        assert_eq!(state.model_label().as_deref(), Some("Sonnet 5.5"));
+        state.apply(&AgentEvent::Started {
+            session_id: "s".into(),
+            model: "claude-opus-5-5".into(),
+        });
+        assert_eq!(state.model_label().as_deref(), Some("Opus 5.5"));
     }
 
     #[test]

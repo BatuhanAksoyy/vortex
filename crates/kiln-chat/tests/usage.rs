@@ -57,13 +57,26 @@ mod usage {
         assert!(harness.commands().contains(&SessionCommand::RefreshUsage));
         harness.emit(cx, usage(42, None));
         harness.with_window(cx, |window, _| {
-            assert!(window.find_by_label("Account Pro").visible());
+            assert!(window.find_by_label("dev@example.com · Pro").visible());
             assert!(window.find_by_label("42% used").visible());
         });
+        harness.commands();
         harness.with_window(cx, |window, cx| window.click("chat-usage", cx));
+        assert_eq!(harness.commands(), [SessionCommand::RefreshUsage]);
         harness.with_window(cx, |window, _| {
             assert!(window.find("chat-usage-panel").visible());
+            assert!(window.find("chat-usage-updated").visible());
         });
+    }
+
+    #[gpui_kit::test]
+    fn usage_is_refreshed_while_the_chat_sits_idle(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.commands();
+        cx.executor().advance_clock(Duration::from_mins(5));
+        cx.run_until_parked();
+        assert_eq!(harness.commands(), [SessionCommand::RefreshUsage]);
     }
 
     #[gpui_kit::test]
@@ -88,7 +101,7 @@ mod usage {
         harness.emit(cx, usage(100, Some(HOUR)));
         cx.executor().advance_clock(HOUR + Duration::from_secs(1));
         cx.run_until_parked();
-        assert_eq!(harness.commands(), [SessionCommand::RefreshUsage]);
+        assert!(harness.commands().contains(&SessionCommand::RefreshUsage));
         assert!(!cx.update(|cx| harness.view.read(cx).is_limited()));
         harness.with_window(cx, |window, _| {
             assert!(window.try_find("chat-limit").is_none());

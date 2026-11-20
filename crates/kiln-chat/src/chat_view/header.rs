@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Anchor, Context, Hsla, SharedString, TestSupportExt,
+    Anchor, Context, Hsla, SharedString, TestSupportExt, WeakEntity,
     component::{
         ActiveTheme, Icon, IconName, Sizable,
         button::{Button, ButtonVariants},
@@ -21,6 +21,7 @@ use kiln_agent::{Account, Usage, UsageWindow};
 use super::ChatView;
 
 const USAGE_PANEL_WIDTH: f32 = 260.;
+const ACCOUNT_MAX_WIDTH: f32 = 240.;
 
 impl ChatView {
     pub(super) fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -42,7 +43,12 @@ impl ChatView {
                     .account()
                     .map(|account| account_badge(account, cx)),
             )
-            .children(usage_meter(self.agent.usage(), cx))
+            .children(usage_meter(
+                self.agent.usage(),
+                self.agent.usage_updated_at(),
+                cx.entity().downgrade(),
+                cx,
+            ))
             .child(
                 div()
                     .id("chat-new")
@@ -58,39 +64,52 @@ impl ChatView {
     }
 }
 
-/// The plan, e.g. "Pro"; the address and organization show on hover.
+/// The address the agent is signed in with and its plan, e.g.
+/// "dev@example.com · Pro"; the organization shows on hover.
 fn account_badge(account: &Account, cx: &gpui_kit::App) -> impl IntoElement + use<> {
     let plan = account
         .plan
         .strip_prefix("Claude ")
         .unwrap_or(&account.plan);
-    let plan = if plan.is_empty() { "Account" } else { plan };
-    let details: SharedString = [account.email.as_str(), account.organization.as_str()]
+    let label: SharedString = [account.email.as_str(), plan]
         .into_iter()
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
-        .join("\n")
+        .join(" · ")
         .into();
+    let label = if label.is_empty() {
+        "Account".into()
+    } else {
+        label
+    };
+    let organization = SharedString::from(account.organization.clone());
     let theme = cx.theme();
     div()
         .id("chat-account")
         .test_support()
-        .aria_label(SharedString::from(format!("Account {plan}")))
+        .aria_label(label.clone())
+        .max_w(px(ACCOUNT_MAX_WIDTH))
+        .truncate()
         .px_1p5()
         .rounded(theme.radius)
         .border_1()
         .border_color(theme.border)
         .text_xs()
         .text_color(theme.muted_foreground)
-        .child(plan.to_owned())
-        .when(!details.is_empty(), |this| {
-            this.tooltip(move |window, cx| Tooltip::new(details.clone()).build(window, cx))
+        .child(label)
+        .when(!organization.is_empty(), |this| {
+            this.tooltip(move |window, cx| Tooltip::new(organization.clone()).build(window, cx))
         })
 }
 
-/// The session window's percent; a click shows both windows and their
-/// reset times.
-fn usage_meter(usage: Usage, cx: &gpui_kit::App) -> Option<impl IntoElement + use<>> {
+/// The session window's percent; a click asks for fresh numbers and shows
+/// both windows with their reset times.
+fn usage_meter(
+    usage: Usage,
+    updated: Option<SystemTime>,
+    view: WeakEntity<ChatView>,
+    cx: &gpui_kit::App,
+) -> Option<impl IntoElement + use<>> {
     let session = usage.session?;
     let color = level_color(session.percent, cx);
     let trigger = Button::new("chat-usage")
@@ -103,12 +122,22 @@ fn usage_meter(usage: Usage, cx: &gpui_kit::App) -> Option<impl IntoElement + us
         Popover::new("chat-usage-popover")
             .anchor(Anchor::TopRight)
             .trigger(trigger)
-            .content(move |_, _, cx| usage_panel(usage, cx)),
+            .on_open_change(move |open, _, cx| {
+                if *open {
+                    let _ = view.update(cx, ChatView::refresh_usage);
+                }
+            })
+            .content(move |_, _, cx| usage_panel(usage, updated, cx)),
     )
 }
 
-fn usage_panel(usage: Usage, cx: &gpui_kit::App) -> impl IntoElement + use<> {
+fn usage_panel(
+    usage: Usage,
+    updated: Option<SystemTime>,
+    cx: &gpui_kit::App,
+) -> impl IntoElement + use<> {
     let now = SystemTime::now();
+    let updated = updated.map(|at| format!("Updated {}", reset_label(at, now)));
     v_flex()
         .id("chat-usage-panel")
         .test_support()
@@ -120,6 +149,14 @@ fn usage_panel(usage: Usage, cx: &gpui_kit::App) -> impl IntoElement + use<> {
                 .map(|w| usage_row("Current session", w, now, cx)),
         )
         .children(usage.weekly.map(|w| usage_row("Weekly", w, now, cx)))
+        .children(updated.map(|text| {
+            div()
+                .id("chat-usage-updated")
+                .test_support()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(text)
+        }))
 }
 
 fn usage_row(

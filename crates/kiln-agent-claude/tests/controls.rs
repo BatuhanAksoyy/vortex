@@ -8,7 +8,7 @@ mod common;
 #[cfg(test)]
 mod controls {
     use kiln_agent::{
-        AgentEvent, ContextUsage, PermissionMode, SessionCommand, SessionInfo, Usage,
+        AgentEvent, ContextUsage, PermissionMode, SessionCommand, SessionInfo, TurnOutcome, Usage,
     };
     use kiln_agent_claude::Translator;
 
@@ -183,6 +183,43 @@ mod controls {
         assert!(
             (percent(during) - percent(reply)).abs() <= 2,
             "{during:?} vs {reply:?}"
+        );
+    }
+
+    #[test]
+    fn a_model_the_plan_lacks_fails_the_turn_without_a_usage_limit() {
+        let events = translate_after(&mut Translator::default(), "fallback");
+        assert!(events.iter().all(|e| !matches!(
+            e,
+            AgentEvent::Usage(Usage {
+                limited: Some(_),
+                ..
+            })
+        )));
+        let failures: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                AgentEvent::TurnEnded(TurnOutcome::Failed(message)) => Some(message.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(failures.len(), 2, "{events:#?}");
+        assert!(
+            failures
+                .iter()
+                .all(|message| message.contains("requires usage credits"))
+        );
+        let models: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                AgentEvent::Started { model, .. } => Some(model.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            models,
+            ["claude-fable-5-2", "claude-fable-5-2"],
+            "each turn names its model"
         );
     }
 }

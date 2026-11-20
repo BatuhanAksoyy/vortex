@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drive `claude -p` over stream-json and record both directions as JSONL.
 
-usage: capture.py <case> <out.jsonl>   case: allow | deny | interrupt | controls | plan | usage
+usage: capture.py <case> <out.jsonl>   case: allow | deny | interrupt | controls | plan | usage | fallback
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -10,6 +10,8 @@ an error.
 record how approving the plan (ExitPlanMode) leaves plan mode.
 "usage" runs one tiny turn, then asks for plan usage, so the turn's
 rate_limit_event can be compared with the get_usage reply.
+"fallback" switches to a model the plan may not include (Fable), sends one
+message, then a second, to record what the CLI reports when it refuses.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -24,6 +26,7 @@ PROMPTS = {
     "deny": "Run the shell command `touch kiln-fixture.txt` with the Bash tool, then reply with the single word done.",
     "interrupt": "Write the numbers from 1 to 300, one per line, with no other text.",
     "usage": "Reply with the single word ok.",
+    "fallback": "Reply with the single word ok.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -67,6 +70,9 @@ CONTROLS = [
 if case == "controls":
     for request_id, request in CONTROLS:
         send({"type": "control_request", "request_id": request_id, "request": request})
+elif case == "fallback":
+    send({"type": "control_request", "request_id": "kiln-model-1",
+          "request": {"subtype": "set_model", "model": "fable"}})
 else:
     send({"type": "user", "message": {"role": "user", "content": PROMPTS[case]},
           "parent_tool_use_id": None, "session_id": ""})
@@ -106,6 +112,15 @@ for line in proc.stdout:
             break
         if case == "usage" and msg["response"].get("request_id") == "kiln-usage-1":
             break
+    if kind == "control_response" and case == "fallback" \
+            and msg["response"].get("request_id") == "kiln-model-1":
+        send({"type": "user", "message": {"role": "user", "content": PROMPTS[case]},
+              "parent_tool_use_id": None, "session_id": ""})
+    if kind == "result" and case == "fallback" and not interrupted:
+        interrupted = True
+        send({"type": "user", "message": {"role": "user", "content": PROMPTS[case]},
+              "parent_tool_use_id": None, "session_id": ""})
+        continue
     if kind == "result" and case == "usage":
         send({"type": "control_request", "request_id": "kiln-usage-1",
               "request": {"subtype": "get_usage"}})

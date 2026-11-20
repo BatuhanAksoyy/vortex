@@ -243,7 +243,7 @@ fn tool_results(message: wire::User) -> Vec<AgentEvent> {
 }
 
 fn outcome(result: wire::TurnResult) -> TurnOutcome {
-    if result.subtype == "success" {
+    if result.subtype == "success" && !result.is_error {
         return TurnOutcome::Completed;
     }
     if result
