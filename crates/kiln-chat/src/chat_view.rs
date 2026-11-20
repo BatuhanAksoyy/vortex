@@ -14,7 +14,7 @@ use std::{collections::HashSet, path::PathBuf, rc::Rc};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, Entity, FocusHandle, Focusable, Subscription, Task, Window,
+    AnyView, Context, Entity, EventEmitter, FocusHandle, Focusable, Subscription, Task, Window,
     component::{
         input::{InputEvent, TextareaState},
         message_scroller::MessageScrollerState,
@@ -25,6 +25,7 @@ use kiln_agent::{AgentBackend, SessionCommand};
 use crate::{
     agent_state::AgentState,
     permission_prompt::{Answered, PermissionPrompt},
+    question_prompt::QuestionPrompt,
     slash, spinner,
     transcript::{Change, Status, Transcript},
 };
@@ -38,6 +39,15 @@ struct LiveSession {
     commands: async_channel::Sender<SessionCommand>,
     _driver: Task<()>,
     _events: Task<()>,
+}
+
+/// The prompt shown in place of the composer while a request waits: a
+/// permission question, or the agent's own questions.
+struct ShownPrompt {
+    request_id: String,
+    view: AnyView,
+    focus: FocusHandle,
+    _answered: Subscription,
 }
 
 pub struct ChatView {
@@ -55,7 +65,7 @@ pub struct ChatView {
     model_picker: Option<ModelPicker>,
     usage_open: bool,
     context_open: bool,
-    prompt: Option<(Entity<PermissionPrompt>, Subscription)>,
+    prompt: Option<ShownPrompt>,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
     /// Lifts a usage limit when its reset time comes.
@@ -205,26 +215,43 @@ impl ChatView {
         let shown = self
             .prompt
             .as_ref()
-            .map(|(prompt, _)| prompt.read(cx).request_id().to_owned());
-        if pending.map(|request| request.id.as_str()) == shown.as_deref() {
+            .map(|prompt| prompt.request_id.as_str());
+        if pending.map(|request| request.id.as_str()) == shown {
             return;
         }
         let had_focus = self.chat_focused(window, cx);
         self.prompt = pending.cloned().map(|request| {
-            let prompt = cx.new(|cx| PermissionPrompt::new(request, &self.cwd, window, cx));
-            let subscription = cx.subscribe_in(&prompt, window, |this, _, answered, window, cx| {
-                this.answer(answered, window, cx);
-            });
-            (prompt, subscription)
+            let request_id = request.id.clone();
+            if request.questions.is_empty() {
+                let prompt = cx.new(|cx| PermissionPrompt::new(request, &self.cwd, window, cx));
+                Self::show_prompt(request_id, prompt, window, cx)
+            } else {
+                let prompt = cx.new(|cx| QuestionPrompt::new(&request, window, cx));
+                Self::show_prompt(request_id, prompt, window, cx)
+            }
         });
         if had_focus {
-            let focus = match &self.prompt {
-                Some((prompt, _)) => prompt.focus_handle(cx),
-                None => self.composer.read(cx).focus_handle(cx),
-            };
+            let focus = self.focus_handle(cx);
             window.focus(&focus, cx);
         }
         cx.notify();
+    }
+
+    fn show_prompt<P: Render + Focusable + EventEmitter<Answered>>(
+        request_id: String,
+        prompt: Entity<P>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> ShownPrompt {
+        let answered = cx.subscribe_in(&prompt, window, |this, _, answered, window, cx| {
+            this.answer(answered, window, cx);
+        });
+        ShownPrompt {
+            request_id,
+            focus: prompt.focus_handle(cx),
+            view: prompt.into(),
+            _answered: answered,
+        }
     }
 
     fn chat_focused(&self, window: &Window, cx: &gpui_kit::App) -> bool {
@@ -232,7 +259,7 @@ impl ChatView {
             || self
                 .prompt
                 .as_ref()
-                .is_some_and(|(prompt, _)| prompt.focus_handle(cx).contains_focused(window, cx))
+                .is_some_and(|prompt| prompt.focus.contains_focused(window, cx))
     }
 
     fn apply_change(&mut self, change: Change, cx: &mut Context<Self>) {
@@ -280,7 +307,7 @@ impl ChatView {
 impl Focusable for ChatView {
     fn focus_handle(&self, cx: &gpui_kit::App) -> FocusHandle {
         match &self.prompt {
-            Some((prompt, _)) => prompt.focus_handle(cx),
+            Some(prompt) => prompt.focus.clone(),
             None => self.composer.read(cx).focus_handle(cx),
         }
     }

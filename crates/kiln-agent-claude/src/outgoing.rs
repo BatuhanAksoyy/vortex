@@ -1,6 +1,8 @@
 //! Messages Kiln writes to the CLI's stdin.
 
 use kiln_agent::Decision;
+
+use crate::ask;
 use serde_json::{Value, json};
 
 pub const INITIALIZE_ID: &str = "initialize";
@@ -68,6 +70,10 @@ pub fn permission_response(
         (Decision::Deny { feedback }, _) => {
             json!({ "behavior": "deny", "message": deny_message(feedback.as_deref()) })
         }
+        (Decision::Answer(answers), _) => json!({
+            "behavior": "allow",
+            "updatedInput": ask::answered_input(input, answers),
+        }),
     };
     json!({
         "type": "control_response",

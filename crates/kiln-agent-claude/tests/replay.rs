@@ -13,7 +13,7 @@ mod replay {
     };
     use kiln_agent_claude::{ClaudeBackend, Translator};
 
-    const FIXTURES: [&str; 8] = [
+    const FIXTURES: [&str; 10] = [
         "allow",
         "deny",
         "interrupt",
@@ -22,6 +22,8 @@ mod replay {
         "usage",
         "fallback",
         "commands",
+        "ask",
+        "questions",
     ];
 
     fn translate(name: &str) -> Vec<AgentEvent> {

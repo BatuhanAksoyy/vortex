@@ -24,6 +24,7 @@ mod chat {
             input: json!({ "command": "touch a.txt" }),
             description: None,
             remember: None,
+            questions: Vec::new(),
         })
     }
 

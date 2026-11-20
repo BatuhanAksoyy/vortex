@@ -4,6 +4,7 @@
 //! The protocol is not a stable public API. Every shape read here is covered by
 //! a captured fixture under `tests/fixtures/`.
 
+mod ask;
 mod control;
 mod outgoing;
 mod session;

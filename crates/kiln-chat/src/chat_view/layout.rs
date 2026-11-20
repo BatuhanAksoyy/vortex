@@ -93,7 +93,7 @@ impl ChatView {
 impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bottom = match &self.prompt {
-            Some((prompt, _)) => prompt.clone().into_any_element(),
+            Some(prompt) => prompt.view.clone().into_any_element(),
             None => self.render_composer(window, cx),
         };
         v_flex()

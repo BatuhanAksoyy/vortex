@@ -263,6 +263,7 @@ mod tests {
             input: json!({}),
             description: None,
             remember: None,
+            questions: Vec::new(),
         })
     }
 

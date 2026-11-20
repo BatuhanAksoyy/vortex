@@ -6,6 +6,8 @@ mod chat_view;
 mod code_block;
 mod entry_view;
 mod permission_prompt;
+mod question_form;
+mod question_prompt;
 mod slash;
 mod spinner;
 mod tool_format;

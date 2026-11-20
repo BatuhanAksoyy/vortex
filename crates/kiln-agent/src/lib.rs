@@ -167,6 +167,9 @@ pub enum Decision {
     Deny {
         feedback: Option<String>,
     },
+    /// Answer the request's [`questions`](PermissionRequest::questions): one
+    /// answer each, in order. Several choices are joined with ", ".
+    Answer(Vec<String>),
 }
 
 /// What [`Decision::AllowAlways`] would remember, when the agent offers it.
@@ -244,6 +247,27 @@ pub struct PermissionRequest {
     pub input: Value,
     pub description: Option<String>,
     pub remember: Option<Remember>,
+    /// Set when the agent asks the user questions rather than for
+    /// permission; answered with [`Decision::Answer`].
+    pub questions: Vec<Question>,
+}
+
+/// A question the agent asks, with options to choose from. The user may
+/// also answer in their own words.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Question {
+    pub text: String,
+    /// A short label for the question, e.g. "Color".
+    pub header: String,
+    pub options: Vec<QuestionOption>,
+    /// Whether several options may be chosen.
+    pub multi_select: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuestionOption {
+    pub label: String,
+    pub description: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

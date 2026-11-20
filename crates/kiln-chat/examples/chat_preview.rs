@@ -252,6 +252,7 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
             input: json!({ "file_path": file }),
             description: None,
             remember: Some(Remember::AcceptEdits),
+            questions: Vec::new(),
         }));
     }
     events

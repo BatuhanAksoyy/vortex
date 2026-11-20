@@ -9,6 +9,7 @@ use kiln_agent::{
 use serde_json::Value;
 
 use crate::{
+    ask,
     control::{self, Asked},
     outgoing, usage,
     wire::{self, Line},
@@ -159,12 +160,14 @@ impl Translator {
         };
         self.pending_permissions
             .insert(request.request_id.clone(), pending);
+        let questions = ask::questions(&tool_name, &input);
         Some(AgentEvent::PermissionRequest(PermissionRequest {
             id: request.request_id,
             tool: tool_name,
             input,
             description,
             remember,
+            questions,
         }))
     }
 }

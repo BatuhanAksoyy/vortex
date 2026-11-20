@@ -68,10 +68,6 @@ impl PermissionPrompt {
         }
     }
 
-    pub fn request_id(&self) -> &str {
-        &self.request.id
-    }
-
     fn options(&self) -> Vec<PromptOption> {
         let always = match self.request.remember {
             Some(Remember::Rule) => Some("Yes, and don't ask again"),

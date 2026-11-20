@@ -2,7 +2,8 @@
 """Drive `claude -p` over stream-json and record both directions as JSONL.
 
 usage: capture.py <case> <out.jsonl>
-  case: allow | deny | interrupt | controls | plan | usage | fallback | commands
+  case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
+        | questions
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -16,6 +17,12 @@ message, then a second, to record what the CLI reports when it refuses.
 "commands" sends two slash commands the CLI runs itself, so it spends no
 usage: `/effort low`, whose output is text, then `/clear`, which resets the
 conversation.
+"ask" has the model ask a question with AskUserQuestion and answers it with
+the first option, to record how a question arrives and how its answer goes
+back.
+"questions" has the model ask two questions at once, one allowing several
+answers; it is answered with two options joined by ", " and with free text
+that matches no option, as the "Other" field would send.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -32,6 +39,8 @@ PROMPTS = {
     "usage": "Reply with the single word ok.",
     "fallback": "Reply with the single word ok.",
     "commands": "/effort low",
+    "questions": "Call the AskUserQuestion tool once with two questions. First: 'Which fruits do you like?' with header 'Fruits', multiSelect true, options Apple, Banana, Cherry. Second: 'Which city do you prefer?' with header 'City', multiSelect false, options Paris, Rome. After I answer, reply with only my answers, separated by a semicolon.",
+    "ask": "Use the AskUserQuestion tool to ask me which color I prefer, with exactly two options: Red and Blue. After I answer, reply with only the color I chose.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -101,6 +110,18 @@ for line in proc.stdout:
         req = msg["request"]
         if case in ("allow", "plan"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
+        elif case == "questions":
+            answers = {}
+            for q in req["input"].get("questions", []):
+                labels = [o["label"] for o in q["options"]]
+                answers[q["question"]] = ", ".join(labels[:2]) if q.get("multiSelect") else "Istanbul"
+            response = {"behavior": "allow",
+                        "updatedInput": {**req["input"], "answers": answers}}
+        elif case == "ask":
+            questions = req["input"].get("questions", [])
+            answers = {q["question"]: q["options"][0]["label"] for q in questions}
+            response = {"behavior": "allow",
+                        "updatedInput": {**req["input"], "answers": answers}}
         else:
             response = {"behavior": "deny", "message": "The user denied this tool call."}
         send({"type": "control_response", "response": {
