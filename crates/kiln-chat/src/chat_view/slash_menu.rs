@@ -1,16 +1,13 @@
 //! The `/` command menu above the composer. It opens while the first word
 //! of the message is a `/name` being typed, lists the commands the agent
 //! offers that match, and is driven from the keyboard without leaving the
-//! text box: Up/Down choose, Tab completes, Enter runs, Escape closes.
+//! text box (see `menu_keys`): Up/Down choose, Tab completes, Enter runs,
+//! Escape closes.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, Context, ScrollHandle, SharedString, TestSupportExt, Window,
-    component::{
-        ActiveTheme, ThemeStyled as _, h_flex,
-        input::{Enter, Escape, IndentInline, MoveDown, MoveUp},
-        v_flex,
-    },
+    component::{ActiveTheme, ThemeStyled as _, h_flex, v_flex},
     div, px,
 };
 use kiln_agent::SlashCommand;
@@ -60,66 +57,42 @@ impl ChatView {
             .map(|command| (*command).clone())
     }
 
-    /// Moves the choice by `step` rows, wrapping around.
-    fn move_slash_selection(&mut self, step: isize, cx: &mut Context<Self>) {
+    /// Moves the choice by `step` rows; `false` when the menu is closed.
+    pub(super) fn move_slash_choice(&mut self, step: isize, cx: &mut Context<Self>) -> bool {
         let count = self.slash_matches().len();
         if count == 0 {
-            return;
+            return false;
         }
-        self.slash.selected = self
-            .slash
-            .selected
-            .checked_add_signed(step)
-            .filter(|selected| *selected < count)
-            .unwrap_or(if step < 0 { count - 1 } else { 0 });
+        self.slash.selected = wrap(self.slash.selected, step, count);
         self.slash.scroll.scroll_to_item(self.slash.selected);
-        cx.stop_propagation();
         cx.notify();
+        true
     }
 
-    pub(super) fn on_slash_up(&mut self, _: &MoveUp, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_slash_selection(-1, cx);
-    }
-
-    pub(super) fn on_slash_down(&mut self, _: &MoveDown, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_slash_selection(1, cx);
-    }
-
-    pub(super) fn on_slash_tab(
+    /// Completes the chosen command, and runs it if `run`; `false` when the
+    /// menu is closed.
+    pub(super) fn pick_slash_choice(
         &mut self,
-        _: &IndentInline,
+        run: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
-        if let Some(command) = self.selected_command() {
-            cx.stop_propagation();
-            self.pick_command(&command, false, window, cx);
-        }
+    ) -> bool {
+        let Some(command) = self.selected_command() else {
+            return false;
+        };
+        self.pick_command(&command, run, window, cx);
+        true
     }
 
-    /// Enter runs the chosen command, as in the CLI; Shift+Enter still breaks
-    /// the line.
-    pub(super) fn on_slash_enter(
-        &mut self,
-        enter: &Enter,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if enter.shift || enter.secondary {
-            return;
+    /// Closes the menu until a different name is typed; `false` when it is
+    /// already closed.
+    pub(super) fn dismiss_slash_menu(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.slash_matches().is_empty() {
+            return false;
         }
-        if let Some(command) = self.selected_command() {
-            cx.stop_propagation();
-            self.pick_command(&command, true, window, cx);
-        }
-    }
-
-    pub(super) fn on_slash_escape(&mut self, _: &Escape, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.slash_matches().is_empty() {
-            self.slash.dismissed = true;
-            cx.stop_propagation();
-            cx.notify();
-        }
+        self.slash.dismissed = true;
+        cx.notify();
+        true
     }
 
     /// Puts `/name` in the composer, then sends it if `run`.
@@ -152,20 +125,7 @@ impl ChatView {
             .enumerate()
             .map(|(index, command)| Self::slash_row(command, index == self.slash.selected, cx));
         Some(
-            v_flex()
-                .id("chat-slash-menu")
-                .test_support()
-                .absolute()
-                .bottom_full()
-                .left_0()
-                .right_0()
-                .mb_1()
-                .p_1()
-                .max_h(px(MENU_MAX_HEIGHT))
-                .overflow_y_scroll()
-                .track_scroll(&self.slash.scroll)
-                .occlude()
-                .popover_style(cx)
+            menu_surface("chat-slash-menu", &self.slash.scroll, cx)
                 .children(rows)
                 .into_any_element(),
         )
@@ -179,20 +139,8 @@ impl ChatView {
         let theme = cx.theme();
         let name = SharedString::from(format!("/{}", command.name));
         let picked = command.clone();
-        h_flex()
-            .id(SharedString::from(format!("chat-slash-{}", command.name)))
-            .test_support()
-            .aria_label(name.clone())
-            .gap_2()
-            .px_2()
-            .py_1()
-            .rounded(theme.radius)
-            .text_sm()
-            .cursor_pointer()
-            .when(selected, |this| {
-                this.bg(theme.accent).text_color(theme.accent_foreground)
-            })
-            .when(!selected, |this| this.hover(|this| this.bg(theme.accent)))
+        let id = SharedString::from(format!("chat-slash-{}", command.name));
+        menu_row(id, name.clone(), selected, cx)
             .child(div().flex_none().child(name))
             .when(!command.argument_hint.is_empty(), |this| {
                 this.child(
@@ -217,4 +165,59 @@ impl ChatView {
                 this.pick_command(&picked, false, window, cx);
             }))
     }
+}
+
+/// The floating surface of a composer menu: above the composer, as wide as
+/// it, over the transcript.
+pub(super) fn menu_surface(
+    id: &'static str,
+    scroll: &ScrollHandle,
+    cx: &Context<ChatView>,
+) -> impl ParentElement + IntoElement + use<> {
+    v_flex()
+        .id(id)
+        .test_support()
+        .absolute()
+        .bottom_full()
+        .left_0()
+        .right_0()
+        .mb_1()
+        .p_1()
+        .max_h(px(MENU_MAX_HEIGHT))
+        .overflow_y_scroll()
+        .track_scroll(scroll)
+        .occlude()
+        .popover_style(cx)
+}
+
+/// A row of a composer menu, highlighted while chosen.
+pub(super) fn menu_row(
+    id: SharedString,
+    label: SharedString,
+    selected: bool,
+    cx: &Context<ChatView>,
+) -> impl ParentElement + StatefulInteractiveElement + IntoElement + use<> {
+    let theme = cx.theme();
+    h_flex()
+        .id(id)
+        .test_support()
+        .aria_label(label)
+        .gap_2()
+        .px_2()
+        .py_1()
+        .rounded(theme.radius)
+        .text_sm()
+        .cursor_pointer()
+        .when(selected, |this| {
+            this.bg(theme.accent).text_color(theme.accent_foreground)
+        })
+        .when(!selected, |this| this.hover(|this| this.bg(theme.accent)))
+}
+
+/// The row `step` rows from `selected` among `count`, wrapping around.
+pub(super) fn wrap(selected: usize, step: isize, count: usize) -> usize {
+    selected
+        .checked_add_signed(step)
+        .filter(|selected| *selected < count)
+        .unwrap_or(if step < 0 { count - 1 } else { 0 })
 }

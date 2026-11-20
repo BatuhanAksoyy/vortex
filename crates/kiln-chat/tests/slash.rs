@@ -149,21 +149,21 @@ mod slash {
     fn clicking_a_command_completes_it(cx: &mut TestAppContext) {
         let harness = ready(cx);
         type_text(&harness, cx, "/");
-        harness.with_window(cx, |window, cx| window.click("chat-slash-clear", cx));
+        harness.with_window(cx, |window, cx| window.click("chat-slash-compact", cx));
         assert!(!menu_open(&harness, cx));
         press(&harness, cx, "enter");
-        assert_eq!(harness.commands(), [SessionCommand::Send("/clear".into())]);
+        assert_eq!(
+            harness.commands(),
+            [SessionCommand::Send("/compact".into())]
+        );
     }
 
+    /// Kiln answers `/clear` itself, but the agent may still start over on
+    /// its own, e.g. from a skill.
     #[gpui_kit::test]
-    fn a_reset_empties_the_transcript(cx: &mut TestAppContext) {
+    fn a_reset_by_the_agent_empties_the_transcript(cx: &mut TestAppContext) {
         let harness = ready(cx);
         harness.type_and_send(cx, "hello");
-        harness.emit(
-            cx,
-            AgentEvent::TurnEnded(kiln_agent::TurnOutcome::Completed),
-        );
-        harness.type_and_send(cx, "/clear");
         let empty = |cx: &mut TestAppContext| {
             harness.with_window(cx, |window, _| window.try_find("chat-empty").is_some())
         };

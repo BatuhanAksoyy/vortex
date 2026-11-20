@@ -46,6 +46,7 @@ impl ChatView {
             .children(usage_meter(
                 self.agent.usage(),
                 self.agent.usage_updated_at(),
+                self.usage_open,
                 cx.entity().downgrade(),
                 cx,
             ))
@@ -104,9 +105,12 @@ fn account_badge(account: &Account, cx: &gpui_kit::App) -> impl IntoElement + us
 
 /// The session window's percent; a click asks for fresh numbers and shows
 /// both windows with their reset times.
+/// The usage button and its panel. The panel's open state lives in the view,
+/// so `/usage` can open it too.
 fn usage_meter(
     usage: Usage,
     updated: Option<SystemTime>,
+    open: bool,
     view: WeakEntity<ChatView>,
     cx: &gpui_kit::App,
 ) -> Option<impl IntoElement + use<>> {
@@ -122,10 +126,9 @@ fn usage_meter(
         Popover::new("chat-usage-popover")
             .anchor(Anchor::TopRight)
             .trigger(trigger)
+            .open(open)
             .on_open_change(move |open, _, cx| {
-                if *open {
-                    let _ = view.update(cx, ChatView::refresh_usage);
-                }
+                let _ = view.update(cx, |view, cx| view.set_usage_open(*open, cx));
             })
             .content(move |_, _, cx| usage_panel(usage, updated, cx)),
     )

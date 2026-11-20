@@ -43,6 +43,34 @@ pub fn complete(text: &str, command: &SlashCommand) -> (String, usize) {
     (head + rest, cursor)
 }
 
+/// A command Kiln answers itself, at once and even while a turn runs,
+/// instead of sending it to the agent as a message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NativeCommand {
+    /// Show plan usage (`/usage`, `/cost`, `/stats`).
+    Usage,
+    /// Switch to the named model, or choose one when no name is given.
+    Model(Option<String>),
+    /// Start a new conversation (`/clear`, `/new`, `/reset`).
+    Clear,
+}
+
+/// The native command `text` is, if it is one.
+pub fn native(text: &str) -> Option<NativeCommand> {
+    let rest = text.trim().strip_prefix('/')?;
+    let (name, argument) = rest
+        .split_once(char::is_whitespace)
+        .map_or((rest, ""), |(name, argument)| (name, argument.trim()));
+    match name {
+        "usage" | "cost" | "stats" => Some(NativeCommand::Usage),
+        "model" => Some(NativeCommand::Model(
+            (!argument.is_empty()).then(|| argument.to_owned()),
+        )),
+        "clear" | "new" | "reset" => Some(NativeCommand::Clear),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Rank {
     Exact,
@@ -123,6 +151,21 @@ mod tests {
         assert_eq!(names(&matching(&commands, "RES")), ["clear"]);
         assert_eq!(matching(&commands, "").len(), commands.len());
         assert_eq!(names(&matching(&commands, "zzz")), Vec::<String>::new());
+    }
+
+    #[test]
+    fn some_commands_are_answered_natively() {
+        assert_eq!(native("/usage"), Some(NativeCommand::Usage));
+        assert_eq!(native(" /cost "), Some(NativeCommand::Usage));
+        assert_eq!(native("/model"), Some(NativeCommand::Model(None)));
+        assert_eq!(
+            native("/model  sonnet "),
+            Some(NativeCommand::Model(Some("sonnet".into())))
+        );
+        assert_eq!(native("/new"), Some(NativeCommand::Clear));
+        assert_eq!(native("/compact"), None);
+        assert_eq!(native("/usagex"), None);
+        assert_eq!(native("usage"), None);
     }
 
     #[test]

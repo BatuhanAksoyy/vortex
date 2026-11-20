@@ -44,7 +44,9 @@ impl ChatView {
             .child(div().flex_1())
             .children(self.context_meter(cx))
             .child(self.action_button(cx));
-        let menu = self.render_slash_menu(cx);
+        let menu = self
+            .render_model_picker(cx)
+            .or_else(|| self.render_slash_menu(cx));
         let theme = cx.theme();
         v_flex()
             .relative()
@@ -57,11 +59,11 @@ impl ChatView {
             })
             .bg(theme.background)
             .capture_action(cx.listener(Self::on_outdent))
-            .capture_action(cx.listener(Self::on_slash_up))
-            .capture_action(cx.listener(Self::on_slash_down))
-            .capture_action(cx.listener(Self::on_slash_tab))
-            .capture_action(cx.listener(Self::on_slash_enter))
-            .capture_action(cx.listener(Self::on_slash_escape))
+            .capture_action(cx.listener(Self::on_menu_up))
+            .capture_action(cx.listener(Self::on_menu_down))
+            .capture_action(cx.listener(Self::on_menu_tab))
+            .capture_action(cx.listener(Self::on_menu_enter))
+            .capture_action(cx.listener(Self::on_menu_escape))
             .children(menu)
             .child(
                 div()

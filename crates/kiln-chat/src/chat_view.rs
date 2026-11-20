@@ -4,6 +4,8 @@
 mod composer;
 mod header;
 mod layout;
+mod menu_keys;
+mod native;
 mod session;
 mod slash_menu;
 
@@ -22,9 +24,10 @@ use kiln_agent::{AgentBackend, SessionCommand};
 use crate::{
     agent_state::AgentState,
     permission_prompt::{Answered, PermissionPrompt},
-    spinner,
+    slash, spinner,
     transcript::{Change, Status, Transcript},
 };
+use native::ModelPicker;
 use slash_menu::SlashMenu;
 
 const COMPOSER_MAX_ROWS: usize = 10;
@@ -48,6 +51,8 @@ pub struct ChatView {
     scroller: Entity<MessageScrollerState>,
     composer: Entity<TextareaState>,
     slash: SlashMenu,
+    model_picker: Option<ModelPicker>,
+    usage_open: bool,
     prompt: Option<(Entity<PermissionPrompt>, Subscription)>,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
@@ -77,7 +82,14 @@ impl ChatView {
                 window,
                 |this, _, event, window, cx| match event {
                     InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
-                    InputEvent::Change => this.sync_slash_menu(cx),
+                    InputEvent::Change => {
+                        // Typing a message puts the picker away; the text box
+                        // emptying as a command runs leaves it open.
+                        if !this.composer.read(cx).value().is_empty() {
+                            this.close_model_picker(cx);
+                        }
+                        this.sync_slash_menu(cx);
+                    }
                     _ => {}
                 },
             );
@@ -91,6 +103,8 @@ impl ChatView {
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             composer,
             slash: SlashMenu::default(),
+            model_picker: None,
+            usage_open: false,
             prompt: None,
             spinner_frame: 0,
             spinner: None,
@@ -109,9 +123,16 @@ impl ChatView {
         self.transcript.status()
     }
 
-    /// Sends the composer's text.
+    /// Sends the composer's text, or runs it when it is a command Kiln
+    /// answers itself.
     pub fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.composer.read(cx).value().trim().to_owned();
+        if let Some(command) = slash::native(&text) {
+            self.composer
+                .update(cx, |composer, cx| composer.clean(window, cx));
+            self.run_native(command, window, cx);
+            return;
+        }
         if self.submit(text, window, cx) {
             self.composer
                 .update(cx, |composer, cx| composer.clean(window, cx));
