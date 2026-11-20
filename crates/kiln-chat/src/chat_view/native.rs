@@ -8,7 +8,7 @@ use gpui_kit::{
     component::{ActiveTheme, Icon, IconName, Sizable, v_flex},
     div,
 };
-use kiln_agent::ModelOption;
+use kiln_agent::{ModelOption, SessionCommand};
 
 use super::{
     ChatView,
@@ -32,6 +32,7 @@ impl ChatView {
     ) {
         match command {
             NativeCommand::Usage => self.set_usage_open(true, cx),
+            NativeCommand::Context => self.set_context_open(true, cx),
             NativeCommand::Model(Some(model)) => self.set_model(&model, cx),
             NativeCommand::Model(None) => self.open_model_picker(cx),
             NativeCommand::Clear => self.new_conversation(window, cx),
@@ -39,13 +40,32 @@ impl ChatView {
     }
 
     /// Opens or closes the header's usage panel; opening asks for fresh
-    /// usage.
+    /// usage and puts the context panel away.
     pub(super) fn set_usage_open(&mut self, open: bool, cx: &mut Context<Self>) {
         if open && !self.usage_open {
             self.refresh_usage(cx);
+            self.context_open = false;
         }
         self.usage_open = open;
         cx.notify();
+    }
+
+    /// Opens or closes the context panel; opening asks for a fresh breakdown
+    /// and puts the usage panel away.
+    pub(super) fn set_context_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if open && !self.context_open {
+            self.send_command(SessionCommand::RefreshContext);
+            self.usage_open = false;
+        }
+        self.context_open = open;
+        cx.notify();
+    }
+
+    /// `false` when the context panel is already closed.
+    pub(super) fn close_context(&mut self, cx: &mut Context<Self>) -> bool {
+        let was_open = self.context_open;
+        self.set_context_open(false, cx);
+        was_open
     }
 
     /// `false` when the usage panel is already closed.

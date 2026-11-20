@@ -33,13 +33,23 @@ def shrink(msg):
     if isinstance(response, dict) and "commands" in response:
         msg["response"]["response"] = initialize_reply(response)
     if isinstance(response, dict) and "totalTokens" in response:
-        msg["response"]["response"] = {k: response[k] for k in CONTEXT_KEEP if k in response}
+        msg["response"]["response"] = context_reply(response)
     if isinstance(response, dict) and "rate_limits" in response:
         msg["response"]["response"] = usage_reply(response)
     return msg
 
 
 CONTEXT_KEEP = ("totalTokens", "maxTokens", "percentage", "model")
+CATEGORY_KEEP = ("id", "name", "tokens", "kind")
+
+
+def context_reply(response):
+    """Keeps the totals and the category breakdown. The rest lists the
+    capturing user's agents, skills, memory files and MCP tools, with paths."""
+    reply = {k: response[k] for k in CONTEXT_KEEP if k in response}
+    reply["categories"] = [{k: c[k] for k in CATEGORY_KEEP if k in c}
+                           for c in response.get("categories", [])]
+    return reply
 
 
 def usage_reply(response):

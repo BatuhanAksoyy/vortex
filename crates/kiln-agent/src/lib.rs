@@ -128,10 +128,34 @@ pub struct Limited {
     pub until: Option<SystemTime>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ContextUsage {
     pub used_tokens: u64,
     pub max_tokens: u64,
+    /// Whole percent in use as the agent itself shows it, when it says.
+    pub percent: Option<u64>,
+    /// Where the context goes, as the agent breaks it down; empty when it
+    /// does not.
+    pub categories: Vec<ContextCategory>,
+}
+
+/// One part of the context, e.g. the system prompt or the messages.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContextCategory {
+    pub name: String,
+    pub tokens: u64,
+    pub kind: ContextKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContextKind {
+    /// Counted in [`ContextUsage::used_tokens`].
+    Used,
+    /// Loaded only when needed, so not counted as used.
+    Deferred,
+    /// Kept free so the conversation can be compacted.
+    Buffer,
+    Free,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

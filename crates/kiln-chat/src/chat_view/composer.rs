@@ -123,33 +123,6 @@ impl ChatView {
         )
     }
 
-    fn context_meter(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
-        let percent = self.agent.context_percent()?;
-        let usage = self.agent.context()?;
-        let tooltip = format!(
-            "{} of {} tokens of context used",
-            agent_state::tokens(usage.used_tokens),
-            agent_state::tokens(usage.max_tokens)
-        );
-        let color = match percent {
-            0..70 => cx.theme().muted_foreground,
-            70..90 => cx.theme().warning,
-            _ => cx.theme().danger,
-        };
-        Some(
-            div()
-                .id("chat-context")
-                .test_support()
-                .px_1()
-                .text_xs()
-                .text_color(color)
-                .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
-                })
-                .child(format!("{percent}%")),
-        )
-    }
-
     fn action_button(&self, cx: &mut Context<Self>) -> AnyElement {
         if self.status() == Status::Running {
             round_button(

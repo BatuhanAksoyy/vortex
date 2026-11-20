@@ -2,6 +2,7 @@
 //! permission prompt and the composer. Layout lives in `layout`.
 
 mod composer;
+mod context_panel;
 mod header;
 mod layout;
 mod menu_keys;
@@ -53,6 +54,7 @@ pub struct ChatView {
     slash: SlashMenu,
     model_picker: Option<ModelPicker>,
     usage_open: bool,
+    context_open: bool,
     prompt: Option<(Entity<PermissionPrompt>, Subscription)>,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
@@ -105,6 +107,7 @@ impl ChatView {
             slash: SlashMenu::default(),
             model_picker: None,
             usage_open: false,
+            context_open: false,
             prompt: None,
             spinner_frame: 0,
             spinner: None,

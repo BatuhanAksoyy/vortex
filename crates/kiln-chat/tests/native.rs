@@ -10,8 +10,8 @@ mod native {
     use gpui_kit::TestAppContext;
     use gpui_kit::test::TestWindowExt;
     use kiln_agent::{
-        AgentEvent, ModelOption, PermissionMode, SessionCommand, SessionInfo, SlashCommand, Usage,
-        UsageWindow,
+        AgentEvent, ContextCategory, ContextKind, ContextUsage, ModelOption, PermissionMode,
+        SessionCommand, SessionInfo, SlashCommand, Usage, UsageWindow,
     };
     use kiln_chat::Status;
 
@@ -54,10 +54,30 @@ mod native {
                 ..Usage::default()
             }),
         );
+        harness.emit(cx, AgentEvent::ContextUsage(context()));
         harness.type_and_send(cx, "work on it");
         assert_eq!(harness.status(cx), Status::Running);
         harness.commands();
         harness
+    }
+
+    fn context() -> ContextUsage {
+        let category = |name: &str, tokens: u64, kind: ContextKind| ContextCategory {
+            name: name.into(),
+            tokens,
+            kind,
+        };
+        ContextUsage {
+            used_tokens: 14_000,
+            max_tokens: 200_000,
+            percent: Some(7),
+            categories: vec![
+                category("System prompt", 4_000, ContextKind::Used),
+                category("Messages", 10_000, ContextKind::Used),
+                category("System tools (deferred)", 19_000, ContextKind::Deferred),
+                category("Free space", 186_000, ContextKind::Free),
+            ],
+        }
     }
 
     fn input(harness: &Harness, cx: &mut TestAppContext, text: &str) {
@@ -140,6 +160,37 @@ mod native {
         assert!(
             harness.commands().is_empty(),
             "nothing reaches the new agent"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn context_opens_its_breakdown_mid_turn(cx: &mut TestAppContext) {
+        let harness = busy(cx);
+        input(&harness, cx, "/context");
+        press(&harness, cx, "enter");
+        assert_eq!(harness.commands(), [SessionCommand::RefreshContext]);
+        assert!(shown(&harness, cx, "chat-context-panel"));
+        press(&harness, cx, "escape");
+        assert!(!shown(&harness, cx, "chat-context-panel"));
+        input(&harness, cx, "/usage");
+        press(&harness, cx, "enter");
+        assert!(
+            shown(&harness, cx, "chat-usage-panel"),
+            "focus went back to the composer"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_context_meter_opens_the_breakdown(cx: &mut TestAppContext) {
+        let harness = busy(cx);
+        harness.with_window(cx, |window, cx| window.click("chat-context", cx));
+        assert!(shown(&harness, cx, "chat-context-panel"));
+        assert_eq!(harness.commands(), [SessionCommand::RefreshContext]);
+        harness.with_window(cx, |window, cx| window.click("chat-usage", cx));
+        assert!(shown(&harness, cx, "chat-usage-panel"));
+        assert!(
+            !shown(&harness, cx, "chat-context-panel"),
+            "one panel at a time"
         );
     }
 }

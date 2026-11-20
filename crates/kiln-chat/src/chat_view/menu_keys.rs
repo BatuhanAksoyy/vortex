@@ -54,9 +54,13 @@ impl ChatView {
     }
 
     /// Escape closes the topmost of the picker, the `/` menu and the usage
-    /// panel.
+    /// and context panels.
     pub(super) fn on_menu_escape(&mut self, _: &Escape, _: &mut Window, cx: &mut Context<Self>) {
-        if self.close_model_picker(cx) || self.dismiss_slash_menu(cx) || self.close_usage(cx) {
+        if self.close_model_picker(cx)
+            || self.dismiss_slash_menu(cx)
+            || self.close_usage(cx)
+            || self.close_context(cx)
+        {
             cx.stop_propagation();
         }
     }

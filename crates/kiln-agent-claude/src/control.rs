@@ -2,7 +2,8 @@
 //! changes, context usage), and the CLI's names for permission modes.
 
 use kiln_agent::{
-    Account, AgentEvent, ContextUsage, ModelOption, PermissionMode, SessionInfo, SlashCommand,
+    Account, AgentEvent, ContextCategory, ContextKind, ContextUsage, ModelOption, PermissionMode,
+    SessionInfo, SlashCommand,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -83,6 +84,17 @@ struct WireModel {
 struct WireContext {
     total_tokens: u64,
     max_tokens: u64,
+    percentage: Option<u64>,
+    #[serde(default)]
+    categories: Vec<WireCategory>,
+}
+
+#[derive(Deserialize)]
+struct WireCategory {
+    name: String,
+    tokens: u64,
+    #[serde(default)]
+    kind: String,
 }
 
 /// The event a successful reply means, if any.
@@ -114,6 +126,8 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
             Some(AgentEvent::ContextUsage(ContextUsage {
                 used_tokens: context.total_tokens,
                 max_tokens: context.max_tokens,
+                percent: context.percentage,
+                categories: context.categories.into_iter().map(category).collect(),
             }))
         }
     }
@@ -137,6 +151,20 @@ pub fn slash_commands(commands: Vec<WireCommand>) -> Vec<SlashCommand> {
             aliases: command.aliases,
         })
         .collect()
+}
+
+fn category(category: WireCategory) -> ContextCategory {
+    let kind = match category.kind.as_str() {
+        "deferred" => ContextKind::Deferred,
+        "buffer" => ContextKind::Buffer,
+        "free" => ContextKind::Free,
+        _ => ContextKind::Used,
+    };
+    ContextCategory {
+        name: category.name,
+        tokens: category.tokens,
+        kind,
+    }
 }
 
 fn model_option(model: WireModel) -> ModelOption {

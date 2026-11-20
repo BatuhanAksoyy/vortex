@@ -56,6 +56,7 @@ mod composer {
             AgentEvent::ContextUsage(ContextUsage {
                 used_tokens: 15_338,
                 max_tokens: 200_000,
+                ..ContextUsage::default()
             }),
         );
         harness.with_window(cx, |window, _| {

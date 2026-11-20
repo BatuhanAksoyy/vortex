@@ -49,6 +49,8 @@ pub fn complete(text: &str, command: &SlashCommand) -> (String, usize) {
 pub enum NativeCommand {
     /// Show plan usage (`/usage`, `/cost`, `/stats`).
     Usage,
+    /// Show what fills the context window.
+    Context,
     /// Switch to the named model, or choose one when no name is given.
     Model(Option<String>),
     /// Start a new conversation (`/clear`, `/new`, `/reset`).
@@ -63,6 +65,7 @@ pub fn native(text: &str) -> Option<NativeCommand> {
         .map_or((rest, ""), |(name, argument)| (name, argument.trim()));
     match name {
         "usage" | "cost" | "stats" => Some(NativeCommand::Usage),
+        "context" => Some(NativeCommand::Context),
         "model" => Some(NativeCommand::Model(
             (!argument.is_empty()).then(|| argument.to_owned()),
         )),
@@ -163,6 +166,7 @@ mod tests {
             Some(NativeCommand::Model(Some("sonnet".into())))
         );
         assert_eq!(native("/new"), Some(NativeCommand::Clear));
+        assert_eq!(native("/context"), Some(NativeCommand::Context));
         assert_eq!(native("/compact"), None);
         assert_eq!(native("/usagex"), None);
         assert_eq!(native("usage"), None);

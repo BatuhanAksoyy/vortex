@@ -80,10 +80,12 @@ mod slash {
         let harness = ready(cx);
         type_text(&harness, cx, "/co");
         press(&harness, cx, "down");
+        press(&harness, cx, "down");
         press(&harness, cx, "enter");
         assert_eq!(
             harness.commands(),
-            [SessionCommand::Send("/context".into())]
+            [SessionCommand::Send("/compact".into())],
+            "the choice wraps around"
         );
         assert_eq!(harness.status(cx), kiln_chat::Status::Running);
         assert!(!menu_open(&harness, cx));

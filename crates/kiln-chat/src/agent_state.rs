@@ -64,7 +64,7 @@ impl AgentState {
                 self.model = Some(model.clone());
             }
             AgentEvent::ModeChanged(mode) => self.mode = Some(*mode),
-            AgentEvent::ContextUsage(usage) => self.context = Some(*usage),
+            AgentEvent::ContextUsage(usage) => self.context = Some(usage.clone()),
             _ => return false,
         }
         true
@@ -170,15 +170,18 @@ impl AgentState {
             .or_else(|| self.model.clone())
     }
 
-    /// Whole percent of the context window in use, rounded up so any use
+    /// Whole percent of the context window in use: the agent's own figure,
+    /// so Kiln and the CLI agree; else worked out, rounded up so any use
     /// shows as at least 1%.
     pub fn context_percent(&self) -> Option<u64> {
-        let usage = self.context?;
-        (usage.max_tokens > 0).then(|| (usage.used_tokens * 100).div_ceil(usage.max_tokens))
+        let usage = self.context.as_ref()?;
+        usage.percent.or_else(|| {
+            (usage.max_tokens > 0).then(|| (usage.used_tokens * 100).div_ceil(usage.max_tokens))
+        })
     }
 
-    pub fn context(&self) -> Option<ContextUsage> {
-        self.context
+    pub fn context(&self) -> Option<&ContextUsage> {
+        self.context.as_ref()
     }
 }
 
@@ -319,8 +322,16 @@ mod tests {
         state.apply(&AgentEvent::ContextUsage(ContextUsage {
             used_tokens: 15_338,
             max_tokens: 1_000_000,
+            ..ContextUsage::default()
         }));
         assert_eq!(state.context_percent(), Some(2));
+        state.apply(&AgentEvent::ContextUsage(ContextUsage {
+            used_tokens: 13_925,
+            max_tokens: 400_000,
+            percent: Some(3),
+            ..ContextUsage::default()
+        }));
+        assert_eq!(state.context_percent(), Some(3), "the agent's figure wins");
     }
 
     #[test]

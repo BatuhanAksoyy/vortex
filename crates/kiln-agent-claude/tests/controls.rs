@@ -8,7 +8,7 @@ mod common;
 #[cfg(test)]
 mod controls {
     use kiln_agent::{
-        AgentEvent, ContextUsage, PermissionMode, SessionCommand, SessionInfo, TurnOutcome, Usage,
+        AgentEvent, ContextKind, PermissionMode, SessionCommand, SessionInfo, TurnOutcome, Usage,
     };
     use kiln_agent_claude::Translator;
 
@@ -71,10 +71,28 @@ mod controls {
         assert!(events.iter().any(
             |e| matches!(e, AgentEvent::CommandFailed(message) if message.contains("permission mode"))
         ));
-        assert!(events.iter().any(|e| matches!(
-            e,
-            AgentEvent::ContextUsage(ContextUsage { max_tokens: 1_000_000, used_tokens }) if *used_tokens > 0
-        )));
+        let context = events
+            .iter()
+            .find_map(|e| match e {
+                AgentEvent::ContextUsage(context) => Some(context),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(context.max_tokens, 1_000_000);
+        assert_eq!(context.percent, Some(1));
+        let used: u64 = context
+            .categories
+            .iter()
+            .filter(|category| category.kind == ContextKind::Used)
+            .map(|category| category.tokens)
+            .sum();
+        assert_eq!(used, context.used_tokens, "used categories add up");
+        assert!(
+            context
+                .categories
+                .iter()
+                .any(|category| category.kind == ContextKind::Deferred)
+        );
     }
 
     #[test]

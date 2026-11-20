@@ -16,9 +16,9 @@ use gpui_kit::{
     px, size,
 };
 use kiln_agent::{
-    Account, AgentBackend, AgentEvent, BlockKey, ContextUsage, Limited, ModelOption,
-    PermissionMode, PermissionRequest, Remember, Session, SessionCommand, SessionInfo, SessionSpec,
-    SlashCommand, ToolCall, Usage, UsageWindow,
+    Account, AgentBackend, AgentEvent, BlockKey, ContextCategory, ContextKind, ContextUsage,
+    Limited, ModelOption, PermissionMode, PermissionRequest, Remember, Session, SessionCommand,
+    SessionInfo, SessionSpec, SlashCommand, ToolCall, Usage, UsageWindow,
 };
 use kiln_chat::ChatView;
 use serde_json::json;
@@ -57,10 +57,7 @@ async fn play(
     while let Ok(command) = commands.recv().await {
         let replies = match command {
             SessionCommand::Send(_) => script.take().unwrap_or_default(),
-            SessionCommand::RefreshContext => vec![AgentEvent::ContextUsage(ContextUsage {
-                used_tokens: 41_200,
-                max_tokens: 200_000,
-            })],
+            SessionCommand::RefreshContext => vec![AgentEvent::ContextUsage(context())],
             SessionCommand::SetMode(mode) => vec![AgentEvent::ModeChanged(mode)],
             SessionCommand::SetModel(model) => vec![AgentEvent::ModelChanged(model)],
             SessionCommand::RefreshUsage => vec![AgentEvent::Usage(usage)],
@@ -108,6 +105,29 @@ fn ready() -> AgentEvent {
         }),
         commands: preview_commands(),
     })
+}
+
+/// Context as the CLI breaks it down, deferred tools included.
+fn context() -> ContextUsage {
+    let category = |name: &str, tokens: u64, kind: ContextKind| ContextCategory {
+        name: name.into(),
+        tokens,
+        kind,
+    };
+    ContextUsage {
+        used_tokens: 41_200,
+        max_tokens: 200_000,
+        percent: Some(21),
+        categories: vec![
+            category("System prompt", 3_400, ContextKind::Used),
+            category("System tools", 2_400, ContextKind::Used),
+            category("System tools (deferred)", 19_200, ContextKind::Deferred),
+            category("Skills", 7_500, ContextKind::Used),
+            category("Messages", 27_900, ContextKind::Used),
+            category("Autocompact buffer", 33_000, ContextKind::Buffer),
+            category("Free space", 125_800, ContextKind::Free),
+        ],
+    }
 }
 
 /// Built-in commands as the CLI lists them, long hints included.
