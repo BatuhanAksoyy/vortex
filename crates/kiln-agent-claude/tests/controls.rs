@@ -57,6 +57,7 @@ mod controls {
             models,
             mode,
             account,
+            ..
         })) = events.first()
         else {
             panic!("{events:#?}");

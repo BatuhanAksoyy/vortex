@@ -94,11 +94,9 @@ impl Translator {
 
     fn on_decoded(&mut self, line: Line) -> Vec<AgentEvent> {
         match line {
-            Line::System(wire::System::Init { session_id, model }) => {
-                vec![AgentEvent::Started { session_id, model }]
-            }
+            Line::System(system) => system_events(system),
             Line::StreamEvent(event) => stream_event(event).into_iter().collect(),
-            Line::Assistant(message) => tool_calls(message),
+            Line::Assistant(message) => assistant_events(message),
             Line::User(message) => tool_results(message),
             Line::ControlRequest(request) => self.control_request(request).into_iter().collect(),
             Line::RateLimitEvent { rate_limit_info } => usage::from_event(&rate_limit_info)
@@ -109,14 +107,9 @@ impl Translator {
                 .control_response(response.response)
                 .into_iter()
                 .collect(),
-            Line::System(wire::System::Status { permission_mode }) => permission_mode
-                .as_deref()
-                .and_then(control::parse_mode)
-                .map(AgentEvent::ModeChanged)
-                .into_iter()
-                .collect(),
+            Line::ConversationReset { trigger } => conversation_reset(&trigger),
             Line::TurnResult(result) => vec![AgentEvent::TurnEnded(outcome(result))],
-            Line::System(wire::System::Other) | Line::Other => Vec::new(),
+            Line::Other => Vec::new(),
         }
     }
 
@@ -176,6 +169,46 @@ impl Translator {
     }
 }
 
+fn system_events(system: wire::System) -> Vec<AgentEvent> {
+    match system {
+        wire::System::Init { session_id, model } => {
+            vec![AgentEvent::Started { session_id, model }]
+        }
+        wire::System::Status { permission_mode } => permission_mode
+            .as_deref()
+            .and_then(control::parse_mode)
+            .map(AgentEvent::ModeChanged)
+            .into_iter()
+            .collect(),
+        wire::System::CommandsChanged { commands } => {
+            vec![AgentEvent::CommandsChanged(control::slash_commands(
+                commands,
+            ))]
+        }
+        wire::System::Other => Vec::new(),
+    }
+}
+
+/// Only `/clear` is known to empty the conversation. Another trigger keeps
+/// the transcript: wrongly keeping history is harmless, wrongly wiping what
+/// the user can see is not.
+fn conversation_reset(trigger: &str) -> Vec<AgentEvent> {
+    if trigger == "clear" {
+        vec![AgentEvent::ConversationReset]
+    } else {
+        log::warn!("conversation reset by {trigger:?} kept the transcript");
+        Vec::new()
+    }
+}
+
+fn assistant_events(message: wire::Assistant) -> Vec<AgentEvent> {
+    if message.local_command_run.is_some() {
+        command_output(message)
+    } else {
+        tool_calls(message)
+    }
+}
+
 /// Subagent text is not forwarded by the CLI by default; deltas with a parent
 /// are ignored until subagent transcripts are shown.
 fn stream_event(event: wire::StreamEvent) -> Option<AgentEvent> {
@@ -216,7 +249,28 @@ fn tool_calls(message: wire::Assistant) -> Vec<AgentEvent> {
                     input,
                 }))
             }
-            wire::AssistantBlock::Other => None,
+            wire::AssistantBlock::Text { .. } | wire::AssistantBlock::Other => None,
+        })
+        .collect()
+}
+
+/// A slash command's output arrives whole, as text blocks of a message no
+/// model wrote; it is shown like a reply.
+fn command_output(message: wire::Assistant) -> Vec<AgentEvent> {
+    let message_id = message.message.id;
+    (0..)
+        .zip(message.message.content)
+        .filter_map(|(index, block)| match block {
+            wire::AssistantBlock::Text { text } if !text.is_empty() => {
+                Some(AgentEvent::TextDelta {
+                    block: BlockKey {
+                        message_id: message_id.clone(),
+                        index,
+                    },
+                    text,
+                })
+            }
+            _ => None,
         })
         .collect()
 }

@@ -30,6 +30,7 @@ mod usage {
                 organization: "Example Org".into(),
                 plan: "Claude Pro".into(),
             }),
+            commands: Vec::new(),
         })
     }
 

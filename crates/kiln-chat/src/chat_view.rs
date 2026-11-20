@@ -5,6 +5,7 @@ mod composer;
 mod header;
 mod layout;
 mod session;
+mod slash_menu;
 
 use std::{collections::HashSet, path::PathBuf, rc::Rc};
 
@@ -24,6 +25,7 @@ use crate::{
     spinner,
     transcript::{Change, Status, Transcript},
 };
+use slash_menu::SlashMenu;
 
 const COMPOSER_MAX_ROWS: usize = 10;
 
@@ -45,6 +47,7 @@ pub struct ChatView {
     /// Transcript rows plus one trailing row for the spinner.
     scroller: Entity<MessageScrollerState>,
     composer: Entity<TextareaState>,
+    slash: SlashMenu,
     prompt: Option<(Entity<PermissionPrompt>, Subscription)>,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
@@ -68,11 +71,16 @@ impl ChatView {
             state.set_submit_on_enter(true, cx);
             state
         });
-        let subscription = cx.subscribe_in(&composer, window, |this, _, event, window, cx| {
-            if let InputEvent::PressEnter { shift: false, .. } = event {
-                this.send(window, cx);
-            }
-        });
+        let subscription =
+            cx.subscribe_in(
+                &composer,
+                window,
+                |this, _, event, window, cx| match event {
+                    InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
+                    InputEvent::Change => this.sync_slash_menu(cx),
+                    _ => {}
+                },
+            );
         let mut view = Self {
             backend,
             cwd,
@@ -82,6 +90,7 @@ impl ChatView {
             agent: AgentState::default(),
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             composer,
+            slash: SlashMenu::default(),
             prompt: None,
             spinner_frame: 0,
             spinner: None,

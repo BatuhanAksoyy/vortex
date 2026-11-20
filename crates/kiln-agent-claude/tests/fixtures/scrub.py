@@ -9,7 +9,7 @@ identifiers with stable placeholders so replays are deterministic.
 """
 import getpass, json, re, sys
 
-DROP_SYSTEM = {"hook_started", "hook_response", "commands_changed", "thinking_tokens"}
+DROP_SYSTEM = {"hook_started", "hook_response", "thinking_tokens"}
 KEEP_INIT = {"type", "subtype", "session_id", "cwd", "model", "permissionMode",
              "claude_code_version", "tools", "mcp_servers", "slash_commands", "uuid"}
 
@@ -27,6 +27,8 @@ def shrink(msg):
         msg["tools"] = ["Bash", "Edit", "Read", "Task", "Write"]
         msg["mcp_servers"] = []
         msg["slash_commands"] = ["compact", "review"]
+    if msg.get("type") == "system" and msg.get("subtype") == "commands_changed":
+        msg["commands"] = sample_commands(msg["commands"])
     response = (msg.get("response") or {}).get("response")
     if isinstance(response, dict) and "commands" in response:
         msg["response"]["response"] = initialize_reply(response)
@@ -52,12 +54,20 @@ def usage_reply(response):
     }
 
 
+SAMPLE_COMMANDS = ("compact", "code-review", "effort", "clear")
+
+
+def sample_commands(commands):
+    """The full catalogue lists the capturing user's skills and plugins; a few
+    built-in commands show its shape."""
+    return [c for c in commands if c.get("name") in SAMPLE_COMMANDS]
+
+
 def initialize_reply(response):
     """Keeps what Kiln reads; the account is replaced, the rest describes the
     capturing machine."""
     return {
-        "commands": [{"name": "compact", "description": "Clear history but keep a summary",
-                      "argumentHint": "<optional instructions>", "aliases": [], "builtin": True}],
+        "commands": sample_commands(response.get("commands", [])),
         "models": [m for m in response.get("models", []) if m.get("value") in ("default", "sonnet", "haiku")],
         "account": {"email": "user.redacted", "organization": "Redacted Org",
                     "subscriptionType": response.get("account", {}).get("subscriptionType"),

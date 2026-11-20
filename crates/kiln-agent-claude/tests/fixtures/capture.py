@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Drive `claude -p` over stream-json and record both directions as JSONL.
 
-usage: capture.py <case> <out.jsonl>   case: allow | deny | interrupt | controls | plan | usage | fallback
+usage: capture.py <case> <out.jsonl>
+  case: allow | deny | interrupt | controls | plan | usage | fallback | commands
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -12,6 +13,9 @@ record how approving the plan (ExitPlanMode) leaves plan mode.
 rate_limit_event can be compared with the get_usage reply.
 "fallback" switches to a model the plan may not include (Fable), sends one
 message, then a second, to record what the CLI reports when it refuses.
+"commands" sends two slash commands the CLI runs itself, so it spends no
+usage: `/effort low`, whose output is text, then `/clear`, which resets the
+conversation.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -27,6 +31,7 @@ PROMPTS = {
     "interrupt": "Write the numbers from 1 to 300, one per line, with no other text.",
     "usage": "Reply with the single word ok.",
     "fallback": "Reply with the single word ok.",
+    "commands": "/effort low",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -56,7 +61,7 @@ def send(obj):
     proc.stdin.flush()
 
 
-send({"type": "control_request", "request_id": "initialize" if case == "controls" else "init-1",
+send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands") else "init-1",
       "request": {"subtype": "initialize", "hooks": None}})
 # Ids follow Kiln's own scheme (`Translator::request_id`), so a replay can
 # issue the same commands and match the replies.
@@ -119,6 +124,11 @@ for line in proc.stdout:
     if kind == "result" and case == "fallback" and not interrupted:
         interrupted = True
         send({"type": "user", "message": {"role": "user", "content": PROMPTS[case]},
+              "parent_tool_use_id": None, "session_id": ""})
+        continue
+    if kind == "result" and case == "commands" and not interrupted:
+        interrupted = True
+        send({"type": "user", "message": {"role": "user", "content": "/clear"},
               "parent_tool_use_id": None, "session_id": ""})
         continue
     if kind == "result" and case == "usage":

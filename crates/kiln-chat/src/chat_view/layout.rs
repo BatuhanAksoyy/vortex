@@ -20,6 +20,8 @@ impl ChatView {
     fn render_transcript(&self, cx: &Context<Self>) -> AnyElement {
         if self.transcript.len() == 0 {
             return v_flex()
+                .id("chat-empty")
+                .test_support()
                 .flex_1()
                 .items_center()
                 .justify_center()

@@ -44,8 +44,10 @@ impl ChatView {
             .child(div().flex_1())
             .children(self.context_meter(cx))
             .child(self.action_button(cx));
+        let menu = self.render_slash_menu(cx);
         let theme = cx.theme();
         v_flex()
+            .relative()
             .rounded(theme.radius * 2.)
             .border_1()
             .border_color(if focused {
@@ -55,6 +57,12 @@ impl ChatView {
             })
             .bg(theme.background)
             .capture_action(cx.listener(Self::on_outdent))
+            .capture_action(cx.listener(Self::on_slash_up))
+            .capture_action(cx.listener(Self::on_slash_down))
+            .capture_action(cx.listener(Self::on_slash_tab))
+            .capture_action(cx.listener(Self::on_slash_enter))
+            .capture_action(cx.listener(Self::on_slash_escape))
+            .children(menu)
             .child(
                 div()
                     .id("chat-composer")

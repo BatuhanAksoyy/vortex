@@ -130,6 +130,10 @@ impl Transcript {
                 text,
                 is_error: true,
             }),
+            AgentEvent::ConversationReset => {
+                self.clear();
+                Change::default()
+            }
             AgentEvent::TurnEnded(outcome) => self.end_turn(outcome),
             AgentEvent::Exited { error } => self.exit(error),
             AgentEvent::Started { .. }
@@ -137,8 +141,17 @@ impl Transcript {
             | AgentEvent::ModelChanged(_)
             | AgentEvent::ModeChanged(_)
             | AgentEvent::ContextUsage(_)
-            | AgentEvent::Usage(_) => Change::default(),
+            | AgentEvent::Usage(_)
+            | AgentEvent::CommandsChanged(_) => Change::default(),
         }
+    }
+
+    /// Forgets every entry; the turn under way, if any, goes on. Entry ids
+    /// keep counting, so expansion state never carries over to a new entry.
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.tools.clear();
+        self.pending.clear();
     }
 
     fn push(&mut self, entry: Entry) -> Change {
@@ -314,6 +327,18 @@ mod tests {
         transcript.apply(permission("p2"));
         transcript.apply(AgentEvent::Exited { error: None });
         assert!(transcript.pending_permission().is_none());
+    }
+
+    #[test]
+    fn a_reset_empties_the_transcript_but_the_turn_goes_on() {
+        let mut transcript = Transcript::default();
+        transcript.push_user("/clear".into());
+        transcript.apply(call("t1"));
+        transcript.apply(AgentEvent::ConversationReset);
+        assert_eq!(transcript.len(), 0);
+        assert_eq!(transcript.status(), Status::Running);
+        transcript.push_user("next".into());
+        assert_eq!(transcript.title(), Some("next"));
     }
 
     #[test]

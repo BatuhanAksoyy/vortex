@@ -148,6 +148,11 @@ impl ChatView {
             self.sync_limit_timer(cx);
         }
         let exited = matches!(event, AgentEvent::Exited { .. });
+        if event == AgentEvent::ConversationReset {
+            self.toggled.clear();
+            self.scroller
+                .update(cx, |scroller, cx| scroller.reset(1, cx));
+        }
         let change = self.transcript.apply(event);
         self.apply_change(change, cx);
         if exited {

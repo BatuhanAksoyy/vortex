@@ -31,6 +31,7 @@ mod composer {
             ],
             mode: PermissionMode::AskBeforeEdits,
             account: None,
+            commands: Vec::new(),
         })
     }
 

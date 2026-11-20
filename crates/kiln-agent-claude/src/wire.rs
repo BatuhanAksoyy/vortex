@@ -19,6 +19,12 @@ pub enum Line {
     },
     #[serde(rename = "result")]
     TurnResult(TurnResult),
+    /// The conversation was emptied; a new `init` follows. `trigger` says
+    /// why: `clear` for `/clear` and its aliases.
+    ConversationReset {
+        #[serde(default)]
+        trigger: String,
+    },
     #[serde(other)]
     Other,
 }
@@ -35,8 +41,25 @@ pub enum System {
         #[serde(default, rename = "permissionMode")]
         permission_mode: Option<String>,
     },
+    CommandsChanged {
+        commands: Vec<WireCommand>,
+    },
     #[serde(other)]
     Other,
+}
+
+/// A slash command as the CLI lists it, in the initialize reply and in
+/// `commands_changed`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WireCommand {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub argument_hint: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,10 +96,16 @@ pub enum Delta {
 pub struct Assistant {
     pub message: AssistantMessage,
     pub parent_tool_use_id: Option<String>,
+    /// Set on the output of a slash command the CLI ran itself; that output
+    /// is never streamed.
+    #[serde(default)]
+    pub local_command_run: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AssistantMessage {
+    #[serde(default)]
+    pub id: String,
     pub content: Vec<AssistantBlock>,
 }
 
@@ -87,6 +116,9 @@ pub enum AssistantBlock {
         id: String,
         name: String,
         input: Value,
+    },
+    Text {
+        text: String,
     },
     #[serde(other)]
     Other,

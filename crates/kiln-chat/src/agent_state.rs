@@ -5,7 +5,8 @@
 use std::time::SystemTime;
 
 use kiln_agent::{
-    Account, AgentEvent, ContextUsage, Limited, ModelOption, PermissionMode, SessionCommand, Usage,
+    Account, AgentEvent, ContextUsage, Limited, ModelOption, PermissionMode, SessionCommand,
+    SlashCommand, Usage,
 };
 
 /// Modes offered in the composer's menu. `DontAsk` and `BypassPermissions`
@@ -34,6 +35,7 @@ pub struct AgentState {
     account: Option<Account>,
     usage: Usage,
     usage_updated_at: Option<SystemTime>,
+    commands: Vec<SlashCommand>,
 }
 
 impl AgentState {
@@ -44,7 +46,10 @@ impl AgentState {
                 self.models.clone_from(&info.models);
                 self.mode = Some(info.mode);
                 self.account.clone_from(&info.account);
+                self.commands.clone_from(&info.commands);
             }
+            AgentEvent::CommandsChanged(commands) => self.commands.clone_from(commands),
+            AgentEvent::ConversationReset => self.context = None,
             AgentEvent::Usage(usage) => {
                 // A report may leave a window out; the last known value
                 // stands until a report includes it.
@@ -72,9 +77,16 @@ impl AgentState {
             AgentEvent::Ready(_) | AgentEvent::TurnEnded(_) => {
                 &[SessionCommand::RefreshContext, SessionCommand::RefreshUsage]
             }
-            AgentEvent::ModelChanged(_) => &[SessionCommand::RefreshContext],
+            AgentEvent::ModelChanged(_) | AgentEvent::ConversationReset => {
+                &[SessionCommand::RefreshContext]
+            }
             _ => &[],
         }
+    }
+
+    /// The slash commands the agent runs, as it last listed them.
+    pub fn commands(&self) -> &[SlashCommand] {
+        &self.commands
     }
 
     pub fn account(&self) -> Option<&Account> {
@@ -242,6 +254,7 @@ mod tests {
             ],
             mode: PermissionMode::AskBeforeEdits,
             account: None,
+            commands: Vec::new(),
         })
     }
 

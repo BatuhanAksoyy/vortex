@@ -6,6 +6,7 @@ mod chat_view;
 mod code_block;
 mod entry_view;
 mod permission_prompt;
+mod slash;
 mod spinner;
 mod tool_format;
 mod transcript;

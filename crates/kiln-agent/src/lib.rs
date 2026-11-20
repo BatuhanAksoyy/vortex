@@ -80,6 +80,19 @@ pub struct SessionInfo {
     pub models: Vec<ModelOption>,
     pub mode: PermissionMode,
     pub account: Option<Account>,
+    pub commands: Vec<SlashCommand>,
+}
+
+/// A command the agent runs itself when a message starts with `/name`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SlashCommand {
+    pub name: String,
+    pub description: String,
+    /// What may follow the name, e.g. `<optional instructions>`; empty when
+    /// the command takes nothing.
+    pub argument_hint: String,
+    /// Other names that run the same command.
+    pub aliases: Vec<String>,
 }
 
 /// The account the agent is signed in with. Fields the agent leaves out are
@@ -180,6 +193,10 @@ pub enum AgentEvent {
     Usage(Usage),
     /// A model or mode change was refused; the message says why.
     CommandFailed(String),
+    /// The slash commands on offer changed, e.g. after skills were loaded.
+    CommandsChanged(Vec<SlashCommand>),
+    /// The agent started over with an empty conversation, e.g. on `/clear`.
+    ConversationReset,
     TurnEnded(TurnOutcome),
     /// The agent process is gone; no further events follow.
     Exited {

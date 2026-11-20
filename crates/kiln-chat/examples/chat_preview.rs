@@ -18,7 +18,7 @@ use gpui_kit::{
 use kiln_agent::{
     Account, AgentBackend, AgentEvent, BlockKey, ContextUsage, Limited, ModelOption,
     PermissionMode, PermissionRequest, Remember, Session, SessionCommand, SessionInfo, SessionSpec,
-    ToolCall, Usage, UsageWindow,
+    SlashCommand, ToolCall, Usage, UsageWindow,
 };
 use kiln_chat::ChatView;
 use serde_json::json;
@@ -106,7 +106,39 @@ fn ready() -> AgentEvent {
             organization: "Example Org".into(),
             plan: "Claude Max".into(),
         }),
+        commands: preview_commands(),
     })
+}
+
+/// Built-in commands as the CLI lists them, long hints included.
+fn preview_commands() -> Vec<SlashCommand> {
+    [
+        ("clear", "[name]", "Start a new session with empty context"),
+        (
+            "compact",
+            "<optional custom summarization instructions>",
+            "Free up context by summarizing the conversation so far",
+        ),
+        ("context", "", "Show current context usage"),
+        (
+            "effort",
+            "<low|medium|high|xhigh|max|auto>",
+            "Set effort level for model usage",
+        ),
+        (
+            "code-review",
+            "[low|medium|high|xhigh|max|ultra] [--fix] [--comment]",
+            "Review the current diff for correctness bugs",
+        ),
+    ]
+    .into_iter()
+    .map(|(name, hint, description)| SlashCommand {
+        name: name.into(),
+        description: description.into(),
+        argument_hint: hint.into(),
+        aliases: Vec::new(),
+    })
+    .collect()
 }
 
 fn usage(limited: bool) -> Usage {

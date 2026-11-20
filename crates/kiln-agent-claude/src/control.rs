@@ -1,9 +1,13 @@
 //! Replies to the control requests Kiln sends (initialize, model and mode
 //! changes, context usage), and the CLI's names for permission modes.
 
-use kiln_agent::{Account, AgentEvent, ContextUsage, ModelOption, PermissionMode, SessionInfo};
+use kiln_agent::{
+    Account, AgentEvent, ContextUsage, ModelOption, PermissionMode, SessionInfo, SlashCommand,
+};
 use serde::Deserialize;
 use serde_json::Value;
+
+use crate::wire::WireCommand;
 
 /// What a sent request asked for, so its reply can be read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,6 +51,8 @@ struct Initialized {
     #[serde(default)]
     current_permission_mode: String,
     account: Option<WireAccount>,
+    #[serde(default)]
+    commands: Vec<WireCommand>,
 }
 
 #[derive(Deserialize)]
@@ -92,6 +98,7 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
                     organization: account.organization,
                     plan: account.subscription_type,
                 }),
+                commands: slash_commands(init.commands),
             }))
         }
         Asked::Model => {
@@ -110,6 +117,26 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
             }))
         }
     }
+}
+
+/// The commands a message can run. Internal ones (`__name`) and ones whose
+/// listed name holds a space (MCP prompts, listed as `server:prompt (MCP)`)
+/// cannot be typed as `/name` and are left out.
+pub fn slash_commands(commands: Vec<WireCommand>) -> Vec<SlashCommand> {
+    commands
+        .into_iter()
+        .filter(|command| {
+            !command.name.is_empty()
+                && !command.name.starts_with("__")
+                && !command.name.contains(char::is_whitespace)
+        })
+        .map(|command| SlashCommand {
+            name: command.name,
+            description: command.description,
+            argument_hint: command.argument_hint,
+            aliases: command.aliases,
+        })
+        .collect()
 }
 
 fn model_option(model: WireModel) -> ModelOption {
@@ -154,5 +181,25 @@ mod tests {
         }
         assert_eq!(parse_mode("manual"), Some(PermissionMode::AskBeforeEdits));
         assert_eq!(parse_mode("unknown"), None);
+    }
+
+    #[test]
+    fn commands_that_cannot_be_typed_are_left_out() {
+        let listed = |name: &str| WireCommand {
+            name: name.into(),
+            description: String::new(),
+            argument_hint: String::new(),
+            aliases: Vec::new(),
+        };
+        let names: Vec<String> = slash_commands(vec![
+            listed("compact"),
+            listed("__remote-workflow"),
+            listed("kicad:via_usage (MCP)"),
+            listed("antigravity:delegate"),
+        ])
+        .into_iter()
+        .map(|command| command.name)
+        .collect();
+        assert_eq!(names, ["compact", "antigravity:delegate"]);
     }
 }
