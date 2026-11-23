@@ -28,7 +28,14 @@ fn main() {
             let accounts = cx.new(|_| load_accounts());
             let opened = gpui_kit::open_window(options, cx, |window, cx| {
                 let backend = std::rc::Rc::new(ClaudeBackend::new("claude"));
-                cx.new(|cx| Workspace::new(root, backend, accounts, window, cx))
+                let layouts = kiln_accounts::data_dir().map(|dir| dir.join("layouts.json"));
+                cx.new(|cx| {
+                    let workspace = Workspace::new(root, backend, accounts, window, cx);
+                    match layouts {
+                        Some(path) => workspace.keeping_layouts_in(path),
+                        None => workspace,
+                    }
+                })
             });
             if let Err(error) = opened {
                 log::error!("cannot open the Kiln window: {error:#}");

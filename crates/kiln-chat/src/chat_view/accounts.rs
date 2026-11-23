@@ -54,6 +54,26 @@ impl ChatView {
         }
     }
 
+    /// The added account the chat runs with, by id; `None` is the usual
+    /// sign-in.
+    #[must_use]
+    pub fn account(&self) -> Option<&str> {
+        self.account.as_deref()
+    }
+
+    /// Runs the chat with added account `id` from its first process, as
+    /// when a kept layout reopens it. Ignored once a process has started,
+    /// and for an account no longer added.
+    pub fn start_with_account(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.session.is_some() || self.accounts.read(cx).find(id).is_none() {
+            return;
+        }
+        let left = self.account.replace(id.to_owned());
+        self.agent.change_account(left, Some(id));
+        self.recall_usage(cx);
+        cx.notify();
+    }
+
     pub(super) fn set_accounts_open(&mut self, open: bool, cx: &mut Context<Self>) {
         if open && !self.accounts_panel.open {
             self.accounts_panel.error = None;
@@ -79,6 +99,7 @@ impl ChatView {
         let change = self.transcript.push_notice(format!("Switched to {label}"));
         self.apply_change(change, cx);
         self.ensure_session(window, cx);
+        cx.emit(super::ChatEvent::AccountChanged);
         cx.notify();
     }
 

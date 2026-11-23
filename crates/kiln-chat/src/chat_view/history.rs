@@ -14,6 +14,8 @@ pub enum ChatEvent {
     /// A message was sent; another conversation cannot be opened until the
     /// turn ends, which `SessionChanged` reports.
     TurnStarted,
+    /// The chat moved to another account.
+    AccountChanged,
 }
 
 impl EventEmitter<ChatEvent> for ChatView {}

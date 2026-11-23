@@ -11,7 +11,7 @@ use gpui_kit::{
     BackgroundExecutor, Context, Entity, FocusHandle, Focusable, Subscription, Task, Window,
     component::{
         ActiveTheme, TitleBar, WindowExt,
-        dock::DockArea,
+        dock::{DockArea, DockEvent},
         notification::Notification,
         resizable::{h_resizable, resizable_panel},
         status_bar::StatusBar,
@@ -23,12 +23,17 @@ use kiln_agent::AgentBackend;
 use kiln_project::ListOptions;
 
 use crate::{
-    chat_panel::ChatPanel, commands::ActiveWorkspace, config, editor_pane::EditorPane,
+    chat_panel::ChatPanel,
+    commands::ActiveWorkspace,
+    config,
+    editor_pane::EditorPane,
+    saved_layout::{LayoutFile, Pane},
     session_list::SessionList,
 };
 
 mod actions;
 mod chats;
+mod layout;
 
 /// The project's files, and whether the listing hit the entry limit.
 type Scan = (Arc<[PathBuf]>, bool);
@@ -50,6 +55,10 @@ pub struct Workspace {
     chats: Vec<chats::ChatTab>,
     /// The chat the user last worked in; the sidebar follows it.
     active_chat: Option<Entity<ChatPanel>>,
+    /// Where each project's chat layout is kept; `None` keeps none.
+    layouts: Option<LayoutFile>,
+    /// The kept layout, until the session list has loaded.
+    pending_layout: Option<Pane>,
     files: Arc<[PathBuf]>,
     sidebar_visible: bool,
     editor_visible: bool,
@@ -76,8 +85,14 @@ impl Workspace {
         cx.on_release(|_, cx| cx.quit()).detach();
         let sessions = cx.new(|_| SessionList::default());
         let editor_pane = cx.new(EditorPane::new);
+        let dock = chats::new_dock(window, cx);
         let subscriptions = vec![
             cx.subscribe_in(&sessions, window, Self::on_session_list),
+            cx.subscribe(&dock, |this, _, event: &DockEvent, cx| {
+                if matches!(event, DockEvent::LayoutChanged) {
+                    this.save_layout(cx);
+                }
+            }),
             cx.observe_window_appearance(window, |_, window, cx| {
                 if config::settings(cx).theme.mode == kiln_settings::ThemeMode::System {
                     gpui_kit::component::Theme::sync_system_appearance(Some(window), cx);
@@ -85,26 +100,35 @@ impl Workspace {
             }),
         ];
         // Deferred: notifications need the window's Root, which exists only
-        // after this constructor returns.
+        // after this constructor returns, and the chats wait for
+        // `keeping_layouts_in`.
         cx.defer_in(window, Self::load_project);
-        let mut workspace = Self {
+        Self {
             root,
             backend,
             accounts,
             sessions,
             editor_pane,
-            dock: chats::new_dock(window, cx),
+            dock,
             chats: Vec::new(),
             active_chat: None,
+            layouts: None,
+            pending_layout: None,
             files: Arc::from([]),
             sidebar_visible: true,
             editor_visible: false,
             focus_handle: cx.focus_handle(),
             config_watch: None,
             _subscriptions: subscriptions,
-        };
-        workspace.reset_chats(window, cx);
-        workspace
+        }
+    }
+
+    /// Keeps each project's chat layout in the file at `path`, to reopen it
+    /// on the next start.
+    #[must_use]
+    pub fn keeping_layouts_in(mut self, path: PathBuf) -> Self {
+        self.layouts = Some(LayoutFile::new(path));
+        self
     }
 
     /// The file shown in the editor pane, if any.
@@ -121,6 +145,7 @@ impl Workspace {
         let watch = self.watch_config(window, cx);
         let _previous = self.config_watch.replace(watch);
         self.scan_files(window, cx);
+        self.start_chats(window, cx);
         self.reload_sessions(cx);
     }
 

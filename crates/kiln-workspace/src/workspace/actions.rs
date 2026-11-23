@@ -118,7 +118,6 @@ impl Workspace {
 
     fn open_folder(&mut self, root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         self.root = root;
-        self.reset_chats(window, cx);
         self.editor_pane = cx.new(EditorPane::new);
         self.load_project(window, cx);
         cx.notify();

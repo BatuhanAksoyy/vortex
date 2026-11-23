@@ -4121,6 +4121,8 @@ dependencies = [
  "kiln-project",
  "kiln-settings",
  "log",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

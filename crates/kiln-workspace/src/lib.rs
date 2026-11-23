@@ -7,6 +7,7 @@ mod commands;
 mod config;
 mod editor_pane;
 mod pickers;
+mod saved_layout;
 mod session_list;
 mod workspace;
 

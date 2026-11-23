@@ -15,6 +15,7 @@ use kiln_chat::{ChatEvent, ChatView, Status};
 use super::Workspace;
 use crate::{
     chat_panel::{ChatPanel, ChatPanelEvent},
+    saved_layout::SavedChat,
     session_list::{SessionList, SessionListEvent},
 };
 
@@ -25,7 +26,7 @@ pub(super) struct ChatTab {
 
 /// Where a new chat goes, relative to the focused one.
 #[derive(Clone, Copy)]
-enum Place {
+pub(super) enum Place {
     Tab,
     Right,
 }
@@ -38,13 +39,12 @@ pub(super) fn new_dock(window: &mut Window, cx: &mut gpui_kit::App) -> Entity<Do
 }
 
 impl Workspace {
-    /// Starts a chat for the project beside the focused one.
-    fn add_chat(
+    /// A chat for the project, not yet placed in the dock.
+    pub(super) fn new_chat_panel(
         &mut self,
-        place: Place,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Entity<ChatView> {
+    ) -> Entity<ChatPanel> {
         let (backend, accounts, root) = (
             self.backend.clone(),
             self.accounts.clone(),
@@ -60,6 +60,22 @@ impl Workspace {
                 this.on_chat(*event, cx);
             }),
         ];
+        self.chats.push(ChatTab {
+            panel: panel.clone(),
+            _subscriptions: subscriptions,
+        });
+        panel
+    }
+
+    /// Starts a chat for the project beside the focused one.
+    pub(super) fn add_chat(
+        &mut self,
+        place: Place,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<ChatView> {
+        let panel = self.new_chat_panel(window, cx);
+        let chat = panel.read(cx).chat().clone();
         let beside = self.focused_group(cx);
         let id = PanelId::from(panel.entity_id());
         self.dock.update(cx, |dock, cx| {
@@ -89,23 +105,18 @@ impl Workspace {
             };
             dock.move_panel(id, target, window, cx);
         });
-        self.chats.push(ChatTab {
-            panel: panel.clone(),
-            _subscriptions: subscriptions,
-        });
         self.active_chat = Some(panel);
         self.sync_sidebar(cx);
         chat
     }
 
-    /// Ends every chat and starts one for the current project.
-    pub(super) fn reset_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Ends every chat, leaving the dock empty.
+    pub(super) fn clear_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.chats.clear();
         self.active_chat = None;
         self.dock.update(cx, |dock, cx| {
             dock.set_center(DockLayout::h_split(), window, cx);
         });
-        self.add_chat(Place::Tab, window, cx);
     }
 
     /// The tab group holding the chat the user last worked in.
@@ -128,6 +139,19 @@ impl Workspace {
         self.add_chat(Place::Tab, window, cx)
     }
 
+    /// The conversation the chat in dock panel `id` shows, and its account.
+    pub(super) fn saved_chat_in(&self, id: PanelId, cx: &gpui_kit::App) -> Option<SavedChat> {
+        let tab = self
+            .chats
+            .iter()
+            .find(|tab| PanelId::from(tab.panel.entity_id()) == id)?;
+        let chat = tab.panel.read(cx).chat().read(cx);
+        Some(SavedChat {
+            session: chat.session_id()?.to_owned(),
+            account: chat.account().map(str::to_owned),
+        })
+    }
+
     fn chat_showing(&self, session_id: &str, cx: &gpui_kit::App) -> Option<Entity<ChatPanel>> {
         self.chats
             .iter()
@@ -147,6 +171,10 @@ impl Workspace {
             SessionListEvent::New => {
                 let chat = self.blank_chat(window, cx);
                 focus(&chat, window, cx);
+                return;
+            }
+            SessionListEvent::Loaded => {
+                self.restore_layout(window, cx);
                 return;
             }
             SessionListEvent::Open { id, open_elsewhere } => (id, *open_elsewhere),
@@ -205,12 +233,17 @@ impl Workspace {
 
     fn on_chat(&mut self, event: ChatEvent, cx: &mut Context<Self>) {
         self.sync_sidebar(cx);
-        if event == ChatEvent::SessionChanged {
-            self.reload_sessions(cx);
+        match event {
+            ChatEvent::SessionChanged => {
+                self.reload_sessions(cx);
+                self.save_layout(cx);
+            }
+            ChatEvent::AccountChanged => self.save_layout(cx),
+            ChatEvent::TurnStarted => {}
         }
     }
 
-    fn sync_sidebar(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn sync_sidebar(&mut self, cx: &mut Context<Self>) {
         let current = self.active_chat.as_ref().and_then(|panel| {
             panel
                 .read(cx)

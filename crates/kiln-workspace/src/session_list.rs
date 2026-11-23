@@ -19,7 +19,12 @@ use kiln_agent::{PastSession, Pending};
 
 pub enum SessionListEvent {
     New,
-    Open { id: String, open_elsewhere: bool },
+    Open {
+        id: String,
+        open_elsewhere: bool,
+    },
+    /// A listing finished, or failed.
+    Loaded,
 }
 
 #[derive(Default)]
@@ -48,6 +53,15 @@ impl SessionList {
         cx.notify();
     }
 
+    /// Whether the conversation `id` is open in another process; `None`
+    /// when it is not listed.
+    pub fn open_elsewhere(&self, id: &str) -> Option<bool> {
+        self.sessions
+            .iter()
+            .find(|session| session.id == id)
+            .map(|session| session.open_elsewhere)
+    }
+
     /// Lists the conversations `sessions` reads, replacing a listing still
     /// under way.
     pub fn reload(&mut self, sessions: Pending<Vec<PastSession>>, cx: &mut Context<Self>) {
@@ -66,6 +80,7 @@ impl SessionList {
             }
             Err(error) => self.error = Some(format!("Cannot list sessions: {error:#}")),
         }
+        cx.emit(SessionListEvent::Loaded);
         cx.notify();
     }
 

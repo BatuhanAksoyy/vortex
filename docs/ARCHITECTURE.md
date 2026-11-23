@@ -250,7 +250,8 @@ pub struct SessionHandle {
   - Sekme çubuğunda "New session" (aynı grupta yeni sekme) ve "Split right" (yanda yeni grup) düğmeleri var. Dock bir alanın son sekmesini kapattırmaz, pencerede hep bir sohbet kalır.
   - Soldaki listeden bir oturum açılınca: başka bir sekmede açıksa o sekmeye geçilir; odaktaki sohbet boşsa onda açılır; değilse odaktaki grupta yeni sekmede açılır. "New session" de boş sohbeti yeniden kullanır.
   - Liste odaktaki sohbeti seçili, turu süren sohbetleri işaretli gösterir.
-  - Yerleşim henüz kaydedilmez; Kiln her açılışta tek sohbetle başlar.
+  - Sohbet yerleşimi proje başına `<data>/layouts.json`'da tutulur: gruplar, bölmelerin yönü ve boyu, her gruptaki konuşmalar, her sekmenin hesabı ve gösterilen sekme. Kaldırılmış bir hesabın sekmesi ilk eklenen hesapla açılır. Dock her değiştiğinde ve bir sohbetin konuşması değiştiğinde yazılır. Boş sekmeler tutulmaz, sürecek konuşmaları yoktur.
+  - Açılışta yerleşim oturum listesi yüklenince kurulur: artık saklanmayan konuşmalar atlanır, başka bir süreçte açık olan kopya olarak sürer. Her sekme kendi sürecini başlatır. Hiçbir konuşma kalmazsa tek boş sohbetle başlanır.
 
 ## 14. Ayarlar, tuş atamaları, tema
 
@@ -380,5 +381,5 @@ allow-expect-in-tests = true
 ## 20. Veri konumları
 
 - Yapılandırma: `directories` crate'iyle platform dizini (Linux `~/.config/kiln/`): `settings.json`, `keybindings.json`, `themes/`.
-- Veri: oturum veritabanı, olay günlükleri, hesap dizinleri, worktree'ler.
+- Veri: oturum veritabanı, olay günlükleri, hesap dizinleri, worktree'ler, sohbet yerleşimleri (`layouts.json`).
 - Proje: `.kiln/settings.json`, `.kiln/run.json` (commit'lenebilir), `.kiln/local.json` (gitignore).
