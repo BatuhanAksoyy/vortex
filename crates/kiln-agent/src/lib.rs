@@ -152,7 +152,7 @@ pub struct Account {
 }
 
 /// How much of the subscription's usage limits is spent.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Usage {
     /// The short window (five hours for Claude).
     pub session: Option<UsageWindow>,
@@ -161,14 +161,14 @@ pub struct Usage {
     pub limited: Option<Limited>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UsageWindow {
     /// Whole percent used, 0–100.
     pub percent: u8,
     pub resets_at: Option<SystemTime>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Limited {
     /// When sending works again, if the agent says.
     pub until: Option<SystemTime>,

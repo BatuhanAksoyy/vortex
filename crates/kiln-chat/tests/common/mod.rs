@@ -34,7 +34,7 @@ pub type ScriptedSignIn = (
     Vec<(String, String)>,
 );
 
-pub struct FakeBackend(Rc<RefCell<Script>>);
+pub struct FakeBackend(pub Rc<RefCell<Script>>);
 
 impl AgentBackend for FakeBackend {
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
@@ -150,7 +150,8 @@ impl Harness {
     }
 }
 
-fn open(
+/// A chat in a window of its own.
+pub fn open(
     backend: Rc<FakeBackend>,
     accounts: Entity<Accounts>,
     cx: &mut gpui_kit::App,

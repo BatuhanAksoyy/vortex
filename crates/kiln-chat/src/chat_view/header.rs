@@ -37,7 +37,7 @@ impl ChatView {
             .border_color(theme.border)
             .child(div().flex_1().min_w_0().truncate().child(title))
             .child(self.account_button(cx))
-            .children(usage_meter(
+            .child(usage_meter(
                 self.agent.usage(),
                 self.agent.usage_updated_at(),
                 self.usage_open,
@@ -59,35 +59,38 @@ impl ChatView {
     }
 }
 
-/// The session window's percent; a click asks for fresh numbers and shows
-/// both windows with their reset times.
-/// The usage button and its panel. The panel's open state lives in the view,
-/// so `/usage` can open it too.
+/// The usage button and its panel: the session window's percent, and on a
+/// click fresh numbers for both windows with their reset times. Shown before
+/// any numbers came, so `/usage` always has a panel to open; its open state
+/// lives in the view for that reason.
 fn usage_meter(
     usage: Usage,
     updated: Option<SystemTime>,
     open: bool,
     view: WeakEntity<ChatView>,
     cx: &gpui_kit::App,
-) -> Option<impl IntoElement + use<>> {
-    let session = usage.session?;
-    let color = level_color(session.percent, cx);
+) -> impl IntoElement + use<> {
+    let (label, color) = match usage.session {
+        Some(session) => (
+            format!("{}% used", session.percent),
+            level_color(session.percent, cx),
+        ),
+        None => ("Usage".to_owned(), cx.theme().muted_foreground),
+    };
     let trigger = Button::new("chat-usage")
         .ghost()
         .xsmall()
-        .label(format!("{}% used", session.percent))
+        .label(label)
         .text_color(color)
         .tooltip("Plan usage");
-    Some(
-        Popover::new("chat-usage-popover")
-            .anchor(Anchor::TopRight)
-            .trigger(trigger)
-            .open(open)
-            .on_open_change(move |open, _, cx| {
-                let _ = view.update(cx, |view, cx| view.set_usage_open(*open, cx));
-            })
-            .content(move |_, _, cx| usage_panel(usage, updated, cx)),
-    )
+    Popover::new("chat-usage-popover")
+        .anchor(Anchor::TopRight)
+        .trigger(trigger)
+        .open(open)
+        .on_open_change(move |open, _, cx| {
+            let _ = view.update(cx, |view, cx| view.set_usage_open(*open, cx));
+        })
+        .content(move |_, _, cx| usage_panel(usage, updated, cx))
 }
 
 fn usage_panel(
@@ -108,6 +111,16 @@ fn usage_panel(
                 .map(|w| usage_row("Current session", w, now, cx)),
         )
         .children(usage.weekly.map(|w| usage_row("Weekly", w, now, cx)))
+        .when(usage.session.is_none() && usage.weekly.is_none(), |this| {
+            this.child(
+                div()
+                    .id("chat-usage-empty")
+                    .test_support()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("No usage reported for this account yet."),
+            )
+        })
         .children(updated.map(|text| {
             div()
                 .id("chat-usage-updated")

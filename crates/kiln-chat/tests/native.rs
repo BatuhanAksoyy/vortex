@@ -93,6 +93,20 @@ mod native {
     }
 
     #[gpui_kit::test]
+    fn usage_opens_its_panel_before_any_numbers_came(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.with_window(cx, |window, cx| window.click("chat-composer", cx));
+        input(&harness, cx, "/usage");
+        press(&harness, cx, "enter");
+        assert!(shown(&harness, cx, "chat-usage-panel"));
+        assert!(
+            shown(&harness, cx, "chat-usage-empty"),
+            "the panel says why it is empty"
+        );
+    }
+
+    #[gpui_kit::test]
     fn usage_opens_its_panel_mid_turn_without_a_message(cx: &mut TestAppContext) {
         let harness = busy(cx);
         input(&harness, cx, "/usage");

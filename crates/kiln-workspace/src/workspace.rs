@@ -11,6 +11,7 @@ use gpui_kit::{
     BackgroundExecutor, Context, Entity, FocusHandle, Focusable, Subscription, Task, Window,
     component::{
         ActiveTheme, TitleBar, WindowExt,
+        dock::DockArea,
         notification::Notification,
         resizable::{h_resizable, resizable_panel},
         status_bar::StatusBar,
@@ -19,17 +20,15 @@ use gpui_kit::{
 };
 use kiln_accounts::Accounts;
 use kiln_agent::AgentBackend;
-use kiln_chat::{ChatEvent, ChatView};
 use kiln_project::ListOptions;
 
 use crate::{
-    commands::ActiveWorkspace,
-    config,
-    editor_pane::EditorPane,
-    session_list::{SessionList, SessionListEvent},
+    chat_panel::ChatPanel, commands::ActiveWorkspace, config, editor_pane::EditorPane,
+    session_list::SessionList,
 };
 
 mod actions;
+mod chats;
 
 /// The project's files, and whether the listing hit the entry limit.
 type Scan = (Arc<[PathBuf]>, bool);
@@ -46,7 +45,11 @@ pub struct Workspace {
     accounts: Entity<Accounts>,
     sessions: Entity<SessionList>,
     editor_pane: Entity<EditorPane>,
-    chat: Entity<ChatView>,
+    /// The chats, as tabs in groups the user can split.
+    dock: Entity<DockArea>,
+    chats: Vec<chats::ChatTab>,
+    /// The chat the user last worked in; the sidebar follows it.
+    active_chat: Option<Entity<ChatPanel>>,
     files: Arc<[PathBuf]>,
     sidebar_visible: bool,
     editor_visible: bool,
@@ -73,12 +76,8 @@ impl Workspace {
         cx.on_release(|_, cx| cx.quit()).detach();
         let sessions = cx.new(|_| SessionList::default());
         let editor_pane = cx.new(EditorPane::new);
-        let chat = new_chat(root.clone(), backend.clone(), accounts.clone(), window, cx);
         let subscriptions = vec![
             cx.subscribe_in(&sessions, window, Self::on_session_list),
-            cx.subscribe(&chat, |this, chat, event, cx| {
-                this.on_chat(&chat, *event, cx);
-            }),
             cx.observe_window_appearance(window, |_, window, cx| {
                 if config::settings(cx).theme.mode == kiln_settings::ThemeMode::System {
                     gpui_kit::component::Theme::sync_system_appearance(Some(window), cx);
@@ -88,20 +87,24 @@ impl Workspace {
         // Deferred: notifications need the window's Root, which exists only
         // after this constructor returns.
         cx.defer_in(window, Self::load_project);
-        Self {
+        let mut workspace = Self {
             root,
             backend,
             accounts,
             sessions,
             editor_pane,
-            chat,
+            dock: chats::new_dock(window, cx),
+            chats: Vec::new(),
+            active_chat: None,
             files: Arc::from([]),
             sidebar_visible: true,
             editor_visible: false,
             focus_handle: cx.focus_handle(),
             config_watch: None,
             _subscriptions: subscriptions,
-        }
+        };
+        workspace.reset_chats(window, cx);
+        workspace
     }
 
     /// The file shown in the editor pane, if any.
@@ -119,32 +122,6 @@ impl Workspace {
         let _previous = self.config_watch.replace(watch);
         self.scan_files(window, cx);
         self.reload_sessions(cx);
-    }
-
-    fn on_session_list(
-        &mut self,
-        _: &Entity<SessionList>,
-        event: &SessionListEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.chat.update(cx, |chat, cx| match event {
-            SessionListEvent::New => chat.new_conversation(window, cx),
-            SessionListEvent::Open { id, open_elsewhere } => {
-                chat.open_session(id, *open_elsewhere, window, cx);
-            }
-        });
-    }
-
-    fn on_chat(&mut self, chat: &Entity<ChatView>, event: ChatEvent, cx: &mut Context<Self>) {
-        let chat = chat.read(cx);
-        let current = chat.session_id().map(str::to_owned);
-        let busy = chat.status() == kiln_chat::Status::Running;
-        self.sessions
-            .update(cx, |sessions, cx| sessions.set_current(current, busy, cx));
-        if event == ChatEvent::SessionChanged {
-            self.reload_sessions(cx);
-        }
     }
 
     fn reload_sessions(&mut self, cx: &mut Context<Self>) {
@@ -236,8 +213,10 @@ impl Workspace {
         }
     }
 
-    fn render_body(&self, window: &Window) -> impl IntoElement {
+    fn render_body(&self, window: &Window, cx: &gpui_kit::App) -> impl IntoElement {
         let rem = window.rem_size();
+        // With no file open the pane would only take room from the chat.
+        let editor_shown = self.editor_visible && !self.editor_pane.read(cx).is_empty();
         h_resizable("workspace-panels")
             .when(self.sidebar_visible, |this| {
                 this.child(
@@ -246,8 +225,8 @@ impl Workspace {
                         .child(self.sessions.clone()),
                 )
             })
-            .child(resizable_panel().child(self.chat.clone()))
-            .when(self.editor_visible, |this| {
+            .child(resizable_panel().child(self.dock.clone()))
+            .when(editor_shown, |this| {
                 this.child(
                     resizable_panel()
                         .size(rem * EDITOR_WIDTH_REMS)
@@ -269,16 +248,6 @@ async fn next_change(
     executor.timer(CONFIG_DEBOUNCE).await;
     while receiver.try_recv().is_ok() {}
     true
-}
-
-fn new_chat(
-    root: PathBuf,
-    backend: Rc<dyn AgentBackend>,
-    accounts: Entity<Accounts>,
-    window: &mut Window,
-    cx: &mut Context<Workspace>,
-) -> Entity<ChatView> {
-    cx.new(|cx| ChatView::new(backend, accounts, root, window, cx))
 }
 
 fn project_name(root: &Path) -> String {
@@ -313,7 +282,7 @@ impl Render for Workspace {
                 gpui_kit::div()
                     .flex_1()
                     .min_h_0()
-                    .child(self.render_body(window)),
+                    .child(self.render_body(window, cx)),
             )
             .child(
                 StatusBar::new()

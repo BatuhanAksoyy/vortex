@@ -1,11 +1,11 @@
-//! Kiln's asset source: gpui-kit's default icons plus the few the chat uses
-//! that the default set leaves out.
+//! Kiln's asset source: gpui-kit's default icons plus the few Kiln uses that
+//! the default set leaves out.
 
 use std::borrow::Cow;
 
 use gpui_kit::{AssetSource, SharedString};
 
-gpui_kit::assets::icon_assets!(ChatIcons, [Lock, Pencil, Puzzle]);
+gpui_kit::assets::icon_assets!(ChatIcons, [Columns2, Lock, Pencil, Puzzle]);
 
 pub struct Assets;
 
@@ -34,6 +34,7 @@ mod tests {
     fn chat_icons_and_default_icons_both_load() {
         for path in [
             "icons/pencil.svg",
+            "icons/columns-2.svg",
             "icons/puzzle.svg",
             "icons/lock.svg",
             "icons/arrow-up.svg",

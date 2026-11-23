@@ -13,14 +13,14 @@ mod accounts {
         time::{Duration, SystemTime},
     };
 
-    use gpui_kit::TestAppContext;
     use gpui_kit::test::{TestQueryExt, TestWindowExt};
+    use gpui_kit::{AppContext as _, TestAppContext};
     use kiln_agent::{
-        Account, AgentEvent, Limited, SessionCommand, SessionInfo, TurnOutcome, Usage,
+        Account, AgentEvent, Limited, SessionCommand, SessionInfo, TurnOutcome, Usage, UsageWindow,
     };
     use kiln_chat::Status;
 
-    use super::common::Harness;
+    use super::common::{self, Harness};
 
     const SIGN_IN_PAGE: &str = "https://claude.com/cai/oauth/authorize?test";
 
@@ -289,5 +289,53 @@ mod accounts {
         );
         assert!(!Path::new(&store).exists());
         assert!(shown(&harness, cx, "Add account"));
+    }
+
+    #[gpui_kit::test]
+    fn an_added_accounts_last_usage_shows_in_a_new_chat_and_is_kept(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        let data = tempfile::tempdir().expect("temp dir");
+        let mut kept = kiln_accounts::Accounts::load(data.path().to_owned()).expect("list");
+        let (id, _) = kept.reserve().expect("reserve");
+        kept.add(kiln_accounts::Account {
+            id: id.clone(),
+            email: "a@example.com".into(),
+            plan: "Claude Pro".into(),
+        })
+        .expect("add");
+        let session = |percent| Usage {
+            session: Some(UsageWindow {
+                percent,
+                resets_at: None,
+            }),
+            ..Usage::default()
+        };
+        let known = kiln_accounts::KnownUsage {
+            usage: session(42),
+            reported_at: SystemTime::now(),
+        };
+        kept.set_usage(&id, known).expect("keep usage");
+        // As after a restart: the list and its usage come from disk.
+        let path = data.path().to_owned();
+        let backend = std::rc::Rc::new(common::FakeBackend(harness.script.clone()));
+        let (window, _) = cx.update(|cx| {
+            let accounts = cx.new(|_| kiln_accounts::Accounts::load(path).expect("list"));
+            common::open(backend, accounts, cx)
+        });
+        cx.run_until_parked();
+        let meter = |cx: &mut TestAppContext, label: &'static str| {
+            cx.update_window(window, |_, window, cx| {
+                window.render_frame(cx);
+                window.try_find_by_label(label).is_some()
+            })
+            .expect("window")
+        };
+        assert!(meter(cx, "42% used"), "before the account's first reply");
+
+        harness.emit(cx, AgentEvent::Usage(session(57)));
+        assert!(meter(cx, "57% used"));
+        let reloaded = kiln_accounts::Accounts::load(data.path().to_owned()).expect("list");
+        let stored = reloaded.usage(&id).expect("kept");
+        assert_eq!(stored.usage.session.map(|w| w.percent), Some(57));
     }
 }

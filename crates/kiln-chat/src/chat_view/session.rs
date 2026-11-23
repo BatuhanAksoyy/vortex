@@ -179,6 +179,7 @@ impl ChatView {
         }
         self.follow_session(&event, cx);
         if matches!(event, AgentEvent::Usage(_)) {
+            self.remember_usage(cx);
             self.sync_limit_timer(cx);
         }
         self.update_skills(&event, cx);

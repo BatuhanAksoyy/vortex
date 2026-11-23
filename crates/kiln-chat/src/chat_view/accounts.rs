@@ -2,7 +2,7 @@
 //! account, and adding one by signing in through the browser.
 
 use gpui_kit::{AppContext as _, Context, Task, Window};
-use kiln_accounts::{Account, Accounts};
+use kiln_accounts::{Account, Accounts, KnownUsage};
 
 use super::ChatView;
 use crate::transcript::Status;
@@ -24,6 +24,36 @@ pub(super) struct AccountsPanel {
 }
 
 impl ChatView {
+    /// Keeps the usage an added account just reported, for the other chats
+    /// and the next start. The usual sign-in is asked for its usage instead.
+    pub(super) fn remember_usage(&self, cx: &mut Context<Self>) {
+        let (Some(id), Some(reported_at)) = (&self.account, self.agent.usage_updated_at()) else {
+            return;
+        };
+        let known = KnownUsage {
+            usage: self.agent.usage(),
+            reported_at,
+        };
+        let kept = self
+            .accounts
+            .update(cx, |accounts, _| accounts.set_usage(id, known));
+        if let Err(error) = kept {
+            log::warn!("cannot keep the account's usage: {error:#}");
+        }
+    }
+
+    /// Shows the usage this chat's account last reported, in any chat.
+    pub(super) fn recall_usage(&mut self, cx: &Context<Self>) {
+        let known = self
+            .account
+            .as_ref()
+            .and_then(|id| self.accounts.read(cx).usage(id));
+        if let Some(known) = known {
+            self.agent
+                .recall_usage(known.usage, Some(known.reported_at));
+        }
+    }
+
     pub(super) fn set_accounts_open(&mut self, open: bool, cx: &mut Context<Self>) {
         if open && !self.accounts_panel.open {
             self.accounts_panel.error = None;
@@ -43,6 +73,7 @@ impl ChatView {
         let label = self.account_label(id, cx);
         let left = self.account.replace(id.to_owned());
         self.agent.change_account(left, Some(id));
+        self.recall_usage(cx);
         self.session = None;
         self.sync_limit_timer(cx);
         let change = self.transcript.push_notice(format!("Switched to {label}"));

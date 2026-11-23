@@ -164,7 +164,12 @@ impl ChatView {
         };
         // Started now, not on the first message: the composer shows the
         // models, mode and context the agent reports when it starts.
-        view.ensure_session(window, cx);
+        // Deferred, so a chat created to reopen a conversation starts only
+        // the process that resumes it.
+        cx.defer_in(window, |this, window, cx| {
+            this.ensure_session(window, cx);
+        });
+        view.recall_usage(cx);
         view
     }
 

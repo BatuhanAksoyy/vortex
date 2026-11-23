@@ -118,6 +118,15 @@ impl AgentState {
         self.usage.limited = None;
     }
 
+    /// Takes `usage`, reported at `updated_at` in another chat, unless this
+    /// one has had a report of its own.
+    pub fn recall_usage(&mut self, usage: Usage, updated_at: Option<SystemTime>) {
+        if self.usage_updated_at.is_none() {
+            self.usage = usage;
+            self.usage_updated_at = updated_at;
+        }
+    }
+
     /// Forgets the conversation's usage; the models and choices stay.
     pub fn reset_context(&mut self) {
         self.context = None;

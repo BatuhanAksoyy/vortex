@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, Entity, FocusHandle, Focusable, SharedString, Subscription, Window,
+    Context, Entity, FocusHandle, Focusable, SharedString, Subscription, TestSupportExt, Window,
     component::{
         ActiveTheme, IconName, Sizable, WindowExt,
         button::{Button, ButtonVariants},
@@ -52,6 +52,10 @@ impl EditorPane {
             next_id: 0,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tabs.is_empty()
     }
 
     pub fn active_path(&self) -> Option<&Path> {
@@ -267,7 +271,7 @@ impl EditorPane {
                 tab.title.to_string()
             };
             Tab::new().label(label).suffix(
-                Button::new(("close-tab", id))
+                Button::new(("close-editor-tab", id))
                     .icon(IconName::Close)
                     .ghost()
                     .xsmall()
@@ -337,6 +341,8 @@ impl Render for EditorPane {
                 .into_any_element(),
         };
         v_flex()
+            .id("editor-pane")
+            .test_support()
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(cx.theme().background)

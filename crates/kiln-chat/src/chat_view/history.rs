@@ -34,6 +34,19 @@ impl ChatView {
         self.conversation.as_ref().map(|stored| stored.id.as_str())
     }
 
+    /// The conversation's name, once something was said.
+    #[must_use]
+    pub fn title(&self) -> Option<&str> {
+        self.transcript.title()
+    }
+
+    /// Nothing was said or opened here yet, so the chat can take another
+    /// conversation without losing one.
+    #[must_use]
+    pub fn is_blank(&self) -> bool {
+        self.conversation.is_none() && self.transcript.len() == 0
+    }
+
     /// Shows stored conversation `id` and continues it, as a copy when it
     /// is `open_elsewhere`: two writers would interleave one file. Not while
     /// a turn runs, which the restart would cut off.

@@ -13,6 +13,7 @@ jiff.workspace = true
 gpui-kit.workspace = true
 kiln-accounts.workspace = true
 kiln-agent.workspace = true
+log.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

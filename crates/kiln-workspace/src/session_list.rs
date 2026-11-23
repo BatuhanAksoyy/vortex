@@ -2,7 +2,10 @@
 //! project, most recently active first and grouped by day, like Claude
 //! Desktop's.
 
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashSet,
+    time::{Duration, SystemTime},
+};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -22,10 +25,10 @@ pub enum SessionListEvent {
 #[derive(Default)]
 pub struct SessionList {
     sessions: Vec<PastSession>,
-    /// The conversation the chat shows.
+    /// The conversation the focused chat shows.
     current: Option<String>,
-    /// A turn is running; opening another conversation would cut it off.
-    busy: bool,
+    /// Conversations with a turn running in one of the chats.
+    running: HashSet<String>,
     loaded: bool,
     error: Option<String>,
     load: Option<Task<()>>,
@@ -34,9 +37,14 @@ pub struct SessionList {
 impl EventEmitter<SessionListEvent> for SessionList {}
 
 impl SessionList {
-    pub fn set_current(&mut self, current: Option<String>, busy: bool, cx: &mut Context<Self>) {
+    pub fn set_current(
+        &mut self,
+        current: Option<String>,
+        running: HashSet<String>,
+        cx: &mut Context<Self>,
+    ) {
         self.current = current;
-        self.busy = busy;
+        self.running = running;
         cx.notify();
     }
 
@@ -64,7 +72,7 @@ impl SessionList {
     fn row(&self, session: &PastSession, now: SystemTime, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let current = self.current.as_deref() == Some(session.id.as_str());
-        let enabled = !current && !self.busy;
+        let running = self.running.contains(&session.id);
         let hover = theme.secondary.opacity(0.5);
         let id = session.id.clone();
         let open_elsewhere = session.open_elsewhere;
@@ -81,10 +89,7 @@ impl SessionList {
                     .text_color(theme.foreground)
                     .font_weight(FontWeight::MEDIUM)
             })
-            .when(!current && self.busy, |this| {
-                this.text_color(theme.muted_foreground)
-            })
-            .when(enabled, |this| {
+            .when(!current, |this| {
                 this.hover(move |style| style.bg(hover))
                     .on_click(cx.listener(move |_, _, _, cx| {
                         cx.emit(SessionListEvent::Open {
@@ -100,7 +105,7 @@ impl SessionList {
                     .truncate()
                     .child(session.title.clone()),
             )
-            .child(stamp(session, now, cx))
+            .child(stamp(session, running, now, cx))
     }
 
     /// The rows under a heading per day group, newest first.
@@ -129,15 +134,34 @@ impl SessionList {
     }
 }
 
-/// When the conversation was last active, and whether another window has
-/// it open.
-fn stamp(session: &PastSession, now: SystemTime, cx: &App) -> impl IntoElement + use<> {
+/// When the conversation was last active, whether a chat here is working on
+/// it, and whether another window has it open.
+fn stamp(
+    session: &PastSession,
+    running: bool,
+    now: SystemTime,
+    cx: &App,
+) -> impl IntoElement + use<> {
     let theme = cx.theme();
     h_flex()
         .flex_none()
         .gap_1()
         .text_xs()
         .text_color(theme.muted_foreground)
+        .when(running, |this| {
+            this.child(
+                div()
+                    .id(SharedString::from(format!(
+                        "session-running-{}",
+                        session.id
+                    )))
+                    .test_support()
+                    .aria_label("Running")
+                    .size_1p5()
+                    .rounded_full()
+                    .bg(theme.primary),
+            )
+        })
         .when(session.open_elsewhere, |this| {
             this.child(
                 div()

@@ -129,7 +129,7 @@ pub struct SessionHandle {
 - Hesap kimlikleri tekrar kullanılmaz: macOS'ta Keychain kaydı depo yolunun özetiyle adlandırılır ve depo silinince kalır.
 - Giriş: Kiln hesabın ortamıyla bir CLI süreci açar, `claude_authenticate` ile aldığı sayfayı tarayıcıda açar, `claude_oauth_wait_for_completion` yanıtındaki hesabı kaydeder. Aynı e-posta ikinci kez eklenmez.
 - Hesap değiştirme: sohbetin süreci yeni hesabın ortamıyla ve aynı oturumla yeniden başlar; tur sürerken yapılmaz.
-- Eklenen hesabın adı ve planı Kiln'in kaydından gelir, CLI'nin bildirdiği hesaptan değil. Kullanımı yalnızca kendi turlarındaki `rate_limit_event`'ten okunur; `get_usage` ortak önbellekten yanıt verdiği için sorulmaz. Sohbet, ayrıldığı hesapların son kullanımını hatırlar.
+- Eklenen hesabın adı ve planı Kiln'in kaydından gelir, CLI'nin bildirdiği hesaptan değil. Kullanımı yalnızca kendi turlarındaki `rate_limit_event`'ten okunur; `get_usage` sorulmaz: CLI son 60 saniyede herhangi bir hesabın çektiği kullanımı `~/.claude.json`'daki ortak önbellekten döndürür; sonrasında kendi hesabıyla sorar ama cevabı ortak önbelleğe son giriş yapan hesabın kimliğiyle yazar ve onun göstergesini bozar (CLI 2.1.311'de üç hesapla doğrulandı). Eklenen her hesabın son bildirilen kullanımı `<data>/usage.json`'da tutulur ve tüm sohbetlerce paylaşılır; yeni sekme ve yeniden açılan Kiln, hesabın ilk yanıtını beklemeden son sayıları ve ne zaman bildirildiklerini gösterir. Henüz bilinmiyorsa başlıkta "Usage" düğmesi kalır, paneli bunu söyler. Sohbet ayrıca ayrıldığı hesapların son kullanımını hatırlar.
 - Limit dolunca: limit uyarısında limitli olduğu bilinmeyen ilk diğer hesap için "Continue with <e-posta>" düğmesi çıkar; tıklayınca o hesaba geçilir.
 - Codex için `CODEX_HOME` ile benzeri sonra değerlendirilecek.
 - Rozet: Hesap etiketi + rengi oturum sekmesinde, sohbet başlığında ve her subagent kartında görünür.
@@ -245,7 +245,12 @@ pub struct SessionHandle {
 ```
 - Sohbet merkezde. Tool kartında bir dosyaya tıklamak onu sağda açar.
 - "Focus chat" ve "Focus code" komutları yan panelleri gizler.
-- M0'da yerleşim gpui-kit `h_resizable` panelleriyle kurulur. Sürüklenebilir sekmeler ve serileştirilebilir yerleşim gerekirse gpui-kit dock'a geçilir; dock, panel kaydı ve serileştirme gerektirdiği için ilk aşamada gereksiz karmaşıklık.
+- Pencere `h_resizable` ile üçe bölünür: oturum listesi, sohbetler, editör. Editör paneli yalnızca açık dosya varken görünür.
+- Sohbetler gpui-kit dock'unun orta alanındadır: her sohbet bir sekme ve kendi CLI süreci; sekmeler gruplar arasında sürüklenir, gruplar yan yana ya da alt alta bölünür. Gösterilmeyen sekmenin süreci çalışmaya devam eder (uyku modu M2'de).
+  - Sekme çubuğunda "New session" (aynı grupta yeni sekme) ve "Split right" (yanda yeni grup) düğmeleri var. Dock bir alanın son sekmesini kapattırmaz, pencerede hep bir sohbet kalır.
+  - Soldaki listeden bir oturum açılınca: başka bir sekmede açıksa o sekmeye geçilir; odaktaki sohbet boşsa onda açılır; değilse odaktaki grupta yeni sekmede açılır. "New session" de boş sohbeti yeniden kullanır.
+  - Liste odaktaki sohbeti seçili, turu süren sohbetleri işaretli gösterir.
+  - Yerleşim henüz kaydedilmez; Kiln her açılışta tek sohbetle başlar.
 
 ## 14. Ayarlar, tuş atamaları, tema
 

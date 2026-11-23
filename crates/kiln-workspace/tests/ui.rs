@@ -75,6 +75,17 @@ mod workspace {
         (window.downcast().expect("kit window has a Root"), workspace)
     }
 
+    /// The production keymap binds `cmd` on macOS where it binds `ctrl`
+    /// elsewhere.
+    fn primary(key: &str) -> String {
+        let modifier = if cfg!(target_os = "macos") {
+            "cmd"
+        } else {
+            "ctrl"
+        };
+        format!("{modifier}-{key}")
+    }
+
     fn project() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir_all(dir.path().join("src")).expect("mkdir");
@@ -93,7 +104,7 @@ mod workspace {
         cx.update_window(any_window, |_, window, cx| {
             window.render_frame(cx);
             assert!(window.try_find("quick-open").is_none());
-            window.press("ctrl-p", cx);
+            window.press(&primary("p"), cx);
         })
         .expect("window");
         cx.wait_for(any_window, Duration::from_secs(2), |window, _| {
@@ -149,7 +160,7 @@ mod workspace {
         let window = window.into();
         assert!(has(cx, window, "session-list"));
 
-        press(cx, window, "ctrl-shift-p");
+        press(cx, window, &primary("shift-p"));
         type_text(cx, window, "Toggle Sidebar");
         press(cx, window, "enter");
 
@@ -162,7 +173,7 @@ mod workspace {
         let root = std::fs::canonicalize(dir.path()).expect("canonical root");
         let (window, workspace) = open_workspace(cx, root.clone());
         let window = window.into();
-        press(cx, window, "ctrl-p");
+        press(cx, window, &primary("p"));
         type_text(cx, window, "README");
         press(cx, window, "enter");
         assert_eq!(
@@ -172,11 +183,15 @@ mod workspace {
 
         cx.update_window(window, |_, window, cx| {
             window.render_frame(cx);
-            window.click(("close-tab", 0_u64), cx);
+            window.click(("close-editor-tab", 0_u64), cx);
         })
         .expect("window");
         cx.run_until_parked();
         assert_eq!(cx.update(|cx| workspace.read(cx).active_file(cx)), None);
+        assert!(
+            !has(cx, window, "editor-pane"),
+            "an empty pane only takes room from the chat"
+        );
     }
 
     #[gpui_kit::test]
@@ -187,13 +202,13 @@ mod workspace {
         let window = window.into();
         let active = |cx: &mut TestAppContext| cx.update(|cx| workspace.read(cx).active_file(cx));
 
-        press(cx, window, "ctrl-p");
+        press(cx, window, &primary("p"));
         type_text(cx, window, "README");
         press(cx, window, "enter");
         assert_eq!(active(cx), Some(root.join("README.md")));
 
         type_text(cx, window, "edit");
-        press(cx, window, "ctrl-w");
+        press(cx, window, &primary("w"));
         assert_eq!(
             active(cx),
             Some(root.join("README.md")),
@@ -201,8 +216,8 @@ mod workspace {
         );
 
         press(cx, window, "escape");
-        press(cx, window, "ctrl-s");
-        press(cx, window, "ctrl-w");
+        press(cx, window, &primary("s"));
+        press(cx, window, &primary("w"));
         assert_eq!(active(cx), None);
         let saved = std::fs::read_to_string(root.join("README.md")).expect("read");
         assert!(saved.contains("edit"), "{saved}");

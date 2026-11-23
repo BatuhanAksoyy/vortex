@@ -7,13 +7,17 @@
 //! its own under Kiln's data directory. Until an account is added, sessions
 //! run with the user's usual Claude Code sign-in.
 
+mod usage;
+
 use std::{
+    collections::HashMap,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
+pub use usage::KnownUsage;
 
 /// Moves only where the CLI keeps its sign-in (on macOS, which Keychain item
 /// it uses). `CLAUDE_CONFIG_DIR` would move the session history too, so a
@@ -21,6 +25,7 @@ use serde::{Deserialize, Serialize};
 const CREDENTIALS_VAR: &str = "CLAUDE_SECURESTORAGE_CONFIG_DIR";
 
 const LIST_FILE: &str = "accounts.json";
+const USAGE_FILE: &str = "usage.json";
 const CREDENTIALS_DIR: &str = "accounts";
 
 /// An account added in Kiln, as its sign-in reported it.
@@ -32,11 +37,13 @@ pub struct Account {
     pub plan: String,
 }
 
-/// The added accounts, kept in `<dir>/accounts.json`.
+/// The added accounts, kept in `<dir>/accounts.json`, and the usage each
+/// last reported, in `<dir>/usage.json`.
 #[derive(Debug)]
 pub struct Accounts {
     dir: PathBuf,
     added: Vec<Account>,
+    usage: HashMap<String, KnownUsage>,
 }
 
 impl Accounts {
@@ -51,7 +58,8 @@ impl Accounts {
                 return Err(error).with_context(|| format!("cannot read {}", path.display()));
             }
         };
-        Ok(Self { dir, added })
+        let usage = usage::load(&dir.join(USAGE_FILE));
+        Ok(Self { dir, added, usage })
     }
 
     /// No added accounts, kept in `dir` once one is added.
@@ -60,6 +68,7 @@ impl Accounts {
         Self {
             dir,
             added: Vec::new(),
+            usage: HashMap::new(),
         }
     }
 
@@ -120,6 +129,22 @@ impl Accounts {
         }
     }
 
+    /// The plan usage added account `id` last reported.
+    #[must_use]
+    pub fn usage(&self, id: &str) -> Option<KnownUsage> {
+        self.usage.get(id).copied()
+    }
+
+    /// Keeps the usage added account `id` reported, across restarts.
+    pub fn set_usage(&mut self, id: &str, known: KnownUsage) -> anyhow::Result<()> {
+        if self.find(id).is_none() || self.usage(id) == Some(known) {
+            return Ok(());
+        }
+        self.usage.insert(id.to_owned(), known);
+        let text = serde_json::to_string_pretty(&self.usage)?;
+        self.write(USAGE_FILE, &text)
+    }
+
     /// The added account signed in as `email`, if any.
     #[must_use]
     pub fn find_email(&self, email: &str) -> Option<&Account> {
@@ -132,14 +157,18 @@ impl Accounts {
         self.dir.join(CREDENTIALS_DIR).join(id)
     }
 
-    /// Writes a temporary file and renames it over the list, so a crash
-    /// mid-write leaves the previous list intact.
     fn save(&self) -> anyhow::Result<()> {
+        let text = serde_json::to_string_pretty(&self.added)?;
+        self.write(LIST_FILE, &text)
+    }
+
+    /// Writes a temporary file and renames it over `name`, so a crash
+    /// mid-write leaves the previous file intact.
+    fn write(&self, name: &str, text: &str) -> anyhow::Result<()> {
         std::fs::create_dir_all(&self.dir)
             .with_context(|| format!("cannot create {}", self.dir.display()))?;
-        let path = self.dir.join(LIST_FILE);
+        let path = self.dir.join(name);
         let temporary = path.with_extension("json.tmp");
-        let text = serde_json::to_string_pretty(&self.added)?;
         std::fs::write(&temporary, text)
             .with_context(|| format!("cannot write {}", temporary.display()))?;
         std::fs::rename(&temporary, &path)
@@ -216,5 +245,36 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(LIST_FILE), "{").unwrap();
         assert!(Accounts::load(dir.path().to_owned()).is_err());
+    }
+
+    #[test]
+    fn reported_usage_is_kept_across_loads_for_added_accounts_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut accounts = Accounts::load(dir.path().to_owned()).unwrap();
+        let (id, _) = accounts.reserve().unwrap();
+        accounts.add(account(&id, "a@example.com")).unwrap();
+        let known = KnownUsage {
+            usage: kiln_agent::Usage {
+                session: Some(kiln_agent::UsageWindow {
+                    percent: 42,
+                    resets_at: Some(UNIX_EPOCH + std::time::Duration::from_hours(1)),
+                }),
+                ..kiln_agent::Usage::default()
+            },
+            reported_at: UNIX_EPOCH,
+        };
+        accounts.set_usage(&id, known).unwrap();
+        accounts.set_usage("account-unknown", known).unwrap();
+        let again = Accounts::load(dir.path().to_owned()).unwrap();
+        assert_eq!(again.usage(&id), Some(known));
+        assert_eq!(again.usage("account-unknown"), None);
+    }
+
+    #[test]
+    fn damaged_usage_is_forgotten_not_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(USAGE_FILE), "{").unwrap();
+        let accounts = Accounts::load(dir.path().to_owned()).unwrap();
+        assert_eq!(accounts.usage("account-1"), None);
     }
 }

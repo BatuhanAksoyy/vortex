@@ -1,7 +1,8 @@
-//! The Kiln window: layout, the session list, editor tabs, pickers, and the
+//! The Kiln window: layout, the session list, chat tabs, editor tabs, pickers, and the
 //! commands that drive them.
 
 mod appearance;
+mod chat_panel;
 mod commands;
 mod config;
 mod editor_pane;
