@@ -16,7 +16,7 @@ use gpui_kit::{
 };
 use kiln_agent::{ContextCategory, ContextKind, ContextUsage};
 
-use super::ChatView;
+use super::{ChatView, StripPanel};
 use crate::agent_state::tokens;
 
 const PANEL_WIDTH: f32 = 300.;
@@ -37,7 +37,7 @@ impl ChatView {
             Popover::new("chat-context-popover")
                 .anchor(Anchor::BottomRight)
                 .trigger(trigger)
-                .open(self.context_open)
+                .open(self.is_open(StripPanel::Context))
                 .on_open_change(move |open, _, cx| {
                     let _ = view.update(cx, |view, cx| view.set_context_open(*open, cx));
                 })

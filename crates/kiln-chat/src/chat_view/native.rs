@@ -11,7 +11,7 @@ use gpui_kit::{
 use kiln_agent::{ModelOption, SessionCommand};
 
 use super::{
-    ChatView,
+    ChatView, StripPanel,
     slash_menu::{menu_row, menu_surface, wrap},
 };
 use crate::slash::NativeCommand;
@@ -39,38 +39,50 @@ impl ChatView {
         }
     }
 
-    /// Opens or closes the header's usage panel; opening asks for fresh
-    /// usage and puts the context panel away.
-    pub(super) fn set_usage_open(&mut self, open: bool, cx: &mut Context<Self>) {
-        if open && !self.usage_open {
-            self.refresh_usage(cx);
-            self.context_open = false;
+    pub(super) fn is_open(&self, panel: StripPanel) -> bool {
+        self.open_panel == Some(panel)
+    }
+
+    /// Opens `panel`, putting any other away, or closes it; `true` when it
+    /// was just opened. Closing a panel that is not open leaves the open one.
+    pub(super) fn show_panel(&mut self, panel: StripPanel, open: bool) -> bool {
+        let opened = open && !self.is_open(panel);
+        if open {
+            self.open_panel = Some(panel);
+        } else if self.is_open(panel) {
+            self.open_panel = None;
         }
-        self.usage_open = open;
+        opened
+    }
+
+    /// Opens or closes the header's usage panel; opening asks for fresh
+    /// usage.
+    pub(super) fn set_usage_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if self.show_panel(StripPanel::Usage, open) {
+            self.refresh_usage(cx);
+        }
         cx.notify();
     }
 
-    /// Opens or closes the context panel; opening asks for a fresh breakdown
-    /// and puts the usage panel away.
+    /// Opens or closes the context panel; opening asks for a fresh
+    /// breakdown.
     pub(super) fn set_context_open(&mut self, open: bool, cx: &mut Context<Self>) {
-        if open && !self.context_open {
+        if self.show_panel(StripPanel::Context, open) {
             self.send_command(SessionCommand::RefreshContext);
-            self.usage_open = false;
         }
-        self.context_open = open;
         cx.notify();
     }
 
     /// `false` when the context panel is already closed.
     pub(super) fn close_context(&mut self, cx: &mut Context<Self>) -> bool {
-        let was_open = self.context_open;
+        let was_open = self.is_open(StripPanel::Context);
         self.set_context_open(false, cx);
         was_open
     }
 
     /// `false` when the usage panel is already closed.
     pub(super) fn close_usage(&mut self, cx: &mut Context<Self>) -> bool {
-        let was_open = self.usage_open;
+        let was_open = self.is_open(StripPanel::Usage);
         self.set_usage_open(false, cx);
         was_open
     }

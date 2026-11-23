@@ -1,6 +1,6 @@
 //! Messages Kiln writes to the CLI's stdin.
 
-use kiln_agent::Decision;
+use kiln_agent::{Decision, RuleScope};
 
 use crate::ask;
 use serde_json::{Value, json};
@@ -34,6 +34,10 @@ pub fn get_usage(request_id: &str) -> Value {
 
 pub fn get_skills_dialog(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "get_skills_dialog" }))
+}
+
+pub fn list_permission_rules(request_id: &str) -> Value {
+    control_request(request_id, &json!({ "subtype": "list_permission_rules" }))
 }
 
 pub fn get_context_usage(request_id: &str) -> Value {
@@ -71,7 +75,8 @@ pub fn user_message(text: &str) -> Value {
 
 /// `input` is echoed back on allow: the CLI requires `updatedInput` and runs
 /// the tool with it. `remember` holds the CLI's own suggested permission
-/// updates; sending them back is what makes it stop asking.
+/// updates; sending them back is what makes it stop asking, kept where the
+/// decision's scope says.
 pub fn permission_response(
     request_id: &str,
     decision: &Decision,
@@ -79,12 +84,12 @@ pub fn permission_response(
     remember: Option<&Value>,
 ) -> Value {
     let response = match (decision, remember) {
-        (Decision::AllowAlways, Some(updates)) => json!({
+        (Decision::AllowAlways(scope), Some(updates)) => json!({
             "behavior": "allow",
             "updatedInput": input,
-            "updatedPermissions": updates,
+            "updatedPermissions": scoped(updates, *scope),
         }),
-        (Decision::Allow | Decision::AllowAlways, _) => {
+        (Decision::Allow | Decision::AllowAlways(_), _) => {
             json!({ "behavior": "allow", "updatedInput": input })
         }
         (Decision::Deny { feedback }, _) => {
@@ -99,6 +104,27 @@ pub fn permission_response(
         "type": "control_response",
         "response": { "subtype": "success", "request_id": request_id, "response": response },
     })
+}
+
+/// `updates` with each added rule kept for `scope`. Other updates, such as
+/// switching to accept edits, keep the CLI's own destination: they last for
+/// the session only.
+fn scoped(updates: &Value, scope: RuleScope) -> Value {
+    let destination = match scope {
+        RuleScope::Session => "session",
+        RuleScope::Project => "localSettings",
+        RuleScope::User => "userSettings",
+    };
+    let mut updates = updates.clone();
+    let rules = updates
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+        .filter(|update| update.get("type").and_then(Value::as_str) == Some("addRules"));
+    for update in rules {
+        update["destination"] = json!(destination);
+    }
+    updates
 }
 
 fn deny_message(feedback: Option<&str>) -> String {

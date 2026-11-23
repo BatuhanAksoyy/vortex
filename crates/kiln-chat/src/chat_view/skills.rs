@@ -6,7 +6,7 @@ use std::time::Duration;
 use gpui_kit::{Context, Window};
 use kiln_agent::{AgentEvent, SessionCommand, SkillState};
 
-use super::ChatView;
+use super::{ChatView, StripPanel};
 
 /// How long the CLI may take to pick up a saved setting before it is read
 /// again.
@@ -22,13 +22,12 @@ impl ChatView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if open && !self.skills_open {
+        if self.show_panel(StripPanel::Skills, open) {
             self.skill_menu.clear_messages();
             if let Some(commands) = self.ensure_session(window, cx) {
                 let _ = commands.try_send(SessionCommand::RefreshSkills);
             }
         }
-        self.skills_open = open;
         cx.notify();
     }
 
@@ -62,7 +61,7 @@ impl ChatView {
             AgentEvent::SkillStateFailed { name, error } => self.skill_menu.fail(name, error),
             // A skill turned on or off adds or drops its command; the
             // listing may have changed with it.
-            AgentEvent::CommandsChanged(_) if self.skills_open => {
+            AgentEvent::CommandsChanged(_) if self.is_open(StripPanel::Skills) => {
                 self.send_command(SessionCommand::RefreshSkills);
                 return;
             }

@@ -10,6 +10,8 @@ mod history;
 mod layout;
 mod menu_keys;
 mod native;
+mod rules;
+mod rules_panel;
 mod session;
 mod skills;
 mod skills_panel;
@@ -32,6 +34,7 @@ use crate::{
     agent_state::AgentState,
     permission_prompt::{Answered, PermissionPrompt},
     question_prompt::QuestionPrompt,
+    rule_list::RuleList,
     skill_menu::SkillMenu,
     slash, spinner,
     transcript::{Change, Status, Transcript},
@@ -60,6 +63,15 @@ struct ShownPrompt {
     _answered: Subscription,
 }
 
+/// The panels the header and composer strip open; one is open at a time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StripPanel {
+    Usage,
+    Context,
+    Skills,
+    Rules,
+}
+
 pub struct ChatView {
     backend: Rc<dyn AgentBackend>,
     /// Shared by every chat; added accounts show in all of them.
@@ -84,13 +96,12 @@ pub struct ChatView {
     composer: Entity<TextareaState>,
     slash: SlashMenu,
     model_picker: Option<ModelPicker>,
-    usage_open: bool,
-    context_open: bool,
+    open_panel: Option<StripPanel>,
     prompt: Option<ShownPrompt>,
     skill_menu: SkillMenu,
-    skills_open: bool,
     /// Reads the skills again until a saved state shows up.
     skill_check: Option<Task<()>>,
+    rule_list: RuleList,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
     /// Lifts a usage limit when its reset time comes.
@@ -150,12 +161,11 @@ impl ChatView {
             composer,
             slash: SlashMenu::default(),
             model_picker: None,
-            usage_open: false,
-            context_open: false,
+            open_panel: None,
             prompt: None,
             skill_menu: SkillMenu::default(),
-            skills_open: false,
             skill_check: None,
+            rule_list: RuleList::default(),
             spinner_frame: 0,
             spinner: None,
             limit_timer: None,

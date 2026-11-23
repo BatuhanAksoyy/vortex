@@ -9,11 +9,12 @@ mod replay {
     use super::common::{fixture_path, output_lines};
 
     use kiln_agent::{
-        AgentBackend as _, AgentEvent, Decision, SessionCommand, SessionSpec, TurnOutcome,
+        AgentBackend as _, AgentEvent, Decision, RuleScope, SessionCommand, SessionSpec,
+        TurnOutcome,
     };
     use kiln_agent_claude::{ClaudeBackend, Translator};
 
-    const FIXTURES: [&str; 12] = [
+    const FIXTURES: [&str; 13] = [
         "allow",
         "deny",
         "interrupt",
@@ -25,6 +26,7 @@ mod replay {
         "ask",
         "questions",
         "skills",
+        "rules",
         "resume",
     ];
 
@@ -148,16 +150,35 @@ mod replay {
     #[test]
     fn allow_always_sends_back_only_the_suggested_rule() {
         let (mut translator, request) = requested();
-        assert_eq!(request.remember, Some(kiln_agent::Remember::Rule));
-        let body = answer(&mut translator, &request.id, Decision::AllowAlways);
+        assert_eq!(
+            request.remember,
+            Some(kiln_agent::Remember::Rules(vec![
+                "Bash(touch kiln-fixture.txt)".into()
+            ]))
+        );
+        let always = Decision::AllowAlways(RuleScope::Project);
+        let body = answer(&mut translator, &request.id, always);
         assert_eq!(body["behavior"], "allow");
         let updates = body["updatedPermissions"].as_array().unwrap();
         assert_eq!(updates.len(), 1, "{updates:?}");
         assert_eq!(updates[0]["type"], "addRules");
+        assert_eq!(updates[0]["destination"], "localSettings");
         assert_eq!(
             updates[0]["rules"][0]["ruleContent"],
             "touch kiln-fixture.txt"
         );
+    }
+
+    #[test]
+    fn the_rule_is_kept_where_the_scope_says() {
+        for (scope, destination) in [
+            (RuleScope::Session, "session"),
+            (RuleScope::User, "userSettings"),
+        ] {
+            let (mut translator, request) = requested();
+            let body = answer(&mut translator, &request.id, Decision::AllowAlways(scope));
+            assert_eq!(body["updatedPermissions"][0]["destination"], destination);
+        }
     }
 
     #[test]
@@ -298,7 +319,8 @@ mod replay {
 #[cfg(test)]
 mod live {
     use kiln_agent::{
-        AgentBackend as _, AgentEvent, Decision, SessionCommand, SessionSpec, TurnOutcome,
+        AgentBackend as _, AgentEvent, Decision, RuleScope, SessionCommand, SessionSpec,
+        TurnOutcome,
     };
     use kiln_agent_claude::ClaudeBackend;
 
@@ -330,7 +352,7 @@ mod live {
             let answer = match &event {
                 AgentEvent::PermissionRequest(request) => Some(SessionCommand::Permission {
                     request_id: request.id.clone(),
-                    decision: Decision::AllowAlways,
+                    decision: Decision::AllowAlways(RuleScope::Project),
                 }),
                 _ => None,
             };

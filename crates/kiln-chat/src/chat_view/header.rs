@@ -17,7 +17,7 @@ use gpui_kit::{
 };
 use kiln_agent::{Usage, UsageWindow};
 
-use super::ChatView;
+use super::{ChatView, StripPanel};
 
 const USAGE_PANEL_WIDTH: f32 = 260.;
 
@@ -40,7 +40,7 @@ impl ChatView {
             .child(usage_meter(
                 self.agent.usage(),
                 self.agent.usage_updated_at(),
-                self.usage_open,
+                self.is_open(StripPanel::Usage),
                 cx.entity().downgrade(),
                 cx,
             ))

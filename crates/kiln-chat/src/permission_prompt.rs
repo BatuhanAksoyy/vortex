@@ -15,7 +15,7 @@ use gpui_kit::{
     },
     div, px,
 };
-use kiln_agent::{Decision, PermissionRequest, Remember};
+use kiln_agent::{Decision, PermissionRequest, Remember, RuleScope};
 
 use crate::{spinner, tool_format};
 
@@ -69,15 +69,43 @@ impl PermissionPrompt {
     }
 
     fn options(&self) -> Vec<PromptOption> {
-        let always = match self.request.remember {
-            Some(Remember::Rule) => Some("Yes, and don't ask again"),
-            Some(Remember::AcceptEdits) => Some("Yes, and auto-accept edits"),
-            None => None,
-        };
+        let always = |scope| Decision::AllowAlways(scope);
         let mut options = vec![("permission-yes", "Yes", Decision::Allow)];
-        options.extend(always.map(|label| ("permission-always", label, Decision::AllowAlways)));
+        match self.request.remember {
+            Some(Remember::Rules(_)) => options.extend([
+                (
+                    "permission-session",
+                    "Yes, for this session",
+                    always(RuleScope::Session),
+                ),
+                (
+                    "permission-always",
+                    "Yes, and don't ask again in this project",
+                    always(RuleScope::Project),
+                ),
+                (
+                    "permission-everywhere",
+                    "Yes, and don't ask again in any project",
+                    always(RuleScope::User),
+                ),
+            ]),
+            Some(Remember::AcceptEdits) => options.push((
+                "permission-always",
+                "Yes, and auto-accept edits",
+                always(RuleScope::Session),
+            )),
+            None => {}
+        }
         options.push(("permission-no", "No", Decision::Deny { feedback: None }));
         options
+    }
+
+    /// The rules "don't ask again" would add, e.g. `Bash(npm test:*)`.
+    fn rules(&self) -> Option<String> {
+        match &self.request.remember {
+            Some(Remember::Rules(names)) if !names.is_empty() => Some(names.join(", ")),
+            _ => None,
+        }
     }
 
     fn answer(&mut self, decision: Decision, cx: &mut Context<Self>) {
@@ -251,6 +279,16 @@ impl Render for PermissionPrompt {
                         .text_sm()
                         .text_color(theme.muted_foreground)
                         .child(description),
+                )
+            })
+            .when_some(self.rules(), |this, rules| {
+                this.child(
+                    div()
+                        .id("permission-rule")
+                        .test_support()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child(format!("Rule: {rules}")),
                 )
             })
             .children(options)

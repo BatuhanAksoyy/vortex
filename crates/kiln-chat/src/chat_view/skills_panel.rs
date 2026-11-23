@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use kiln_agent::{Skill, SkillLock, SkillState};
 
-use super::{ChatView, composer::option_row};
+use super::{ChatView, StripPanel, composer::option_row};
 use crate::agent_state::tokens;
 
 const PANEL_WIDTH: f32 = 320.;
@@ -58,7 +58,7 @@ impl ChatView {
         Popover::new("chat-skills-popover")
             .anchor(Anchor::BottomLeft)
             .trigger(trigger)
-            .open(self.skills_open)
+            .open(self.is_open(StripPanel::Skills))
             .on_open_change(move |open, window, cx| {
                 let _ = opener.update(cx, |view, cx| view.set_skills_open(*open, window, cx));
             })

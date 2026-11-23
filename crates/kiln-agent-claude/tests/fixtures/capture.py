@@ -3,7 +3,7 @@
 
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
-        | questions | skills | resume | login | history | running
+        | questions | skills | rules | resume | login | history | running
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -25,6 +25,9 @@ answers; it is answered with two options joined by ", " and with free text
 that matches no option, as the "Other" field would send.
 "skills" sends no prompt, so it spends no usage: it writes two project skills,
 one turned off in the local settings, and asks for the /skills menu's rows.
+"rules" sends no prompt, so it spends no usage: it writes two rules to the
+local settings and lists the session's rules, then removes one from the file,
+as Kiln does, and lists them again to record whether the CLI sees the change.
 "resume" runs two tiny turns: one in a first process, which saves its
 session, then one in a second process started with `--resume`, which is the
 one recorded. A "note" record holds the first session's id, to compare with
@@ -69,6 +72,11 @@ if case == "skills":
             skill.write(f"---\nname: {name}\ndescription: A skill the {name} fixture lists.\n---\nSay hi.\n")
     with open(".claude/settings.local.json", "w") as settings:
         json.dump({"skillOverrides": {"kiln-hidden": "off"}}, settings)
+RULES = {"allow": ["Bash(npm test:*)", "WebFetch"], "deny": ["Read(./.env)"]}
+if case == "rules":
+    os.makedirs(".claude", exist_ok=True)
+    with open(".claude/settings.local.json", "w") as settings:
+        json.dump({"permissions": RULES}, settings)
 env = {k: v for k, v in os.environ.items() if k not in STRIP}
 if case == "login":
     env["CLAUDE_SECURESTORAGE_CONFIG_DIR"] = os.path.abspath("credentials")
@@ -199,7 +207,7 @@ def send(obj):
     proc.stdin.flush()
 
 
-send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "login") else "init-1",
+send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "rules", "login") else "init-1",
       "request": {"subtype": "initialize", "hooks": None}})
 # Ids follow Kiln's own scheme (`Translator::request_id`), so a replay can
 # issue the same commands and match the replies.
@@ -216,6 +224,9 @@ if case == "controls":
 elif case == "skills":
     send({"type": "control_request", "request_id": "kiln-skills-1",
           "request": {"subtype": "get_skills_dialog"}})
+elif case == "rules":
+    send({"type": "control_request", "request_id": "kiln-rules-1",
+          "request": {"subtype": "list_permission_rules"}})
 elif case == "login":
     send({"type": "control_request", "request_id": "kiln-login-1",
           "request": {"subtype": "claude_authenticate", "loginWithClaudeAi": True}})
@@ -274,6 +285,15 @@ for line in proc.stdout:
         if case == "usage" and msg["response"].get("request_id") == "kiln-usage-1":
             break
         if case == "skills" and msg["response"].get("request_id") == "kiln-skills-1":
+            break
+        if case == "rules" and msg["response"].get("request_id") == "kiln-rules-1":
+            with open(".claude/settings.local.json", "w") as settings:
+                json.dump({"permissions": {**RULES, "allow": RULES["allow"][1:]}}, settings)
+            # The CLI notices settings changes by watching the files.
+            time.sleep(10)
+            send({"type": "control_request", "request_id": "kiln-rules-2",
+                  "request": {"subtype": "list_permission_rules"}})
+        if case == "rules" and msg["response"].get("request_id") == "kiln-rules-2":
             break
         if case == "login" and msg["response"].get("request_id") == "kiln-login-1":
             urls = msg["response"].get("response") or {}

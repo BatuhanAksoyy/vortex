@@ -136,15 +136,11 @@ pub struct SessionHandle {
 
 ## 6. İzinler
 
-- Katmanlar: **editör (global)** `settings.json` → **proje** `.kiln/settings.json` → **oturum** (geçici "bu oturum için izin ver").
-- Ajan-bağımsız kural formatı:
-  ```json
-  { "tool": "shell", "pattern": "npm run *", "action": "allow" }
-  ```
-  Araç kategorileri: `shell`, `edit`, `read`, `web`, `mcp:<server>/<tool>`.
-- Değerlendirme: herhangi bir `deny` eşleşirse ret → `allow` eşleşirse izin → aksi halde kullanıcıya sor. Her karar oturum günlüğüne yazılır.
-- Kurallar tek yerde, Kiln'de değerlendirilir. Claude `can_use_tool`, Codex `*RequestApproval` istekleri aynı motordan geçer.
-- İzin kartındaki "Always allow" butonu kuralı proje ya da global dosyaya yazar. Claude'un `permission_suggestions` alanı öneri olarak gösterilir.
+- Kurallar ajanın kendi kurallarıdır; Kiln ayrı bir kural motoru tutmaz. Claude kuralları kendi ayar dosyalarında tutar ve kendisi eşleştirir. Kabuk komutlarının ayrıştırılması (ör. `npm test && rm -rf ~` zincirinin parçalara bölünmesi) güvenlik açısından hassastır; bu işi ajana bırakmak hem daha az kod hem de daha az risk demektir.
+- İzin kartı, Claude'un `permission_suggestions` alanında önerdiği kuralı gösterir (ör. `Bash(npm test:*)`). Kural önerisi olan bir istekte "don't ask again" seçeneği üç kapsamla gelir: bu oturum (`session`), bu proje (`.claude/settings.local.json`, kullanıcının kendi proje ayarı) ve tüm projeler (`~/.claude/settings.json`). Kiln, seçilen kapsamı CLI'ın kendi önerisindeki `destination` alanına yazıp öneriyi geri gönderir. Kuralı dosyaya CLI yazar. Öneri olarak yalnızca "düzenlemeleri otomatik kabul et" gelen isteklerde bu seçenek tek kalır ve yalnızca oturum boyunca geçerlidir.
+- Composer şeridindeki kalkan düğmesi kurallar panelini açar. Liste CLI'ın `list_permission_rules` isteğinden gelir (`/permissions` ile aynı veri): her kural, CLI'ın düz metin okunuşu ve kaynağıyla. Reddedilenler en üstte gösterilir.
+- Ayar dosyasında tutulan bir kural (proje, paylaşılan proje, kullanıcı) panelden silinebilir. CLI'ın kural değiştiren bir isteği yoktur. Bu yüzden Kiln kuralı ilgili dosyadan siler (diğer anahtarlar ve sıraları korunur, dosya geçici dosya üzerinden yazılır), CLI de değişikliği kendi dosya izleyicisiyle görür. İzleyici değişikliği birkaç saniye geç fark ettiğinden, Kiln listeyi dosyayla karşılaştırır ve dosyadan silinmiş bir kuralı listede yeniden göstermez. Oturum kuralları ve politika ile gelen kurallar salt okunurdur.
+- Codex geldiğinde onun onay istekleri (`*RequestApproval`) aynı izin kartında gösterilir. Kural kapsamları Codex'in desteklediği kadarıyla eşlenir.
 
 ## 7. Worktree'ler ve oturumlar arası koordinasyon
 

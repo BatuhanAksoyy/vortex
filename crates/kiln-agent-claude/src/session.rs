@@ -11,12 +11,15 @@ use futures::{
     stream,
 };
 use kiln_agent::{
-    AgentBackend, AgentEvent, PastMessage, PastSession, Pending, Session, SessionCommand,
-    SessionSpec, SignIn, SkillState,
+    AgentBackend, AgentEvent, PastMessage, PastSession, Pending, PermissionRule, Session,
+    SessionCommand, SessionSpec, SignIn, SkillState,
 };
 use serde_json::Value;
 
-use crate::{control, history, outgoing, sign_in, skills::SkillEditor, translate::Translator};
+use crate::{
+    control, history, outgoing, rules::RuleFiles, sign_in, skills::SkillEditor,
+    translate::Translator,
+};
 
 pub(crate) const ARGS: &[&str] = &[
     "-p",
@@ -99,10 +102,16 @@ impl AgentBackend for ClaudeBackend {
                 command.arg("--fork-session");
             }
         }
-        let editor = SkillEditor {
-            program: self.program.clone(),
-            cwd: spec.cwd.clone(),
-            env: spec.env.clone(),
+        let editors = Editors {
+            skills: SkillEditor {
+                program: self.program.clone(),
+                cwd: spec.cwd.clone(),
+                env: spec.env.clone(),
+            },
+            rules: RuleFiles {
+                config: self.config.clone(),
+                cwd: spec.cwd.clone(),
+            },
         };
         command
             .current_dir(&spec.cwd)
@@ -123,7 +132,7 @@ impl AgentBackend for ClaudeBackend {
         Ok(Session {
             events,
             commands,
-            driver: Box::pin(drive(child, editor, event_tx, command_rx)),
+            driver: Box::pin(drive(child, editors, event_tx, command_rx)),
         })
     }
 
@@ -154,6 +163,12 @@ impl AgentBackend for ClaudeBackend {
     }
 }
 
+/// What the driver edits itself rather than asking the CLI.
+struct Editors {
+    skills: SkillEditor,
+    rules: RuleFiles,
+}
+
 enum Input {
     Line(String),
     Command(SessionCommand),
@@ -165,7 +180,7 @@ enum Input {
 
 async fn drive(
     mut child: Child,
-    editor: SkillEditor,
+    editors: Editors,
     events: async_channel::Sender<AgentEvent>,
     commands: async_channel::Receiver<SessionCommand>,
 ) {
@@ -188,13 +203,12 @@ async fn drive(
         let mut written = write(&mut stdin, &outgoing::initialize()).await;
         while written.is_ok() {
             match inputs.next().await {
-                Some(Input::Line(line)) => send_all(&events, translator.on_line(&line)).await,
-                Some(Input::Command(SessionCommand::SetSkillState { name, state })) => {
-                    edit_skill(&editor, &translator, &events, name, state).await;
-                    written =
-                        forward(&mut stdin, &mut translator, SessionCommand::RefreshSkills).await;
+                Some(Input::Line(line)) => {
+                    let batch = translator.on_line(&line);
+                    send_all(&events, batch, &editors.rules).await;
                 }
                 Some(Input::Command(command)) => {
+                    let command = edit(&editors, &translator, &events, command).await;
                     written = forward(&mut stdin, &mut translator, command).await;
                 }
                 Some(Input::OwnerGone) => {
@@ -212,8 +226,29 @@ async fn drive(
     let _ = events.send(AgentEvent::Exited { error }).await;
 }
 
-/// Awaited inside the driver loop: the CLI's output waits in the pipe
-/// meanwhile, and an edit takes a moment.
+/// Runs the edit `command` asks for, if any, and returns what to send the
+/// CLI: a fresh listing after an edit, so the change shows. Awaited inside
+/// the driver loop: the CLI's output waits in the pipe meanwhile, and an
+/// edit takes a moment.
+async fn edit(
+    editors: &Editors,
+    translator: &Translator,
+    events: &async_channel::Sender<AgentEvent>,
+    command: SessionCommand,
+) -> SessionCommand {
+    match command {
+        SessionCommand::SetSkillState { name, state } => {
+            edit_skill(&editors.skills, translator, events, name, state).await;
+            SessionCommand::RefreshSkills
+        }
+        SessionCommand::RemoveRule(rule) => {
+            remove_rule(&editors.rules, events, rule).await;
+            SessionCommand::RefreshRules
+        }
+        command => command,
+    }
+}
+
 async fn edit_skill(
     editor: &SkillEditor,
     translator: &Translator,
@@ -228,6 +263,20 @@ async fn edit_skill(
     }
 }
 
+async fn remove_rule(
+    files: &RuleFiles,
+    events: &async_channel::Sender<AgentEvent>,
+    rule: PermissionRule,
+) {
+    if let Err(error) = files.remove(&rule) {
+        let event = AgentEvent::RuleRemovalFailed {
+            rule: rule.rule,
+            error: format!("{error:#}"),
+        };
+        let _ = events.send(event).await;
+    }
+}
+
 async fn forward(
     stdin: &mut ChildStdin,
     translator: &mut Translator,
@@ -239,8 +288,16 @@ async fn forward(
     }
 }
 
-async fn send_all(events: &async_channel::Sender<AgentEvent>, batch: Vec<AgentEvent>) {
+async fn send_all(
+    events: &async_channel::Sender<AgentEvent>,
+    batch: Vec<AgentEvent>,
+    rules: &RuleFiles,
+) {
     for event in batch {
+        let event = match event {
+            AgentEvent::Rules(listed) => AgentEvent::Rules(rules.still_kept(listed)),
+            event => event,
+        };
         let _ = events.send(event).await;
     }
 }

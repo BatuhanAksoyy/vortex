@@ -183,6 +183,7 @@ impl ChatView {
             self.sync_limit_timer(cx);
         }
         self.update_skills(&event, cx);
+        self.update_rules(&event, cx);
         let exited = matches!(event, AgentEvent::Exited { .. });
         let turn_ended = matches!(event, AgentEvent::TurnEnded(_));
         if event == AgentEvent::ConversationReset {

@@ -10,7 +10,8 @@ mod chat {
     use gpui_kit::TestAppContext;
     use gpui_kit::test::{TestQueryExt, TestWindowExt};
     use kiln_agent::{
-        AgentEvent, Decision, PermissionRequest, SessionCommand, ToolCall, TurnOutcome,
+        AgentEvent, Decision, PermissionRequest, Remember, RuleScope, SessionCommand, ToolCall,
+        TurnOutcome,
     };
     use kiln_chat::Status;
     use serde_json::json;
@@ -170,28 +171,38 @@ mod chat {
         harness.commands();
         harness.emit(cx, permission());
         harness.with_window(cx, |window, _| {
-            assert!(
-                window
-                    .try_find_by_label("Yes, and don't ask again")
-                    .is_none()
-            );
+            assert!(window.try_find("permission-always").is_none());
+            assert!(window.try_find("permission-rule").is_none());
         });
         harness.with_window(cx, |window, cx| window.press("1", cx));
-        let mut remembered = permission();
-        if let AgentEvent::PermissionRequest(request) = &mut remembered {
-            request.id = "req-2".into();
-            request.remember = Some(kiln_agent::Remember::Rule);
+        for (n, (option, scope)) in [
+            ("permission-session", RuleScope::Session),
+            ("permission-always", RuleScope::Project),
+            ("permission-everywhere", RuleScope::User),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut remembered = permission();
+            let id = format!("req-{n}");
+            if let AgentEvent::PermissionRequest(request) = &mut remembered {
+                request.id.clone_from(&id);
+                request.remember = Some(Remember::Rules(vec!["Bash(touch:*)".into()]));
+            }
+            harness.commands();
+            harness.emit(cx, remembered);
+            let rule =
+                harness.with_window(cx, |window, _| window.try_find("permission-rule").is_some());
+            assert!(rule, "the card names the rule it would keep");
+            harness.with_window(cx, |window, cx| window.click(option, cx));
+            assert_eq!(
+                harness.commands(),
+                [SessionCommand::Permission {
+                    request_id: id,
+                    decision: Decision::AllowAlways(scope),
+                }]
+            );
         }
-        harness.commands();
-        harness.emit(cx, remembered);
-        harness.with_window(cx, |window, cx| window.click("permission-always", cx));
-        assert_eq!(
-            harness.commands(),
-            [SessionCommand::Permission {
-                request_id: "req-2".into(),
-                decision: Decision::AllowAlways
-            }]
-        );
     }
 
     #[gpui_kit::test]

@@ -176,7 +176,9 @@ impl Transcript {
             | AgentEvent::Usage(_)
             | AgentEvent::CommandsChanged(_)
             | AgentEvent::Skills(_)
-            | AgentEvent::SkillStateFailed { .. } => Change::default(),
+            | AgentEvent::SkillStateFailed { .. }
+            | AgentEvent::Rules(_)
+            | AgentEvent::RuleRemovalFailed { .. } => Change::default(),
         }
     }
 

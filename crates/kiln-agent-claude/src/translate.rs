@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{
     ask,
     control::{self, Asked},
-    outgoing, skills, usage,
+    outgoing, rules, skills, usage,
     wire::{self, Line},
 };
 
@@ -74,8 +74,13 @@ impl Translator {
                 let id = self.ask("skills", Asked::Skills);
                 Some(outgoing::get_skills_dialog(&id))
             }
-            // Not a message: the driver runs the edit (see `skill_edit`).
-            SessionCommand::SetSkillState { .. } => None,
+            SessionCommand::RefreshRules => {
+                let id = self.ask("rules", Asked::Rules);
+                Some(outgoing::list_permission_rules(&id))
+            }
+            // Not messages: the driver runs these edits (see `skill_edit`
+            // and `RuleFiles`).
+            SessionCommand::SetSkillState { .. } | SessionCommand::RemoveRule(_) => None,
             SessionCommand::Permission {
                 request_id,
                 decision,
@@ -141,6 +146,7 @@ impl Translator {
                     self.skill_handles = listed.handles;
                     Some(AgentEvent::Skills(listed.skills))
                 }
+                Asked::Rules => rules::from_reply(response).map(AgentEvent::Rules),
                 asked => control::on_success(asked, response),
             },
             // Only changes the user asked for are worth showing as failed;
@@ -349,11 +355,29 @@ fn remember(suggestions: &[Value]) -> Option<(Remember, Value)> {
     };
     let rules = of_type("addRules");
     if !rules.is_empty() {
-        return Some((Remember::Rule, Value::Array(rules)));
+        let names = rules.iter().flat_map(rule_names).collect();
+        return Some((Remember::Rules(names), Value::Array(rules)));
     }
     let accept_edits: Vec<Value> = of_type("setMode")
         .into_iter()
         .filter(|suggestion| suggestion.get("mode").and_then(Value::as_str) == Some("acceptEdits"))
         .collect();
     (!accept_edits.is_empty()).then_some((Remember::AcceptEdits, Value::Array(accept_edits)))
+}
+
+/// The rules an `addRules` suggestion adds, written as settings files hold
+/// them: `Bash(npm test:*)`, or the bare tool name for a whole tool.
+fn rule_names(suggestion: &Value) -> Vec<String> {
+    let rules = suggestion.get("rules").and_then(Value::as_array);
+    rules
+        .into_iter()
+        .flatten()
+        .filter_map(|rule| {
+            let tool = rule.get("toolName").and_then(Value::as_str)?;
+            Some(match rule.get("ruleContent").and_then(Value::as_str) {
+                Some(content) => format!("{tool}({content})"),
+                None => tool.to_owned(),
+            })
+        })
+        .collect()
 }

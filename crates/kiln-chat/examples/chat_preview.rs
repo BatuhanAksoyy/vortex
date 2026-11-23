@@ -17,13 +17,19 @@ use gpui_kit::{
 };
 use kiln_accounts::Accounts;
 use kiln_agent::{
-    Account, AgentBackend, AgentEvent, BlockKey, ContextCategory, ContextKind, ContextUsage,
-    Limited, ModelOption, PermissionMode, PermissionRequest, Remember, Session, SessionCommand,
-    SessionInfo, SessionSpec, SignIn, Skill, SkillLock, SkillState, SlashCommand, ToolCall, Usage,
-    UsageWindow,
+    Account, AgentBackend, AgentEvent, BlockKey, Limited, ModelOption, PermissionMode,
+    PermissionRequest, Remember, Session, SessionCommand, SessionInfo, SessionSpec, SignIn,
+    ToolCall, Usage, UsageWindow,
 };
 use kiln_chat::ChatView;
 use serde_json::json;
+
+// A plain `data.rs` beside the example would be built as an example of its
+// own.
+#[path = "chat_preview/data.rs"]
+mod data;
+
+use data::{Settings, context, preview_commands};
 
 const THEMES: &str = include_str!("../../../assets/themes/kiln.json");
 const ROOT: &str = "/work/claude-cafe";
@@ -75,7 +81,7 @@ async fn play(
 ) {
     let _ = events.send(ready()).await;
     let mut script = Some(script);
-    let mut skills = preview_skills();
+    let mut settings = Settings::default();
     while let Ok(command) = commands.recv().await {
         let replies = match command {
             SessionCommand::Send(_) => script.take().unwrap_or_default(),
@@ -83,12 +89,8 @@ async fn play(
             SessionCommand::SetMode(mode) => vec![AgentEvent::ModeChanged(mode)],
             SessionCommand::SetModel(model) => vec![AgentEvent::ModelChanged(model)],
             SessionCommand::RefreshUsage => vec![AgentEvent::Usage(usage)],
-            SessionCommand::RefreshSkills => vec![AgentEvent::Skills(skills.clone())],
-            SessionCommand::SetSkillState { name, state } => {
-                set_skill_state(&mut skills, &name, state);
-                vec![AgentEvent::Skills(skills.clone())]
-            }
             SessionCommand::Permission { .. } | SessionCommand::Interrupt => Vec::new(),
+            command => settings.reply(command),
         };
         for event in replies {
             let _ = events.send(event).await;
@@ -135,71 +137,6 @@ fn ready() -> AgentEvent {
 }
 
 /// Context as the CLI breaks it down, deferred tools included.
-fn context() -> ContextUsage {
-    let category = |name: &str, tokens: u64, kind: ContextKind| ContextCategory {
-        name: name.into(),
-        tokens,
-        kind,
-    };
-    ContextUsage {
-        used_tokens: 41_200,
-        max_tokens: 200_000,
-        percent: Some(21),
-        categories: vec![
-            category("System prompt", 3_400, ContextKind::Used),
-            category("System tools", 2_400, ContextKind::Used),
-            category("System tools (deferred)", 19_200, ContextKind::Deferred),
-            category("Skills", 7_500, ContextKind::Used),
-            category("Messages", 27_900, ContextKind::Used),
-            category("Autocompact buffer", 33_000, ContextKind::Buffer),
-            category("Free space", 125_800, ContextKind::Free),
-        ],
-    }
-}
-
-/// Built-in commands as the CLI lists them, long hints included.
-fn preview_commands() -> Vec<SlashCommand> {
-    [
-        ("clear", "[name]", "Start a new session with empty context"),
-        (
-            "compact",
-            "<optional custom summarization instructions>",
-            "Free up context by summarizing the conversation so far",
-        ),
-        ("context", "", "Show current context usage"),
-        (
-            "release-notes",
-            "",
-            "Draft release notes from the merged changes",
-        ),
-        (
-            "docs:style-guide",
-            "",
-            "Check prose against the house style",
-        ),
-        (
-            "effort",
-            "<low|medium|high|xhigh|max|auto>",
-            "Set effort level for model usage",
-        ),
-        (
-            "code-review",
-            "[low|medium|high|xhigh|max|ultra] [--fix] [--comment]",
-            "Review the current diff for correctness bugs",
-        ),
-    ]
-    .into_iter()
-    .map(|(name, hint, description)| SlashCommand {
-        name: name.into(),
-        description: description.into(),
-        argument_hint: hint.into(),
-        aliases: Vec::new(),
-    })
-    .collect()
-}
-
-/// One skill per source, with one locked by its plugin and one turned off.
-/// A second account beside the default one, kept out of the user's list.
 fn preview_accounts() -> Accounts {
     let mut accounts = Accounts::empty(std::env::temp_dir().join("kiln-chat-preview"));
     let _ = accounts.add(kiln_accounts::Account {
@@ -208,34 +145,6 @@ fn preview_accounts() -> Accounts {
         plan: "Claude Max".into(),
     });
     accounts
-}
-
-fn preview_skills() -> Vec<Skill> {
-    let skill = |name: &str, source: &str, tokens: u64, state: SkillState| Skill {
-        name: name.into(),
-        display_name: name.rsplit(':').next().unwrap_or(name).into(),
-        description: String::new(),
-        source: source.into(),
-        tokens,
-        state,
-        locked_by: None,
-        advertised: state != SkillState::Off,
-    };
-    let mut plugin = skill("docs:style-guide", "plugin", 212, SkillState::On);
-    plugin.locked_by = Some(SkillLock::Plugin);
-    vec![
-        skill("code-review", "user", 148, SkillState::On),
-        skill("release-notes", "project", 64, SkillState::NameOnly),
-        plugin,
-        skill("draft-email", "user", 51, SkillState::Off),
-    ]
-}
-
-fn set_skill_state(skills: &mut [Skill], name: &str, state: SkillState) {
-    for skill in skills.iter_mut().filter(|skill| skill.name == name) {
-        skill.state = state;
-        skill.advertised = state != SkillState::Off;
-    }
 }
 
 fn usage(limited: bool) -> Usage {
@@ -325,10 +234,10 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
     if prompt {
         events.push(AgentEvent::PermissionRequest(PermissionRequest {
             id: "p1".into(),
-            tool: "Edit".into(),
-            input: json!({ "file_path": file }),
-            description: None,
-            remember: Some(Remember::AcceptEdits),
+            tool: "Bash".into(),
+            input: json!({ "command": "npm test -- formatDate" }),
+            description: Some("Run the date formatting tests".into()),
+            remember: Some(Remember::Rules(vec!["Bash(npm test:*)".into()])),
             questions: Vec::new(),
         }));
     }
@@ -391,6 +300,9 @@ fn main() {
                 log_error(&format!("cannot open the preview window: {error:#}"));
                 cx.quit();
             }
+            // Started from a terminal, the window opens behind it, and macOS
+            // stops drawing a covered window after its first frame.
+            cx.activate(true);
         });
 }
 

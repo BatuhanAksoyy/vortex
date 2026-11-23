@@ -42,6 +42,7 @@ impl ChatView {
             .child(self.mode_menu(&view))
             .children(self.model_menu(&view))
             .child(self.skills_button(cx))
+            .child(self.rules_button(cx))
             .child(div().flex_1())
             .children(self.context_meter(cx))
             .child(self.action_button(cx));

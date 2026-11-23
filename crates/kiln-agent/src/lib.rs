@@ -3,8 +3,13 @@
 //! never sees protocol details.
 
 mod past;
+mod permission;
 
 pub use past::{PastMessage, PastSession};
+pub use permission::{
+    Decision, PermissionRequest, PermissionRule, Question, QuestionOption, Remember, RuleBehavior,
+    RuleScope, RuleSource,
+};
 
 use std::{
     future::Future,
@@ -91,6 +96,11 @@ pub enum SessionCommand {
         name: String,
         state: SkillState,
     },
+    /// Asks for a fresh [`AgentEvent::Rules`].
+    RefreshRules,
+    /// Takes a rule out of the settings file it is kept in; a fresh
+    /// [`AgentEvent::Rules`] or an [`AgentEvent::RuleRemovalFailed`] follows.
+    RemoveRule(PermissionRule),
 }
 
 /// How much the agent may do without asking.
@@ -264,29 +274,6 @@ pub enum SkillLock {
     ReservedName,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Decision {
-    Allow,
-    /// Allow, and stop asking for calls like this one (see [`Remember`]).
-    AllowAlways,
-    /// Deny; `feedback` tells the agent what to do instead.
-    Deny {
-        feedback: Option<String>,
-    },
-    /// Answer the request's [`questions`](PermissionRequest::questions): one
-    /// answer each, in order. Several choices are joined with ", ".
-    Answer(Vec<String>),
-}
-
-/// What [`Decision::AllowAlways`] would remember, when the agent offers it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Remember {
-    /// A permission rule for this kind of call, saved in project settings.
-    Rule,
-    /// Accept file edits without asking for the rest of the session.
-    AcceptEdits,
-}
-
 /// Identifies one streamed content block, so consecutive deltas can be
 /// appended to the same transcript entry.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -335,6 +322,13 @@ pub enum AgentEvent {
         name: String,
         error: String,
     },
+    /// The permission rules in effect, from every source.
+    Rules(Vec<PermissionRule>),
+    /// Removing the rule failed; the message says why.
+    RuleRemovalFailed {
+        rule: String,
+        error: String,
+    },
     /// The agent started over with an empty conversation, e.g. on `/clear`.
     ConversationReset,
     TurnEnded(TurnOutcome),
@@ -351,36 +345,6 @@ pub struct ToolCall {
     pub parent: Option<String>,
     pub name: String,
     pub input: Value,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct PermissionRequest {
-    pub id: String,
-    pub tool: String,
-    pub input: Value,
-    pub description: Option<String>,
-    pub remember: Option<Remember>,
-    /// Set when the agent asks the user questions rather than for
-    /// permission; answered with [`Decision::Answer`].
-    pub questions: Vec<Question>,
-}
-
-/// A question the agent asks, with options to choose from. The user may
-/// also answer in their own words.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Question {
-    pub text: String,
-    /// A short label for the question, e.g. "Color".
-    pub header: String,
-    pub options: Vec<QuestionOption>,
-    /// Whether several options may be chosen.
-    pub multi_select: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct QuestionOption {
-    pub label: String,
-    pub description: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
