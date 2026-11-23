@@ -218,7 +218,9 @@ impl ChatView {
                 self.remember_usage(cx);
                 self.sync_limit_timer(cx);
             }
-            AgentEvent::PromptTokens(_) => self.sync_cache_timer(cx),
+            AgentEvent::PromptTokens(_) | AgentEvent::PastPromptTokens { .. } => {
+                self.sync_cache_timer(cx);
+            }
             _ => {}
         }
     }

@@ -198,6 +198,26 @@ mod composer {
     }
 
     #[gpui_kit::test]
+    fn a_reopened_chat_knows_its_cache_expired(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(
+            cx,
+            AgentEvent::PastPromptTokens {
+                tokens: PromptTokens {
+                    cached: 20_000,
+                    written: 100,
+                    uncached: 2,
+                    kept_for: Some(Duration::from_hours(1)),
+                },
+                at: std::time::SystemTime::now() - Duration::from_hours(2),
+            },
+        );
+        harness.with_window(cx, |window, _| {
+            assert!(window.find_by_label("Cache expired").visible());
+        });
+    }
+
+    #[gpui_kit::test]
     fn shift_tab_in_the_composer_cycles_the_mode(cx: &mut TestAppContext) {
         let harness = Harness::new(cx);
         harness.emit(cx, ready());

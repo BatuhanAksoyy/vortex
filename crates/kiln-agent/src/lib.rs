@@ -324,6 +324,12 @@ pub enum AgentEvent {
     /// A model request of the conversation started; how its prompt was
     /// read. Subagents' requests are not reported.
     PromptTokens(PromptTokens),
+    /// The last request of the conversation a session resumes, as the agent
+    /// stored it, so the prompt cache shows before anything is sent.
+    PastPromptTokens {
+        tokens: PromptTokens,
+        at: SystemTime,
+    },
     ContextUsage(ContextUsage),
     /// Usage limits, both when asked for and as the agent reports them
     /// during a turn.

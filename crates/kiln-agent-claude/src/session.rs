@@ -102,6 +102,10 @@ impl AgentBackend for ClaudeBackend {
                 command.arg("--fork-session");
             }
         }
+        let resumed = spec
+            .resume
+            .clone()
+            .map(|id| (self.project_dirs(&spec.cwd), id));
         let editor = CliEditor {
             program: self.program.clone(),
             cwd: spec.cwd.clone(),
@@ -126,7 +130,12 @@ impl AgentBackend for ClaudeBackend {
         Ok(Session {
             events,
             commands,
-            driver: Box::pin(drive(child, editor, event_tx, command_rx)),
+            driver: Box::pin(async move {
+                if let Some((dirs, id)) = resumed {
+                    recall_cache(&event_tx, &dirs, &id).await;
+                }
+                drive(child, editor, event_tx, command_rx).await;
+            }),
         })
     }
 
@@ -209,6 +218,16 @@ async fn drive(
     let ((), stderr_tail) = futures::future::join(session, stderr_tail).await;
     let error = exit_error(&mut child, &stderr_tail).await;
     let _ = events.send(AgentEvent::Exited { error }).await;
+}
+
+/// Reports how the resumed conversation's last request was cached. Read in
+/// the driver, off the UI thread: a long conversation's file is large.
+async fn recall_cache(events: &async_channel::Sender<AgentEvent>, dirs: &[PathBuf], id: &str) {
+    if let Some((tokens, at)) = history::last_prompt_tokens(dirs, id) {
+        let _ = events
+            .send(AgentEvent::PastPromptTokens { tokens, at })
+            .await;
+    }
 }
 
 /// Runs the edit `command` asks for, if any, and returns what to send the

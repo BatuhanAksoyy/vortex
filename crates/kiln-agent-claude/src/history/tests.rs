@@ -147,7 +147,7 @@ fn sessions_are_listed_newest_first() {
         .collect();
     assert_eq!(listed[0], ("new", "newer"), "no message time: the file's");
     assert_eq!(listed.len(), 3, "{listed:?}");
-    let last_message: jiff::Timestamp = "2026-11-23T08:36:26.102Z".parse().unwrap();
+    let last_message: jiff::Timestamp = "2026-11-23T14:42:26.958Z".parse().unwrap();
     let reopened = sessions.iter().find(|s| s.id == "reopened").unwrap();
     assert_eq!(reopened.updated_at, SystemTime::from(last_message));
     assert_eq!(
@@ -191,4 +191,26 @@ fn a_conversation_open_in_a_live_process_is_open_elsewhere() {
         "Kiln's own process"
     );
     assert!(!RUNNING.contains("/Users/") && !RUNNING.contains('@'));
+}
+
+#[test]
+fn the_last_request_tells_how_the_prompt_cache_was_left() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("old.jsonl"), STORED).unwrap();
+    let (tokens, at) = last_prompt_tokens(&[dir.path().to_owned()], "old").unwrap();
+    assert_eq!(
+        tokens,
+        kiln_agent::PromptTokens {
+            cached: 23_879,
+            written: 81,
+            uncached: 2,
+            kept_for: Some(std::time::Duration::from_hours(1)),
+        }
+    );
+    let replied: jiff::Timestamp = "2026-11-23T14:42:26.958Z".parse().unwrap();
+    assert_eq!(at, SystemTime::from(replied));
+    assert_eq!(
+        last_prompt_tokens(&[dir.path().to_owned()], "missing"),
+        None
+    );
 }

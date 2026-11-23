@@ -2,6 +2,7 @@
 //! `<session id>.jsonl` per conversation, listed the way the VS Code
 //! extension lists them.
 
+mod cache;
 mod messages;
 mod running;
 
@@ -16,6 +17,7 @@ use anyhow::Context as _;
 use kiln_agent::{PastMessage, PastSession};
 use serde_json::Value;
 
+pub use cache::last_prompt_tokens;
 pub use messages::messages;
 pub use running::open_elsewhere;
 
@@ -100,14 +102,17 @@ pub fn list(dirs: &[PathBuf]) -> anyhow::Result<Vec<PastSession>> {
 
 /// The messages of conversation `id`, from the first of `dirs` that has it.
 pub fn read(dirs: &[PathBuf], id: &str) -> anyhow::Result<Vec<PastMessage>> {
+    Ok(messages(&stored(dirs, id)?))
+}
+
+/// The file of conversation `id`, from the first of `dirs` that has it.
+fn stored(dirs: &[PathBuf], id: &str) -> anyhow::Result<String> {
     let path = dirs
         .iter()
         .map(|dir| dir.join(format!("{id}.jsonl")))
         .find(|path| path.is_file())
         .with_context(|| format!("no stored conversation {id}"))?;
-    let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("cannot read {}", path.display()))?;
-    Ok(messages(&text))
+    std::fs::read_to_string(&path).with_context(|| format!("cannot read {}", path.display()))
 }
 
 fn listed(path: &Path) -> Option<PastSession> {

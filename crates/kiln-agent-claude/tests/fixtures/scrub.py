@@ -163,7 +163,7 @@ SESSION_KEEP = ("type", "subtype", "uuid", "parentUuid", "logicalParentUuid", "i
                 "isMeta", "isCompactSummary", "sessionId", "timestamp", "message", "attachment",
                 "lastPrompt", "leafUuid", "operation", "content", "aiTitle", "customTitle",
                 "entrypoint", "version")
-MESSAGE_KEEP = ("id", "type", "role", "model", "content")
+MESSAGE_KEEP = ("id", "type", "role", "model", "content", "usage")
 
 
 # The CLI's record of a running process (capture.py running). The socket

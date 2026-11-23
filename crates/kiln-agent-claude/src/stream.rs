@@ -42,7 +42,7 @@ fn delta_event(block: BlockKey, delta: wire::Delta) -> Option<AgentEvent> {
     }
 }
 
-fn prompt_tokens(usage: &wire::PromptUsage) -> PromptTokens {
+pub fn prompt_tokens(usage: &wire::PromptUsage) -> PromptTokens {
     let written = &usage.cache_creation;
     let kept_for = if written.ephemeral_1h_input_tokens > 0 {
         Some(Duration::from_hours(1))

@@ -202,6 +202,7 @@ impl Transcript {
             | AgentEvent::ModeChanged(_)
             | AgentEvent::EffortChanged(_)
             | AgentEvent::PromptTokens(_)
+            | AgentEvent::PastPromptTokens { .. }
             | AgentEvent::ContextUsage(_)
             | AgentEvent::Usage(_)
             | AgentEvent::CommandsChanged(_)

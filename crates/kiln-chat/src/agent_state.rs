@@ -74,11 +74,22 @@ impl AgentState {
             }
             AgentEvent::ModeChanged(mode) => self.mode = Some(*mode),
             AgentEvent::EffortChanged(effort) => self.effort = *effort,
-            AgentEvent::PromptTokens(tokens) => self.cache.record(*tokens, SystemTime::now()),
+            AgentEvent::PromptTokens(_) | AgentEvent::PastPromptTokens { .. } => {
+                self.record_cache(event);
+            }
             AgentEvent::ContextUsage(usage) => self.context = Some(usage.clone()),
             _ => return false,
         }
         true
+    }
+
+    /// A request that started now, or one the resumed conversation stored.
+    fn record_cache(&mut self, event: &AgentEvent) {
+        match event {
+            AgentEvent::PromptTokens(tokens) => self.cache.record(*tokens, SystemTime::now()),
+            AgentEvent::PastPromptTokens { tokens, at } => self.cache.record(*tokens, *at),
+            _ => {}
+        }
     }
 
     /// What to ask the agent for after `event`, to keep the composer and
