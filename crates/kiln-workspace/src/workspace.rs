@@ -19,20 +19,20 @@ use gpui_kit::{
 };
 use kiln_accounts::Accounts;
 use kiln_agent::AgentBackend;
-use kiln_chat::ChatView;
+use kiln_chat::{ChatEvent, ChatView};
 use kiln_project::ListOptions;
 
 use crate::{
     commands::ActiveWorkspace,
     config,
     editor_pane::EditorPane,
-    file_tree::{FileTree, FileTreeEvent},
+    session_list::{SessionList, SessionListEvent},
 };
 
 mod actions;
 
-/// Project tree, flat file list, and whether the listing hit the entry limit.
-type Scan = (Vec<kiln_project::TreeNode>, Arc<[PathBuf]>, bool);
+/// The project's files, and whether the listing hit the entry limit.
+type Scan = (Arc<[PathBuf]>, bool);
 
 const MAX_PROJECT_ENTRIES: usize = 100_000;
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(150);
@@ -44,7 +44,7 @@ pub struct Workspace {
     /// Starts the agent behind the chat; injected so tests run no real CLI.
     backend: Rc<dyn AgentBackend>,
     accounts: Entity<Accounts>,
-    file_tree: Entity<FileTree>,
+    sessions: Entity<SessionList>,
     editor_pane: Entity<EditorPane>,
     chat: Entity<ChatView>,
     files: Arc<[PathBuf]>,
@@ -71,17 +71,14 @@ impl Workspace {
             workspace,
         });
         cx.on_release(|_, cx| cx.quit()).detach();
-        let file_tree = cx.new(FileTree::new);
+        let sessions = cx.new(|_| SessionList::default());
         let editor_pane = cx.new(EditorPane::new);
         let chat = new_chat(root.clone(), backend.clone(), accounts.clone(), window, cx);
         let subscriptions = vec![
-            cx.subscribe_in(
-                &file_tree,
-                window,
-                |this, _, event, window, cx| match event {
-                    FileTreeEvent::Open(relative) => this.open_relative(relative, window, cx),
-                },
-            ),
+            cx.subscribe_in(&sessions, window, Self::on_session_list),
+            cx.subscribe(&chat, |this, chat, event, cx| {
+                this.on_chat(&chat, *event, cx);
+            }),
             cx.observe_window_appearance(window, |_, window, cx| {
                 if config::settings(cx).theme.mode == kiln_settings::ThemeMode::System {
                     gpui_kit::component::Theme::sync_system_appearance(Some(window), cx);
@@ -95,7 +92,7 @@ impl Workspace {
             root,
             backend,
             accounts,
-            file_tree,
+            sessions,
             editor_pane,
             chat,
             files: Arc::from([]),
@@ -121,6 +118,39 @@ impl Workspace {
         let watch = self.watch_config(window, cx);
         let _previous = self.config_watch.replace(watch);
         self.scan_files(window, cx);
+        self.reload_sessions(cx);
+    }
+
+    fn on_session_list(
+        &mut self,
+        _: &Entity<SessionList>,
+        event: &SessionListEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.chat.update(cx, |chat, cx| match event {
+            SessionListEvent::New => chat.new_conversation(window, cx),
+            SessionListEvent::Open { id, open_elsewhere } => {
+                chat.open_session(id, *open_elsewhere, window, cx);
+            }
+        });
+    }
+
+    fn on_chat(&mut self, chat: &Entity<ChatView>, event: ChatEvent, cx: &mut Context<Self>) {
+        let chat = chat.read(cx);
+        let current = chat.session_id().map(str::to_owned);
+        let busy = chat.status() == kiln_chat::Status::Running;
+        self.sessions
+            .update(cx, |sessions, cx| sessions.set_current(current, busy, cx));
+        if event == ChatEvent::SessionChanged {
+            self.reload_sessions(cx);
+        }
+    }
+
+    fn reload_sessions(&mut self, cx: &mut Context<Self>) {
+        let listing = self.backend.past_sessions(&self.root);
+        self.sessions
+            .update(cx, |sessions, cx| sessions.reload(listing, cx));
     }
 
     fn reload_config(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -163,9 +193,8 @@ impl Workspace {
         };
         let scan = cx.background_spawn(async move {
             kiln_project::list_files(&root, &options).map(|list| {
-                let tree = kiln_project::build_tree(&list);
                 let files: Arc<[PathBuf]> = list.files().map(Path::to_path_buf).collect();
-                (tree, files, list.truncated)
+                (files, list.truncated)
             })
         });
         cx.spawn_in(window, async move |this, cx| {
@@ -193,10 +222,8 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         match result {
-            Ok((tree, files, truncated)) => {
+            Ok((files, truncated)) => {
                 self.files = files;
-                self.file_tree
-                    .update(cx, |tree_view, cx| tree_view.set_nodes(&tree, cx));
                 if truncated {
                     let message = format!("Showing the first {MAX_PROJECT_ENTRIES} entries.");
                     window.push_notification(Notification::info(message), cx);
@@ -216,7 +243,7 @@ impl Workspace {
                 this.child(
                     resizable_panel()
                         .size(rem * SIDEBAR_WIDTH_REMS)
-                        .child(self.file_tree.clone()),
+                        .child(self.sessions.clone()),
                 )
             })
             .child(resizable_panel().child(self.chat.clone()))

@@ -45,7 +45,7 @@ pub fn on_timeline(entry: &Entry) -> bool {
 
 pub fn render(entry: &Entry, context: &EntryContext, cx: &App) -> AnyElement {
     match entry {
-        Entry::User(text) => user(text, cx),
+        Entry::User(text) => user(text, context, cx),
         Entry::Notice { text, is_error } => notice(text, *is_error, context.id, cx),
         Entry::Text { text, .. } => {
             let body = TextView::markdown(("text", context.id), text.clone()).selectable(true);
@@ -87,20 +87,56 @@ pub fn timeline_row(dot: Hsla, context: &EntryContext, cx: &App) -> Div {
         )
 }
 
-fn user(text: &str, cx: &App) -> AnyElement {
+/// A long message, such as a pasted document, shows its first lines until
+/// expanded, so it cannot fill the panel.
+const USER_PREVIEW_LINES: usize = 8;
+
+fn user(text: &str, context: &EntryContext, cx: &App) -> AnyElement {
     let theme = cx.theme();
+    let lines = text.lines().count();
+    let long = lines > USER_PREVIEW_LINES;
+    let shown = if long && !context.toggled {
+        text.lines()
+            .take(USER_PREVIEW_LINES)
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        text.to_owned()
+    };
+    let more = long.then(|| {
+        let label = if context.toggled {
+            "Show less".to_owned()
+        } else {
+            format!("Show all {lines} lines")
+        };
+        div()
+            .id(("user-more", context.id))
+            .test_support()
+            .aria_label(SharedString::from(label.clone()))
+            .pt_1()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .cursor_pointer()
+            .child(label)
+            .on_click(toggle(context))
+    });
     h_flex()
+        .id(("user", context.id))
+        .test_support()
+        .aria_label(SharedString::from(text.to_owned()))
         .pb_3()
         .child(
-            div()
+            v_flex()
                 .max_w_full()
+                .min_w_0()
                 .px_3()
                 .py_1p5()
                 .rounded(theme.radius * 1.5)
                 .border_1()
                 .border_color(theme.border)
                 .bg(theme.secondary)
-                .child(text.to_owned()),
+                .child(shown)
+                .children(more),
         )
         .into_any_element()
 }

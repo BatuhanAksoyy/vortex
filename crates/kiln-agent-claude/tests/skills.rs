@@ -128,6 +128,7 @@ mod live {
             model: None,
             mode: None,
             resume: None,
+            fork: false,
         };
         let kiln_agent::Session {
             events,

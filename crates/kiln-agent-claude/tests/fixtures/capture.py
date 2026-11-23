@@ -3,7 +3,7 @@
 
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
-        | questions | skills | resume | login
+        | questions | skills | resume | login | history | running
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -33,6 +33,12 @@ the id the resumed process reports.
 of its own (`./credentials`, so the usual login is not touched), prints the
 sign-in URL and waits until the sign-in in the browser completes. Run it from
 a plain terminal, not from inside Claude Code.
+"history" runs two tiny turns in a process that saves its session, the first
+reading a file with the Read tool, then copies the session file the CLI
+wrote. Its lines are the stored conversation, not stream-json records.
+"running" sends no prompt, so it spends no usage: it starts a process and
+copies the record the CLI keeps of it under `<config>/sessions/` while it
+runs, which tells other clients the conversation is open.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -97,6 +103,76 @@ def first_session():
     return session_id
 
 
+def history():
+    """Runs two turns that save their session; copies the session file."""
+    with open("note.txt", "w") as note:
+        note.write("lantern\n")
+    turns = [
+        "Read the file note.txt with the Read tool, then reply with its first word only.",
+        "Reply with the single word done.",
+    ]
+    proc = subprocess.Popen(BASE, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, env=env, text=True, bufsize=1)
+
+    def write(obj):
+        proc.stdin.write(json.dumps(obj) + "\n")
+        proc.stdin.flush()
+
+    write({"type": "control_request", "request_id": "init-1",
+           "request": {"subtype": "initialize", "hooks": None}})
+    session_id = None
+    for turn in turns:
+        write({"type": "user", "message": {"role": "user", "content": turn},
+               "parent_tool_use_id": None, "session_id": ""})
+        for line in proc.stdout:
+            msg = json.loads(line)
+            if msg.get("type") == "system" and msg.get("subtype") == "init":
+                session_id = msg["session_id"]
+            if msg.get("type") == "control_request":
+                request = msg["request"]
+                write({"type": "control_response", "response": {
+                    "subtype": "success", "request_id": msg["request_id"],
+                    "response": {"behavior": "allow", "updatedInput": request.get("input", {})}}})
+            if msg.get("type") == "result":
+                break
+    proc.stdin.close()
+    proc.wait(timeout=30)
+    config = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    projects = os.path.join(config, "projects")
+    for project in os.listdir(projects):
+        path = os.path.join(projects, project, f"{session_id}.jsonl")
+        if os.path.exists(path):
+            with open(path) as stored, open(out_path, "w") as out:
+                out.write(stored.read())
+            print(f"Copied {path}")
+            return
+    sys.exit(f"no session file for {session_id}")
+
+
+def running():
+    """Copies the CLI's record of a running process."""
+    proc = subprocess.Popen(BASE, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, env=env, text=True, bufsize=1)
+    proc.stdin.write(json.dumps({"type": "control_request", "request_id": "initialize",
+                                 "request": {"subtype": "initialize", "hooks": None}}) + "\n")
+    proc.stdin.flush()
+    for line in proc.stdout:
+        if json.loads(line).get("type") == "control_response":
+            break
+    config = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    record = os.path.join(config, "sessions", f"{proc.pid}.json")
+    with open(record) as kept, open(out_path, "w") as out:
+        out.write(kept.read().strip() + "\n")
+    proc.stdin.close()
+    proc.wait(timeout=30)
+
+
+if case == "history":
+    history()
+    sys.exit(0)
+if case == "running":
+    running()
+    sys.exit(0)
 resumed = first_session() if case == "resume" else None
 proc = subprocess.Popen(
     BASE + ["--no-session-persistence"]

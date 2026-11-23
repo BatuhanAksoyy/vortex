@@ -15,5 +15,5 @@ mod tool_format;
 mod transcript;
 
 pub use assets::Assets;
-pub use chat_view::ChatView;
+pub use chat_view::{ChatEvent, ChatView};
 pub use transcript::Status;

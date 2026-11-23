@@ -38,6 +38,7 @@ mod resume {
                 model: None,
                 mode: None,
                 resume,
+                fork: false,
             })
             .unwrap();
         let driver = std::thread::spawn(move || futures::executor::block_on(driver));

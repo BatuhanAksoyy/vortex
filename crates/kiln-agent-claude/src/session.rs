@@ -1,4 +1,8 @@
-use std::path::PathBuf;
+use std::{
+    cell::RefCell,
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Context as _;
 use async_process::{Child, ChildStdin, Command, Stdio};
@@ -7,11 +11,12 @@ use futures::{
     stream,
 };
 use kiln_agent::{
-    AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec, SignIn, SkillState,
+    AgentBackend, AgentEvent, PastMessage, PastSession, Pending, Session, SessionCommand,
+    SessionSpec, SignIn, SkillState,
 };
 use serde_json::Value;
 
-use crate::{control, outgoing, sign_in, skills::SkillEditor, translate::Translator};
+use crate::{control, history, outgoing, sign_in, skills::SkillEditor, translate::Translator};
 
 pub(crate) const ARGS: &[&str] = &[
     "-p",
@@ -46,13 +51,35 @@ const STDERR_TAIL_BYTES: usize = 4096;
 
 pub struct ClaudeBackend {
     program: PathBuf,
+    /// Where the CLI stores conversations; `None` when there is no home
+    /// directory to find it in.
+    config: Option<PathBuf>,
+    /// The processes this backend started, which keep the CLI's record of
+    /// an open conversation too but are not another client.
+    children: RefCell<HashSet<u32>>,
 }
 
 impl ClaudeBackend {
     pub fn new(program: impl Into<PathBuf>) -> Self {
         Self {
             program: program.into(),
+            config: history::config_dir(),
+            children: RefCell::default(),
         }
+    }
+
+    /// Reads stored conversations from `config` instead of the CLI's own
+    /// directory.
+    #[must_use]
+    pub fn with_config_dir(mut self, config: PathBuf) -> Self {
+        self.config = Some(config);
+        self
+    }
+
+    fn project_dirs(&self, cwd: &Path) -> Vec<PathBuf> {
+        self.config
+            .as_deref()
+            .map_or_else(Vec::new, |config| history::project_dirs(config, cwd))
     }
 }
 
@@ -68,6 +95,9 @@ impl AgentBackend for ClaudeBackend {
         }
         if let Some(session_id) = &spec.resume {
             command.args(["--resume", session_id]);
+            if spec.fork {
+                command.arg("--fork-session");
+            }
         }
         let editor = SkillEditor {
             program: self.program.clone(),
@@ -87,6 +117,7 @@ impl AgentBackend for ClaudeBackend {
         let child = command
             .spawn()
             .with_context(|| format!("cannot start {}", self.program.display()))?;
+        self.children.borrow_mut().insert(child.id());
         let (event_tx, events) = async_channel::unbounded();
         let (commands, command_rx) = async_channel::unbounded();
         Ok(Session {
@@ -94,6 +125,28 @@ impl AgentBackend for ClaudeBackend {
             commands,
             driver: Box::pin(drive(child, editor, event_tx, command_rx)),
         })
+    }
+
+    fn past_sessions(&self, cwd: &Path) -> Pending<Vec<PastSession>> {
+        let dirs = self.project_dirs(cwd);
+        let config = self.config.clone();
+        let own = self.children.borrow().clone();
+        Box::pin(async move {
+            let mut sessions = history::list(&dirs)?;
+            let open = config.map_or_else(Default::default, |config| {
+                history::open_elsewhere(&config, &own)
+            });
+            for session in &mut sessions {
+                session.open_elsewhere = open.contains(&session.id);
+            }
+            Ok(sessions)
+        })
+    }
+
+    fn past_messages(&self, cwd: &Path, session_id: &str) -> Pending<Vec<PastMessage>> {
+        let dirs = self.project_dirs(cwd);
+        let session_id = session_id.to_owned();
+        Box::pin(async move { history::read(&dirs, &session_id) })
     }
 
     fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn> {

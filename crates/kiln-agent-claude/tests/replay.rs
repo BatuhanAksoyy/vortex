@@ -206,6 +206,7 @@ mod replay {
                 model: None,
                 mode: None,
                 resume: None,
+                fork: false,
             })
             .unwrap()
     }
@@ -312,6 +313,7 @@ mod live {
             model: Some("haiku".into()),
             mode: None,
             resume: None,
+            fork: false,
         };
         let kiln_agent::Session {
             events,

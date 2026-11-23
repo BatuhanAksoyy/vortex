@@ -134,7 +134,8 @@ impl ChatView {
                 .map_or_else(Vec::new, |id| self.accounts.read(cx).env(id)),
             model: self.agent.chosen_model().map(str::to_owned),
             mode: self.agent.start_mode(),
-            resume: self.session_id.clone(),
+            resume: self.conversation.as_ref().map(|stored| stored.id.clone()),
+            fork: self.conversation.as_ref().is_some_and(|stored| stored.fork),
         })?;
         let events = session.events;
         let events_task = cx.spawn_in(window, async move |this, cx| {
@@ -151,6 +152,22 @@ impl ChatView {
         })
     }
 
+    /// Keeps the id the agent stores the conversation under. A turn's end
+    /// is when the CLI has saved the conversation again.
+    fn follow_session(&mut self, event: &AgentEvent, cx: &mut Context<Self>) {
+        match event {
+            AgentEvent::Started { session_id, .. } => {
+                self.conversation = Some(super::Conversation {
+                    id: session_id.clone(),
+                    fork: false,
+                });
+            }
+            AgentEvent::TurnEnded(_) => {}
+            _ => return,
+        }
+        cx.emit(super::ChatEvent::SessionChanged);
+    }
+
     fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
         for command in AgentState::refreshes_after(&event) {
             if *command != SessionCommand::RefreshUsage || self.asks_usage() {
@@ -160,9 +177,7 @@ impl ChatView {
         if self.agent.apply(&event) {
             cx.notify();
         }
-        if let AgentEvent::Started { session_id, .. } = &event {
-            self.session_id = Some(session_id.clone());
-        }
+        self.follow_session(&event, cx);
         if matches!(event, AgentEvent::Usage(_)) {
             self.sync_limit_timer(cx);
         }

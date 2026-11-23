@@ -6,6 +6,10 @@ usage: scrub.py <raw.jsonl> <fixture.jsonl>
 Drops lines that only carry the capturing user's environment (hooks, the full
 command catalogue), shortens long lists and signatures, and replaces paths and
 identifiers with stable placeholders so replays are deterministic.
+
+A stored session file (capture.py history) is scrubbed line by line too: the
+API request records go, attachments keep only their type, which still links
+the conversation's chain, and messages keep what a reopened chat shows.
 """
 import getpass, json, re, sys
 
@@ -151,11 +155,47 @@ class Placeholders:
         return re.sub(uuid, lambda m: self.stable(m.group(0), "id"), text)
 
 
+# Request payloads (system prompt, memory, tools) and bookkeeping of the
+# capturing machine.
+SESSION_DROP = {"api-request", "api-request-blob", "api-request-shape", "atis-latch",
+                "tools-used", "cost-state", "file-history-snapshot", "file-history-delta"}
+SESSION_KEEP = ("type", "subtype", "uuid", "parentUuid", "logicalParentUuid", "isSidechain",
+                "isMeta", "isCompactSummary", "sessionId", "timestamp", "message", "attachment",
+                "lastPrompt", "leafUuid", "operation", "content", "aiTitle", "customTitle",
+                "entrypoint", "version")
+MESSAGE_KEEP = ("id", "type", "role", "model", "content")
+
+
+# The CLI's record of a running process (capture.py running). The socket
+# path and process start describe the capturing machine.
+RUNNING_KEEP = ("pid", "sessionId", "cwd", "startedAt", "version", "kind", "entrypoint",
+                "status", "updatedAt")
+
+
+def session_line(line):
+    """A stored session's line, or None to drop it."""
+    if "pid" in line and "sessionId" in line:
+        return {k: line[k] for k in RUNNING_KEEP if k in line}
+    if line.get("type") in SESSION_DROP:
+        return None
+    kept = {k: line[k] for k in SESSION_KEEP if k in line}
+    if isinstance(kept.get("attachment"), dict):
+        kept["attachment"] = {"type": kept["attachment"].get("type")}
+    if isinstance(kept.get("message"), dict):
+        kept["message"] = {k: kept["message"][k] for k in MESSAGE_KEEP if k in kept["message"]}
+    return kept
+
+
 def main(raw_path, out_path):
     placeholders = Placeholders()
     with open(raw_path) as raw, open(out_path, "w") as out:
         for line in raw:
             record = json.loads(line)
+            if "dir" not in record:
+                record = session_line(record)
+                if record is not None:
+                    out.write(placeholders.scrub(json.dumps(record, ensure_ascii=False)) + "\n")
+                continue
             if not keep(record):
                 continue
             record["msg"] = shrink(record["msg"])

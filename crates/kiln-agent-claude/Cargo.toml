@@ -17,6 +17,9 @@ log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 # Replays a captured fixture in place of the real CLI, for process-level tests.
 [[bin]]
 name = "fake-claude"

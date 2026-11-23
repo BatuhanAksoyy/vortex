@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 futures.workspace = true
+jiff.workspace = true
 gpui-kit.workspace = true
 kiln-accounts.workspace = true
 kiln-agent.workspace = true
@@ -19,6 +20,7 @@ kiln-settings.workspace = true
 log.workspace = true
 
 [dev-dependencies]
+async-channel.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 

@@ -24,6 +24,21 @@ mod workspace {
         fn sign_in(&self, _: Vec<(String, String)>) -> anyhow::Result<kiln_agent::SignIn> {
             anyhow::bail!("no agent in workspace tests")
         }
+
+        fn past_sessions(
+            &self,
+            _: &std::path::Path,
+        ) -> kiln_agent::Pending<Vec<kiln_agent::PastSession>> {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+
+        fn past_messages(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+        ) -> kiln_agent::Pending<Vec<kiln_agent::PastMessage>> {
+            Box::pin(async { anyhow::bail!("no stored conversations in workspace tests") })
+        }
     }
 
     /// Workspace tests add no account, so the list is never written.
@@ -132,13 +147,13 @@ mod workspace {
         let dir = project();
         let (window, _) = open_workspace(cx, dir.path().to_path_buf());
         let window = window.into();
-        assert!(has(cx, window, "file-tree"));
+        assert!(has(cx, window, "session-list"));
 
         press(cx, window, "ctrl-shift-p");
-        type_text(cx, window, "Toggle File Tree");
+        type_text(cx, window, "Toggle Sidebar");
         press(cx, window, "enter");
 
-        assert!(!has(cx, window, "file-tree"));
+        assert!(!has(cx, window, "session-list"));
     }
 
     #[gpui_kit::test]

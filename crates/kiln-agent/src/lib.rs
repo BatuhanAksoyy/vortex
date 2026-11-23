@@ -2,7 +2,16 @@
 //! `kiln-agent-codex`) translates its own protocol into these types, so the UI
 //! never sees protocol details.
 
-use std::{future::Future, path::PathBuf, pin::Pin, time::SystemTime};
+mod past;
+
+pub use past::{PastMessage, PastSession};
+
+use std::{
+    future::Future,
+    path::{Path, PathBuf},
+    pin::Pin,
+    time::SystemTime,
+};
 
 use serde_json::Value;
 
@@ -19,6 +28,9 @@ pub struct SessionSpec {
     /// A session to continue, by the id `AgentEvent::Started` reported;
     /// `None` starts a new conversation.
     pub resume: Option<String>,
+    /// Continues `resume` as a new conversation of its own, leaving the
+    /// stored one as it was.
+    pub fork: bool,
 }
 
 pub trait AgentBackend {
@@ -27,14 +39,25 @@ pub trait AgentBackend {
     /// Signs an account in to the credential store `env` points at. The user
     /// finishes in the browser, on the page `SignIn::url` hands out.
     fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn>;
+
+    /// The conversations the agent stored for `cwd`, most recently active
+    /// first. Reads files; poll it on a background executor.
+    fn past_sessions(&self, cwd: &Path) -> Pending<Vec<PastSession>>;
+
+    /// The messages of stored conversation `session_id`, oldest first, as a
+    /// reopened chat shows them.
+    fn past_messages(&self, cwd: &Path, session_id: &str) -> Pending<Vec<PastMessage>>;
 }
+
+/// Work a backend hands out to be polled, typically on a background executor.
+pub type Pending<T> = Pin<Box<dyn Future<Output = anyhow::Result<T>> + Send>>;
 
 /// A sign-in in progress. Dropping `done` cancels it.
 pub struct SignIn {
     /// The page to sign in on, sent once the agent has it.
     pub url: async_channel::Receiver<String>,
     /// Ends with the account signed in; the owner must poll it.
-    pub done: Pin<Box<dyn Future<Output = anyhow::Result<Account>> + Send>>,
+    pub done: Pending<Account>,
 }
 
 /// A running session. The owner must poll `driver` (typically on a

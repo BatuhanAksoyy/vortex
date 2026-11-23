@@ -6,6 +6,7 @@
 
 mod ask;
 mod control;
+mod history;
 mod outgoing;
 mod session;
 mod sign_in;

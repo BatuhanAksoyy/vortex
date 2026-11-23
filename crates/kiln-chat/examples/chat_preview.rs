@@ -48,6 +48,21 @@ impl AgentBackend for ScriptedBackend {
     fn sign_in(&self, _: Vec<(String, String)>) -> anyhow::Result<SignIn> {
         anyhow::bail!("the preview cannot sign in")
     }
+
+    fn past_sessions(
+        &self,
+        _: &std::path::Path,
+    ) -> kiln_agent::Pending<Vec<kiln_agent::PastSession>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn past_messages(
+        &self,
+        _: &std::path::Path,
+        _: &str,
+    ) -> kiln_agent::Pending<Vec<kiln_agent::PastMessage>> {
+        Box::pin(async { anyhow::bail!("the preview stores no conversations") })
+    }
 }
 
 /// Plays the turn on the first message and answers the composer's requests

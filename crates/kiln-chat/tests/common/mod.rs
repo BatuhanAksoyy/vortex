@@ -1,6 +1,6 @@
 //! A chat panel in a test window, driven through a scripted backend.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, path::Path, rc::Rc};
 
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
@@ -8,7 +8,10 @@ use gpui_kit::{
     size,
 };
 use kiln_accounts::Accounts;
-use kiln_agent::{Account, AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec, SignIn};
+use kiln_agent::{
+    Account, AgentBackend, AgentEvent, PastMessage, PastSession, Pending, Session, SessionCommand,
+    SessionSpec, SignIn,
+};
 use kiln_chat::{ChatView, Status};
 
 /// The test's ends of the most recently spawned session.
@@ -19,6 +22,8 @@ pub struct Script {
     pub spawned: usize,
     pub last_spec: Option<SessionSpec>,
     pub sign_in: Option<ScriptedSignIn>,
+    /// Stored conversations, by id, that `past_messages` hands out.
+    pub stored: Vec<(String, Vec<PastMessage>)>,
 }
 
 /// The test's ends of the latest sign-in: the page to send, the result to
@@ -45,6 +50,20 @@ impl AgentBackend for FakeBackend {
             commands,
             driver: Box::pin(async {}),
         })
+    }
+
+    fn past_sessions(&self, _: &Path) -> Pending<Vec<PastSession>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn past_messages(&self, _: &Path, session_id: &str) -> Pending<Vec<PastMessage>> {
+        let script = self.0.borrow();
+        let stored = script
+            .stored
+            .iter()
+            .find(|(id, _)| id == session_id)
+            .map(|(_, messages)| messages.clone());
+        Box::pin(async move { stored.ok_or_else(|| anyhow::anyhow!("no stored conversation")) })
     }
 
     fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn> {

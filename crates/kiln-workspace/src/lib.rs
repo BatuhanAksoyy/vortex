@@ -1,12 +1,12 @@
-//! The Kiln window: layout, file tree, editor tabs, pickers, and the commands
-//! that drive them.
+//! The Kiln window: layout, the session list, editor tabs, pickers, and the
+//! commands that drive them.
 
 mod appearance;
 mod commands;
 mod config;
 mod editor_pane;
-mod file_tree;
 mod pickers;
+mod session_list;
 mod workspace;
 
 use gpui_kit::App;

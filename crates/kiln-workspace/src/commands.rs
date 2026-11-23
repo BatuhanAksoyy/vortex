@@ -54,7 +54,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     }),
     spec(
         "workbench.action.toggleSidebarVisibility",
-        "Toggle File Tree",
+        "Toggle Sidebar",
         || Box::new(ToggleSidebar),
     ),
     spec(

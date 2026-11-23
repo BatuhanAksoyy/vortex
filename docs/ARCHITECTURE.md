@@ -67,7 +67,7 @@ kiln/
 │   ├── kiln-settings/      JSONC katmanlı ayarlar, hot-reload
 │   ├── kiln-keymap/        VSCode keybindings.json formatı
 │   ├── kiln-project/       dosya listeleme (gitignore), dil tespiti, bulanık arama
-│   ├── kiln-workspace/     GPUI: pencere yerleşimi, dosya ağacı, editör, paletler
+│   ├── kiln-workspace/     GPUI: pencere yerleşimi, oturum listesi, editör, paletler
 │   ├── kiln-agent/         AgentBackend trait'i, oturum aktörü, izin motoru
 │   ├── kiln-agent-claude/  stream-json + control protokolü
 │   ├── kiln-agent-codex/   app-server JSON-RPC (şemadan üretilmiş tipler)
@@ -110,7 +110,13 @@ pub struct SessionHandle {
 - Protokoller resmi olarak kararlı değil: her backend kendi crate'inde izole, gerçek çalıştırmalardan alınmış fixture'larla sözleşme testi var, açılışta CLI sürümü kontrol edilir ve desteklenen aralık dışındaysa uyarı verilir.
 - Codex tipleri kurulu sürümün şemasından üretilir ve repoya commit'lenir.
 
-**Oturum kalıcılığı:** Kiln kendi indeksini SQLite'ta tutar (oturum, proje, hesap, ajan, worktree, başlık). Ham olay günlüğü oturum başına JSONL. Devam ettirme: Claude `--resume <id>`, Codex thread resume.
+**Oturum geçmişi:** Kiln kendi indeksini tutmaz; CLI'nin sakladığı konuşmaları okur. Claude her konuşmayı `<config>/projects/<cwd>/<oturum id>.jsonl` olarak yazar (`<config>` `CLAUDE_CONFIG_DIR` ya da `~/.claude`; dizin adı yoldaki harf ve rakam dışı her karakterin `-` olmasıyla oluşur). Yalnızca bu klasörün yerel geçmişi gösterilir.
+- Sol panel Claude Desktop'taki gibi: "New session" ve en son etkin olan üstte oturumlar. Liste VS Code eklentisinin kurallarıyla kurulur: her dosyanın baştan ve sondan 64 KB'ı okunur; başlık sırasıyla kullanıcının verdiği başlık (`custom-title`), CLI'nin yazdığı (`ai-title`), son istem (`last-prompt`), ilk istem. Subagent konuşmaları listelenmez.
+- Bir oturum açılınca mesajları dosyadan okunur ve süreç `--resume <id>` ile başlar. Dosyadaki satırlar `parentUuid` ile bir ağaç kurar (önceki bir mesajı düzenlemek yeni dal açar); gösterilen konuşma son mesajda biten daldır, sıkıştırma sınırı `logicalParentUuid` ile aşılır. Tur sürerken başka oturum açılmaz.
+- Sıralama son mesajın zaman damgasına göredir, dosyanın değişme zamanına göre değil: açılan süreç daha mesaj yazılmadan dosyaya kayıt ekler.
+- Başka bir istemcide açık konuşma: CLI çalışırken `<config>/sessions/<pid>.json`'da hangi konuşmayı açtığını tutar. Süreci yaşayan ve Kiln'in kendi süreci olmayan bir kayıt, konuşmayı listede "Open" olarak işaretler. Kiln onu açınca `--resume <id> --fork-session` ile bir kopyasını sürdürür; iki süreç aynı dosyaya yazıp konuşmaları karıştırmaz.
+- Claude Code'a yapıştırılan metin `<pasted_content>` içinde saklanır; geçmişte etiketsiz gösterilir. Sekiz satırdan uzun kullanıcı mesajı katlanmış gelir, "Show all N lines" ile açılır.
+- Codex: thread resume, sonra.
 
 **Uyku modu (kaynak tasarrufu):** Kiln'in kendisi hafiftir; RAM'in çoğunu CLI süreçleri harcar. Belirli bir süre boşta kalan oturumun süreci kapatılır, sıradaki mesajda `--resume` ile şeffafça geri açılır. Süre ayarlanabilir.
 
@@ -205,7 +211,7 @@ pub struct SessionHandle {
 ## 11. Editör ve görüntüleyici
 
 - gpui-kit kod editörü, LSP kapalı, tree-sitter renklendirme. Düzenleme açık ama arayüz okuma öncelikli.
-- Dosya ağacı (`ignore` ile gitignore'a uyumlu), hızlı dosya açma (`nucleo`), proje araması (ripgrep kütüphaneleri `grep-searcher`), satıra git, markdown ve görsel önizleme.
+- Hızlı dosya açma (`ignore` ile gitignore'a uyumlu liste, `nucleo`), proje araması (ripgrep kütüphaneleri `grep-searcher`), satıra git, markdown ve görsel önizleme.
 - Dosya değişince (`notify`) otomatik yeniden yükleme ve HEAD'e göre değişen satır işaretleri.
 - Diller: gpui-kit highlighter'ın getirdikleri + gerekirse eklenen grammar crate'leri (S4).
 

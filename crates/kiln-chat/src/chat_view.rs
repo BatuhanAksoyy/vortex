@@ -6,6 +6,7 @@ mod accounts_panel;
 mod composer;
 mod context_panel;
 mod header;
+mod history;
 mod layout;
 mod menu_keys;
 mod native;
@@ -36,6 +37,8 @@ use crate::{
     transcript::{Change, Status, Transcript},
 };
 use accounts::AccountsPanel;
+pub use history::ChatEvent;
+use history::Conversation;
 use native::ModelPicker;
 use slash_menu::SlashMenu;
 
@@ -70,9 +73,11 @@ pub struct ChatView {
     /// Entries the user toggled away from their default expansion.
     toggled: HashSet<u64>,
     session: Option<LiveSession>,
-    /// The conversation's id as the agent last reported it; a process
-    /// started after the last one ended resumes it.
-    session_id: Option<String>,
+    /// The stored conversation shown; a process started after the last one
+    /// ended resumes it.
+    conversation: Option<Conversation>,
+    /// Reads a reopened conversation's messages.
+    history_load: Option<Task<()>>,
     agent: AgentState,
     /// Transcript rows plus one trailing row for the spinner.
     scroller: Entity<MessageScrollerState>,
@@ -102,13 +107,7 @@ impl ChatView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let composer = cx.new(|cx| {
-            let mut state = TextareaState::new(window, cx)
-                .auto_grow(1, COMPOSER_MAX_ROWS)
-                .placeholder("Ask Claude to edit, explain or run something…");
-            state.set_submit_on_enter(true, cx);
-            state
-        });
+        let composer = new_composer(window, cx);
         let subscription =
             cx.subscribe_in(
                 &composer,
@@ -144,7 +143,8 @@ impl ChatView {
             transcript: Transcript::default(),
             toggled: HashSet::new(),
             session: None,
-            session_id: None,
+            conversation: None,
+            history_load: None,
             agent: AgentState::default(),
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             composer,
@@ -201,6 +201,7 @@ impl ChatView {
         };
         let change = self.transcript.push_user(text.clone());
         self.apply_change(change, cx);
+        cx.emit(ChatEvent::TurnStarted);
         commands.try_send(SessionCommand::Send(text)).is_ok()
     }
 
@@ -212,7 +213,8 @@ impl ChatView {
     /// Ends the session and starts over with an empty transcript.
     pub fn new_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.session = None;
-        self.session_id = None;
+        self.conversation = None;
+        self.history_load = None;
         self.transcript = Transcript::default();
         self.toggled.clear();
         self.agent.reset_context();
@@ -223,6 +225,7 @@ impl ChatView {
         self.ensure_session(window, cx);
         let focus = self.composer.read(cx).focus_handle(cx);
         window.focus(&focus, cx);
+        cx.emit(ChatEvent::SessionChanged);
         cx.notify();
     }
 
@@ -340,6 +343,16 @@ impl ChatView {
             alive = this.update(cx, Self::next_spinner_frame).is_ok();
         }
     }
+}
+
+fn new_composer(window: &mut Window, cx: &mut Context<ChatView>) -> Entity<TextareaState> {
+    cx.new(|cx| {
+        let mut state = TextareaState::new(window, cx)
+            .auto_grow(1, COMPOSER_MAX_ROWS)
+            .placeholder("Ask Claude to edit, explain or run something…");
+        state.set_submit_on_enter(true, cx);
+        state
+    })
 }
 
 impl Focusable for ChatView {

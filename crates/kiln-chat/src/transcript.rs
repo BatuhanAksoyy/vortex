@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use kiln_agent::{AgentEvent, BlockKey, PermissionRequest, ToolCall, TurnOutcome};
+use kiln_agent::{AgentEvent, BlockKey, PastMessage, PermissionRequest, ToolCall, TurnOutcome};
 
 /// Stable identity of an entry, used for element ids and expansion state.
 pub type EntryId = u64;
@@ -76,10 +76,11 @@ impl Transcript {
         self.status
     }
 
-    /// The conversation's name: its first message.
+    /// The conversation's name: its first message's first line, so a pasted
+    /// document does not fill the title bar.
     pub fn title(&self) -> Option<&str> {
         self.entries.iter().find_map(|(_, entry)| match entry {
-            Entry::User(text) => Some(text.as_str()),
+            Entry::User(text) => text.lines().map(str::trim).find(|line| !line.is_empty()),
             _ => None,
         })
     }
@@ -98,6 +99,29 @@ impl Transcript {
             text,
             is_error: false,
         })
+    }
+
+    pub fn push_error(&mut self, text: String) -> Change {
+        self.push(Entry::Notice {
+            text,
+            is_error: true,
+        })
+    }
+
+    /// Starts over with a stored conversation; nothing is running.
+    pub fn restore(&mut self, messages: Vec<PastMessage>) {
+        self.clear();
+        for message in messages {
+            match message {
+                PastMessage::User(text) => {
+                    self.push(Entry::User(text));
+                }
+                PastMessage::Agent(event) => {
+                    self.apply(event);
+                }
+            }
+        }
+        self.status = Status::Idle;
     }
 
     pub fn push_user(&mut self, text: String) -> Change {
@@ -239,133 +263,4 @@ impl Transcript {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn block(index: u64) -> BlockKey {
-        BlockKey {
-            message_id: "m1".into(),
-            index,
-        }
-    }
-
-    fn text(index: u64, text: &str) -> AgentEvent {
-        AgentEvent::TextDelta {
-            block: block(index),
-            text: text.into(),
-        }
-    }
-
-    fn call(id: &str) -> AgentEvent {
-        AgentEvent::ToolCall(ToolCall {
-            id: id.into(),
-            parent: None,
-            name: "Bash".into(),
-            input: json!({ "command": "ls" }),
-        })
-    }
-
-    fn permission(id: &str) -> AgentEvent {
-        AgentEvent::PermissionRequest(PermissionRequest {
-            id: id.into(),
-            tool: "Bash".into(),
-            input: json!({}),
-            description: None,
-            remember: None,
-            questions: Vec::new(),
-        })
-    }
-
-    #[test]
-    fn deltas_of_one_block_extend_one_entry() {
-        let mut transcript = Transcript::default();
-        assert_eq!(transcript.apply(text(0, "Hel")).appended, 1);
-        assert_eq!(transcript.apply(text(0, "lo")).updated, Some(0));
-        assert_eq!(transcript.apply(text(1, "Next")).appended, 1);
-        assert_eq!(transcript.len(), 2);
-        assert!(
-            matches!(transcript.entry(0), Some((_, Entry::Text { text, .. })) if text == "Hello")
-        );
-    }
-
-    #[test]
-    fn tool_result_updates_its_call_even_after_other_entries() {
-        let mut transcript = Transcript::default();
-        transcript.apply(call("t1"));
-        transcript.apply(text(2, "working"));
-        let result = AgentEvent::ToolResult {
-            id: "t1".into(),
-            output: "a\nb".into(),
-            is_error: false,
-        };
-        assert_eq!(
-            transcript.apply(result),
-            Change {
-                updated: Some(0),
-                appended: 0
-            }
-        );
-        assert!(
-            matches!(transcript.entry(0), Some((_, Entry::Tool { result: Some(r), .. })) if r.output == "a\nb")
-        );
-    }
-
-    #[test]
-    fn permissions_queue_and_are_answered_once() {
-        let mut transcript = Transcript::default();
-        transcript.apply(permission("p1"));
-        transcript.apply(permission("p2"));
-        assert_eq!(transcript.len(), 0, "permissions are not transcript rows");
-        assert_eq!(
-            transcript.pending_permission().map(|r| r.id.as_str()),
-            Some("p1")
-        );
-        assert!(transcript.take_permission("p1").is_some());
-        assert!(transcript.take_permission("p1").is_none());
-        assert_eq!(
-            transcript.pending_permission().map(|r| r.id.as_str()),
-            Some("p2")
-        );
-    }
-
-    #[test]
-    fn unanswered_permissions_expire_with_the_turn() {
-        let mut transcript = Transcript::default();
-        transcript.apply(permission("p1"));
-        transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
-        assert!(transcript.pending_permission().is_none());
-        transcript.apply(permission("p2"));
-        transcript.apply(AgentEvent::Exited { error: None });
-        assert!(transcript.pending_permission().is_none());
-    }
-
-    #[test]
-    fn a_reset_empties_the_transcript_but_the_turn_goes_on() {
-        let mut transcript = Transcript::default();
-        transcript.push_user("/clear".into());
-        transcript.apply(call("t1"));
-        transcript.apply(AgentEvent::ConversationReset);
-        assert_eq!(transcript.len(), 0);
-        assert_eq!(transcript.status(), Status::Running);
-        transcript.push_user("next".into());
-        assert_eq!(transcript.title(), Some("next"));
-    }
-
-    #[test]
-    fn status_follows_the_turn_and_the_process() {
-        let mut transcript = Transcript::default();
-        assert_eq!(transcript.status(), Status::Idle);
-        transcript.push_user("hi".into());
-        assert_eq!(transcript.status(), Status::Running);
-        transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
-        assert_eq!(transcript.status(), Status::Idle);
-        transcript.apply(AgentEvent::Exited {
-            error: Some("boom".into()),
-        });
-        assert_eq!(transcript.status(), Status::Ended);
-        assert!(
-            matches!(transcript.entry(2), Some((_, Entry::Notice { is_error: true, text })) if text.contains("boom"))
-        );
-    }
-}
+mod tests;
