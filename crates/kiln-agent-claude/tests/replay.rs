@@ -13,7 +13,7 @@ mod replay {
     };
     use kiln_agent_claude::{ClaudeBackend, Translator};
 
-    const FIXTURES: [&str; 11] = [
+    const FIXTURES: [&str; 12] = [
         "allow",
         "deny",
         "interrupt",
@@ -25,6 +25,7 @@ mod replay {
         "ask",
         "questions",
         "skills",
+        "resume",
     ];
 
     fn translate(name: &str) -> Vec<AgentEvent> {
@@ -204,6 +205,7 @@ mod replay {
                 )],
                 model: None,
                 mode: None,
+                resume: None,
             })
             .unwrap()
     }
@@ -309,6 +311,7 @@ mod live {
             env: Vec::new(),
             model: Some("haiku".into()),
             mode: None,
+            resume: None,
         };
         let kiln_agent::Session {
             events,

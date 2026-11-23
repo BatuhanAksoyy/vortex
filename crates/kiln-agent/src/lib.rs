@@ -16,6 +16,9 @@ pub struct SessionSpec {
     pub model: Option<String>,
     /// Permission mode to start in; `None` keeps the agent's default.
     pub mode: Option<PermissionMode>,
+    /// A session to continue, by the id `AgentEvent::Started` reported;
+    /// `None` starts a new conversation.
+    pub resume: Option<String>,
 }
 
 pub trait AgentBackend {

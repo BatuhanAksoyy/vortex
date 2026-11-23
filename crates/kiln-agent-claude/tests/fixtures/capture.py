@@ -3,7 +3,7 @@
 
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
-        | questions | skills
+        | questions | skills | resume
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -25,6 +25,10 @@ answers; it is answered with two options joined by ", " and with free text
 that matches no option, as the "Other" field would send.
 "skills" sends no prompt, so it spends no usage: it writes two project skills,
 one turned off in the local settings, and asks for the /skills menu's rows.
+"resume" runs two tiny turns: one in a first process, which saves its
+session, then one in a second process started with `--resume`, which is the
+one recorded. A "note" record holds the first session's id, to compare with
+the id the resumed process reports.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -43,6 +47,7 @@ PROMPTS = {
     "commands": "/effort low",
     "questions": "Call the AskUserQuestion tool once with two questions. First: 'Which fruits do you like?' with header 'Fruits', multiSelect true, options Apple, Banana, Cherry. Second: 'Which city do you prefer?' with header 'City', multiSelect false, options Paris, Rome. After I answer, reply with only my answers, separated by a semicolon.",
     "ask": "Use the AskUserQuestion tool to ask me which color I prefer, with exactly two options: Red and Blue. After I answer, reply with only the color I chose.",
+    "resume": "What word did I ask you to remember? Reply with that word only.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -55,16 +60,49 @@ if case == "skills":
     with open(".claude/settings.local.json", "w") as settings:
         json.dump({"skillOverrides": {"kiln-hidden": "off"}}, settings)
 env = {k: v for k, v in os.environ.items() if k not in STRIP}
+BASE = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
+        "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio",
+        "--model", "haiku"]
+
+
+def first_session():
+    """Runs one turn in a process that saves its session; returns its id."""
+    lines = [
+        {"type": "control_request", "request_id": "init-1",
+         "request": {"subtype": "initialize", "hooks": None}},
+        {"type": "user", "message": {"role": "user",
+                                     "content": "Remember the word marigold. Reply with the single word ok."},
+         "parent_tool_use_id": None, "session_id": ""},
+    ]
+    first = subprocess.Popen(BASE, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, env=env, text=True, bufsize=1)
+    for line in lines:
+        first.stdin.write(json.dumps(line) + "\n")
+    first.stdin.flush()
+    session_id = None
+    for line in first.stdout:
+        msg = json.loads(line)
+        if msg.get("type") == "system" and msg.get("subtype") == "init":
+            session_id = msg["session_id"]
+        if msg.get("type") == "result":
+            break
+    first.stdin.close()
+    first.wait(timeout=30)
+    return session_id
+
+
+resumed = first_session() if case == "resume" else None
 proc = subprocess.Popen(
-    ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
-     "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio",
-     "--model", "haiku", "--no-session-persistence"]
-    + (["--permission-mode", "plan"] if case == "plan" else []),
+    BASE + ["--no-session-persistence"]
+    + (["--permission-mode", "plan"] if case == "plan" else [])
+    + (["--resume", resumed] if resumed else []),
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     env=env, text=True, bufsize=1,
 )
 log = open(out_path, "w")
 lock = threading.Lock()
+if resumed:
+    log.write(json.dumps({"dir": "note", "msg": {"resumed": resumed}}) + "\n")
 
 
 def record(direction, obj):

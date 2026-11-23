@@ -121,6 +121,7 @@ impl ChatView {
             env: Vec::new(),
             model: self.agent.chosen_model().map(str::to_owned),
             mode: self.agent.start_mode(),
+            resume: self.session_id.clone(),
         })?;
         let events = session.events;
         let events_task = cx.spawn_in(window, async move |this, cx| {
@@ -143,6 +144,9 @@ impl ChatView {
         }
         if self.agent.apply(&event) {
             cx.notify();
+        }
+        if let AgentEvent::Started { session_id, .. } = &event {
+            self.session_id = Some(session_id.clone());
         }
         if matches!(event, AgentEvent::Usage(_)) {
             self.sync_limit_timer(cx);

@@ -60,6 +60,9 @@ pub struct ChatView {
     /// Entries the user toggled away from their default expansion.
     toggled: HashSet<u64>,
     session: Option<LiveSession>,
+    /// The conversation's id as the agent last reported it; a process
+    /// started after the last one ended resumes it.
+    session_id: Option<String>,
     agent: AgentState,
     /// Transcript rows plus one trailing row for the spinner.
     scroller: Entity<MessageScrollerState>,
@@ -118,6 +121,7 @@ impl ChatView {
             transcript: Transcript::default(),
             toggled: HashSet::new(),
             session: None,
+            session_id: None,
             agent: AgentState::default(),
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             composer,
@@ -185,6 +189,7 @@ impl ChatView {
     /// Ends the session and starts over with an empty transcript.
     pub fn new_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.session = None;
+        self.session_id = None;
         self.transcript = Transcript::default();
         self.toggled.clear();
         self.agent.reset_context();

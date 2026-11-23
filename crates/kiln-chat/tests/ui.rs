@@ -198,10 +198,12 @@ mod chat {
     fn new_conversation_starts_a_fresh_process(cx: &mut TestAppContext) {
         let harness = Harness::new(cx);
         harness.type_and_send(cx, "one");
+        harness.emit(cx, started("s-1"));
         harness.with_window(cx, |window, cx| window.click("chat-new", cx));
         assert_eq!(harness.status(cx), Status::Idle);
         harness.type_and_send(cx, "two");
         assert_eq!(harness.script.borrow().spawned, 2);
+        assert_eq!(resumed(&harness), None, "a new conversation");
         assert_eq!(harness.commands(), [SessionCommand::Send("two".into())]);
     }
 
@@ -215,9 +217,10 @@ mod chat {
     }
 
     #[gpui_kit::test]
-    fn a_new_process_starts_after_the_previous_one_exits(cx: &mut TestAppContext) {
+    fn a_new_process_resumes_after_the_previous_one_exits(cx: &mut TestAppContext) {
         let harness = Harness::new(cx);
         harness.type_and_send(cx, "one");
+        harness.emit(cx, started("s-1"));
         harness.emit(
             cx,
             AgentEvent::Exited {
@@ -227,6 +230,23 @@ mod chat {
         assert_eq!(harness.status(cx), Status::Ended);
         harness.type_and_send(cx, "two");
         assert_eq!(harness.script.borrow().spawned, 2);
+        assert_eq!(resumed(&harness).as_deref(), Some("s-1"));
         assert_eq!(harness.commands(), [SessionCommand::Send("two".into())]);
+    }
+
+    fn started(session_id: &str) -> AgentEvent {
+        AgentEvent::Started {
+            session_id: session_id.into(),
+            model: "claude-opus-5-5".into(),
+        }
+    }
+
+    /// The session the last process was started to continue.
+    fn resumed(harness: &Harness) -> Option<String> {
+        let script = harness.script.borrow();
+        script
+            .last_spec
+            .as_ref()
+            .and_then(|spec| spec.resume.clone())
     }
 }

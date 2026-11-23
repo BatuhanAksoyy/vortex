@@ -2,6 +2,7 @@
 //! `KILN_FAKE_CLAUDE_FIXTURE`: recorded output lines are printed, and at each
 //! recorded input line it reads one line from stdin and checks that it has
 //! the same shape. A mismatch exits with status 3 and a message on stderr.
+//! A recorded resume must be matched by `--resume` with the same session id.
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -31,10 +32,28 @@ fn run() -> Result<(), String> {
                 stdout.flush().map_err(|e| e.to_string())?;
             }
             Some("in") => expect_input(&mut stdin, &record["msg"])?,
+            Some("note") => expect_resume(&record["msg"])?,
             _ => {}
         }
     }
     Ok(())
+}
+
+/// A recording of a resumed session is replayed only for a process started
+/// to resume that session.
+fn expect_resume(note: &Value) -> Result<(), String> {
+    let Some(session_id) = note["resumed"].as_str() else {
+        return Ok(());
+    };
+    let args: Vec<String> = std::env::args().collect();
+    if args
+        .windows(2)
+        .any(|pair| pair[0] == "--resume" && pair[1] == session_id)
+    {
+        Ok(())
+    } else {
+        Err(format!("expected --resume {session_id}, got {args:?}"))
+    }
 }
 
 fn expect_input(stdin: &mut impl std::io::BufRead, expected: &Value) -> Result<(), String> {

@@ -127,6 +127,7 @@ mod live {
             env: Vec::new(),
             model: None,
             mode: None,
+            resume: None,
         };
         let kiln_agent::Session {
             events,

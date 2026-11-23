@@ -64,6 +64,9 @@ impl AgentBackend for ClaudeBackend {
         if let Some(mode) = spec.mode {
             command.args(["--permission-mode", control::mode_name(mode)]);
         }
+        if let Some(session_id) = &spec.resume {
+            command.args(["--resume", session_id]);
+        }
         let editor = SkillEditor {
             program: self.program.clone(),
             cwd: spec.cwd.clone(),
