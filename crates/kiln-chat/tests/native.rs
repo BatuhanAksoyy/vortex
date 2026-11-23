@@ -23,6 +23,7 @@ mod native {
             resolved: resolved.into(),
             name: name.into(),
             description: format!("{name} for tests"),
+            efforts: Vec::new(),
         };
         let command = |name: &str| SlashCommand {
             name: name.into(),

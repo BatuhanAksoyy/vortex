@@ -1,4 +1,5 @@
-//! The composer's strip: model and mode menus, context meter, Shift+Tab.
+//! The composer's strip: model, mode and effort menus, context meter and
+//! prompt cache, Shift+Tab.
 
 // Inside a `cfg(test)` module so helpers may `expect`, like unit tests.
 #[cfg(test)]
@@ -8,9 +9,11 @@ mod common;
 mod composer {
     use gpui_kit::TestAppContext;
     use gpui_kit::test::{TestQueryExt, TestWindowExt};
+    use std::time::Duration;
+
     use kiln_agent::{
-        AgentEvent, ContextUsage, ModelOption, PermissionMode, SessionCommand, SessionInfo,
-        TurnOutcome,
+        AgentEvent, ContextUsage, Effort, ModelOption, PermissionMode, PromptTokens,
+        SessionCommand, SessionInfo, TurnOutcome,
     };
     use kiln_chat::Status;
 
@@ -22,6 +25,7 @@ mod composer {
             resolved: resolved.into(),
             name: name.into(),
             description: format!("{name} for tests"),
+            efforts: vec![Effort::Low, Effort::High, Effort::Max],
         };
         AgentEvent::Ready(SessionInfo {
             models: vec![
@@ -49,7 +53,11 @@ mod composer {
         harness.emit(cx, started());
         assert_eq!(
             harness.commands(),
-            [SessionCommand::RefreshContext, SessionCommand::RefreshUsage]
+            [
+                SessionCommand::RefreshContext,
+                SessionCommand::RefreshUsage,
+                SessionCommand::RefreshEffort
+            ]
         );
         harness.emit(
             cx,
@@ -71,7 +79,8 @@ mod composer {
             [
                 SessionCommand::Send("hi".into()),
                 SessionCommand::RefreshContext,
-                SessionCommand::RefreshUsage
+                SessionCommand::RefreshUsage,
+                SessionCommand::RefreshEffort
             ]
         );
     }
@@ -97,7 +106,13 @@ mod composer {
             [SessionCommand::SetModel("sonnet".into())]
         );
         harness.emit(cx, AgentEvent::ModelChanged("claude-sonnet-5-5".into()));
-        assert_eq!(harness.commands(), [SessionCommand::RefreshContext]);
+        assert_eq!(
+            harness.commands(),
+            [
+                SessionCommand::RefreshContext,
+                SessionCommand::RefreshEffort
+            ]
+        );
         harness.with_window(cx, |window, _| {
             assert!(window.find_by_label("Sonnet 5.5").visible());
         });
@@ -121,6 +136,68 @@ mod composer {
     }
 
     #[gpui_kit::test]
+    fn the_effort_menu_offers_the_models_efforts(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.emit(cx, started());
+        assert!(
+            !harness.with_window(cx, |window, _| window.try_find("chat-effort").is_some()),
+            "hidden until the agent names the effort"
+        );
+        harness.emit(cx, AgentEvent::EffortChanged(Some(Effort::High)));
+        harness.commands();
+        harness.with_window(cx, |window, cx| window.click("chat-effort", cx));
+        harness.with_window(cx, |window, _| {
+            assert!(window.find("chat-effort-Max").visible());
+            assert!(window.try_find("chat-effort-Medium").is_none());
+        });
+        harness.with_window(cx, |window, cx| window.click("chat-effort-Max", cx));
+        assert_eq!(harness.commands(), [SessionCommand::SetEffort(Effort::Max)]);
+        harness.emit(cx, AgentEvent::EffortChanged(Some(Effort::Max)));
+        harness.with_window(cx, |window, _| {
+            assert!(window.find_by_label("Max").visible());
+        });
+        harness.emit(cx, AgentEvent::EffortChanged(None));
+        assert!(
+            !harness.with_window(cx, |window, _| window.try_find("chat-effort").is_some()),
+            "a model that takes no effort hides it"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_cache_button_tells_how_the_prompt_was_cached(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.emit(cx, started());
+        harness.with_window(cx, |window, cx| window.click("chat-cache", cx));
+        harness.with_window(cx, |window, _| {
+            assert!(window.find("chat-cache-empty").visible());
+        });
+        harness.with_window(cx, |window, cx| window.click("chat-cache", cx));
+        harness.emit(
+            cx,
+            AgentEvent::PromptTokens(PromptTokens {
+                cached: 38_520,
+                written: 6_662,
+                uncached: 2,
+                kept_for: Some(Duration::from_hours(1)),
+            }),
+        );
+        harness.with_window(cx, |window, cx| window.click("chat-cache", cx));
+        harness.with_window(cx, |window, _| {
+            assert!(window.find("chat-cache-panel").visible());
+            let status = window.find("chat-cache-status");
+            assert!(
+                status
+                    .label()
+                    .is_some_and(|label| label.starts_with("Warm until")),
+                "{:?}",
+                status.label()
+            );
+        });
+    }
+
+    #[gpui_kit::test]
     fn shift_tab_in_the_composer_cycles_the_mode(cx: &mut TestAppContext) {
         let harness = Harness::new(cx);
         harness.emit(cx, ready());
@@ -134,22 +211,27 @@ mod composer {
     }
 
     #[gpui_kit::test]
-    fn a_new_process_keeps_the_chosen_model_and_mode(cx: &mut TestAppContext) {
+    fn a_new_process_keeps_the_chosen_model_mode_and_effort(cx: &mut TestAppContext) {
         let harness = Harness::new(cx);
         let spec = |harness: &Harness| {
             let script = harness.script.borrow();
             let spec = script.last_spec.as_ref().expect("spawned");
-            (spec.model.clone(), spec.mode)
+            (spec.model.clone(), spec.mode, spec.effort)
         };
-        assert_eq!(spec(&harness), (None, None));
+        assert_eq!(spec(&harness), (None, None, None));
         harness.emit(cx, ready());
         harness.with_window(cx, |window, cx| window.click("chat-model", cx));
         harness.with_window(cx, |window, cx| window.click("chat-model-sonnet", cx));
         harness.emit(cx, AgentEvent::ModeChanged(PermissionMode::Plan));
+        harness.emit(cx, AgentEvent::EffortChanged(Some(Effort::Low)));
         harness.with_window(cx, |window, cx| window.click("chat-new", cx));
         assert_eq!(
             spec(&harness),
-            (Some("sonnet".into()), Some(PermissionMode::Plan))
+            (
+                Some("sonnet".into()),
+                Some(PermissionMode::Plan),
+                Some(Effort::Low)
+            )
         );
     }
 }

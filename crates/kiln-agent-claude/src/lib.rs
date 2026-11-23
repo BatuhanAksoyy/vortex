@@ -13,6 +13,7 @@ mod outgoing;
 mod session;
 mod sign_in;
 mod skills;
+mod stream;
 mod translate;
 mod usage;
 mod wire;

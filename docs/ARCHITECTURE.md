@@ -223,7 +223,9 @@ pub struct SessionHandle {
   - Görsel yapıştırma (Claude image block, Codex local image).
   - Dosya/klasör sürükle-bırak → `@path` referansı.
   - Slash komutları (`initialize` cevabındaki liste).
-  - Model ve izin modu seçici, Stop (interrupt).
+  - Model, izin modu ve efor seçici, Stop (interrupt).
+  - Efor menüsü yalnızca seçili modelin desteklediği seviyeleri sunar (`initialize` cevabındaki `supportedEffortLevels`). Seçim `apply_flag_settings` ile oturumun bayrak katmanına yazılır; ayar dosyalarına dokunulmaz. Gösterilen efor `get_settings` cevabındaki `applied.effort`'tur (CLI'ın modele göre çözdüğü değer). Hazır olunca, model değişince ve her tur sonunda yeniden sorulur, çünkü kullanıcı `/effort` ya da `/model` yazmış olabilir.
+  - Context ölçerinin solunda prompt cache düğmesi: cache sıcakken bitiş saatini (`Cache 18:05`), süresi dolunca uyarı renginde `Cache expired` gösterir; süre dolduğunda düğme kendiliğinden yenilenir. Açtığı panelde son isteğin cache'ten okuduğu, cache'e yazdığı ve cache'lenmeyen token'lar, konuşmanın token'larının yüzde kaçının cache'ten okunduğu ve cache'in ne zamana kadar sıcak kalacağı. Değerler her isteğin `message_start` olayındaki `usage`'dan gelir; subagent istekleri ayrı cache'lendiği için sayılmaz. Saklama süresi (5 dakika ya da 1 saat) son yazan isteğin `cache_creation` ayrımından okunur; cache her kullanıldığında bu süre yeniden başlar.
   - Yukarı/Aşağı ok, kutu boşken (ya da geri çağrılan mesaj değişmeden duruyorken) gönderilmiş mesajlar arasında gezer.
   - ESC çalışan turu keser. Mesaja henüz hiçbir cevap gelmediyse mesaj transcript'ten geri alınır ve kutuya döner; "Interrupted" satırı eklenmez. Açık bir panel varken ESC yalnızca paneli kapatır.
 - Kullanıcı mesajları seçilebilir ve kopyalanabilir. Metin markdown olarak yorumlanmaz: olduğu gibi gösterilir, satır sonları ve girinti korunur.
@@ -252,7 +254,7 @@ pub struct SessionHandle {
   - Sekme çubuğunda "New session" (aynı grupta yeni sekme) ve "Split right" (yanda yeni grup) düğmeleri var. Dock bir alanın son sekmesini kapattırmaz, pencerede hep bir sohbet kalır.
   - Soldaki listeden bir oturum açılınca: başka bir sekmede açıksa o sekmeye geçilir; odaktaki sohbet boşsa onda açılır; değilse odaktaki grupta yeni sekmede açılır. "New session" de boş sohbeti yeniden kullanır.
   - Liste odaktaki sohbeti seçili, turu süren sohbetleri işaretli gösterir.
-  - Sohbet yerleşimi proje başına `<data>/layouts.json`'da tutulur: gruplar, bölmelerin yönü ve boyu, her gruptaki konuşmalar, her sekmenin hesabı ve izin modu, gösterilen sekme. Kaldırılmış bir hesabın sekmesi ilk eklenen hesapla açılır. İzin modu kaydedilmemiş bir sekme kullanıcının kendi ayarındaki modla açılır. Dock her değiştiğinde, bir sohbetin konuşması, hesabı ya da modu değiştiğinde yazılır. Boş sekmeler tutulmaz, sürecek konuşmaları yoktur.
+  - Sohbet yerleşimi proje başına `<data>/layouts.json`'da tutulur: gruplar, bölmelerin yönü ve boyu, her gruptaki konuşmalar, her sekmenin hesabı, izin modu ve eforu, gösterilen sekme. Kaldırılmış bir hesabın sekmesi ilk eklenen hesapla açılır. İzin modu ya da eforu kaydedilmemiş bir sekme kullanıcının kendi ayarındakiyle açılır. Dock her değiştiğinde, bir sohbetin konuşması, hesabı, modu ya da eforu değiştiğinde yazılır. Boş sekmeler tutulmaz, sürecek konuşmaları yoktur.
   - Açılışta yerleşim oturum listesi yüklenince kurulur: artık saklanmayan konuşmalar atlanır, başka bir süreçte açık olan kopya olarak sürer. Her sekme kendi sürecini başlatır. Hiçbir konuşma kalmazsa tek boş sohbetle başlanır.
 
 ## 14. Ayarlar, tuş atamaları, tema

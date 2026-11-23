@@ -2,10 +2,12 @@
 //! `kiln-agent-codex`) translates its own protocol into these types, so the UI
 //! never sees protocol details.
 
+mod effort;
 mod hooks;
 mod past;
 mod permission;
 
+pub use effort::{Effort, PromptTokens};
 pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
 pub use past::{PastMessage, PastSession};
 pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Remember, RuleScope};
@@ -29,6 +31,8 @@ pub struct SessionSpec {
     pub model: Option<String>,
     /// Permission mode to start in; `None` keeps the agent's default.
     pub mode: Option<PermissionMode>,
+    /// Effort to start with; `None` keeps the agent's default.
+    pub effort: Option<Effort>,
     /// A session to continue, by the id `AgentEvent::Started` reported;
     /// `None` starts a new conversation.
     pub resume: Option<String>,
@@ -83,6 +87,11 @@ pub enum SessionCommand {
     /// Switches the model for the following turns.
     SetModel(String),
     SetMode(PermissionMode),
+    /// Sets the effort for the following turns; an
+    /// [`AgentEvent::EffortChanged`] or [`AgentEvent::CommandFailed`] follows.
+    SetEffort(Effort),
+    /// Asks for a fresh [`AgentEvent::EffortChanged`].
+    RefreshEffort,
     /// Asks for a fresh [`AgentEvent::ContextUsage`].
     RefreshContext,
     /// Asks for a fresh [`AgentEvent::Usage`].
@@ -128,6 +137,8 @@ pub struct ModelOption {
     pub resolved: String,
     pub name: String,
     pub description: String,
+    /// The efforts the model takes, lowest first; empty when it takes none.
+    pub efforts: Vec<Effort>,
 }
 
 /// What the agent reports once it is ready, before any turn.
@@ -307,6 +318,12 @@ pub enum AgentEvent {
     /// The model in use changed; carries the concrete model id.
     ModelChanged(String),
     ModeChanged(PermissionMode),
+    /// The effort the next request runs with; `None` when the model takes
+    /// none.
+    EffortChanged(Option<Effort>),
+    /// A model request of the conversation started; how its prompt was
+    /// read. Subagents' requests are not reported.
+    PromptTokens(PromptTokens),
     ContextUsage(ContextUsage),
     /// Usage limits, both when asked for and as the agent reports them
     /// during a turn.

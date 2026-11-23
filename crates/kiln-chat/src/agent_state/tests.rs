@@ -9,6 +9,7 @@ fn option(id: &str, resolved: &str, name: &str) -> ModelOption {
         resolved: resolved.into(),
         name: name.into(),
         description: String::new(),
+        efforts: Vec::new(),
     }
 }
 

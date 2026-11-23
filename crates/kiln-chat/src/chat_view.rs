@@ -3,6 +3,7 @@
 
 mod accounts;
 mod accounts_panel;
+mod cache_panel;
 mod composer;
 mod context_panel;
 mod header;
@@ -71,6 +72,7 @@ struct ShownPrompt {
 enum StripPanel {
     Usage,
     Context,
+    Cache,
     Skills,
     Hooks,
 }
@@ -112,6 +114,8 @@ pub struct ChatView {
     spinner: Option<Task<()>>,
     /// Lifts a usage limit when its reset time comes.
     limit_timer: Option<Task<()>>,
+    /// Redraws the cache button when the prompt cache expires.
+    cache_timer: Option<Task<()>>,
     _usage_poll: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -176,6 +180,7 @@ impl ChatView {
             spinner_frame: 0,
             spinner: None,
             limit_timer: None,
+            cache_timer: None,
             _usage_poll: cx.spawn(Self::poll_usage),
             _subscriptions: vec![subscription, accounts_changed],
         };

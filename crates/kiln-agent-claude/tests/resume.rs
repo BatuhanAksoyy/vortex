@@ -37,6 +37,7 @@ mod resume {
                 )],
                 model: None,
                 mode: None,
+                effort: None,
                 resume,
                 fork: false,
             })

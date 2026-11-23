@@ -127,6 +127,7 @@ mod live {
             env: Vec::new(),
             model: None,
             mode: None,
+            effort: None,
             resume: None,
             fork: false,
         };

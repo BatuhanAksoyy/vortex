@@ -200,6 +200,8 @@ impl Transcript {
             | AgentEvent::Ready(_)
             | AgentEvent::ModelChanged(_)
             | AgentEvent::ModeChanged(_)
+            | AgentEvent::EffortChanged(_)
+            | AgentEvent::PromptTokens(_)
             | AgentEvent::ContextUsage(_)
             | AgentEvent::Usage(_)
             | AgentEvent::CommandsChanged(_)

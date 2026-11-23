@@ -3,7 +3,7 @@
 
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
-        | questions | skills | hooks | resume | login | history | running
+        | questions | skills | hooks | effort | resume | login | history | running
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -29,6 +29,9 @@ one turned off in the local settings, and asks for the /skills menu's rows.
 local settings and asks for the /hooks listing, then adds a hook, edits the
 first and removes the added one with `claude edit-hook`, as Kiln does, and
 lists them again. "note" records hold each edit and what the command answered.
+"effort" sends no prompt, so it spends no usage: it reads the session's
+settings, sets the effort to max and then to low through the flag settings
+layer, and reads the settings after each change.
 "resume" runs two tiny turns: one in a first process, which saves its
 session, then one in a second process started with `--resume`, which is the
 one recorded. A "note" record holds the first session's id, to compare with
@@ -208,7 +211,7 @@ def send(obj):
     proc.stdin.flush()
 
 
-send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "hooks", "login") else "init-1",
+send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "hooks", "effort", "login") else "init-1",
       "request": {"subtype": "initialize", "hooks": None}})
 # Ids follow Kiln's own scheme (`Translator::request_id`), so a replay can
 # issue the same commands and match the replies.
@@ -219,6 +222,14 @@ CONTROLS = [
     ("kiln-context-4", {"subtype": "get_context_usage"}),
     ("kiln-usage-5", {"subtype": "get_usage"}),
 ]
+# Sent one at a time, each once the previous one is answered.
+EFFORT = [
+    ("kiln-settings-1", {"subtype": "get_settings"}),
+    ("kiln-effort-2", {"subtype": "apply_flag_settings", "settings": {"effortLevel": "max"}}),
+    ("kiln-settings-3", {"subtype": "get_settings"}),
+    ("kiln-effort-4", {"subtype": "apply_flag_settings", "settings": {"effortLevel": "low"}}),
+    ("kiln-settings-5", {"subtype": "get_settings"}),
+]
 if case == "controls":
     for request_id, request in CONTROLS:
         send({"type": "control_request", "request_id": request_id, "request": request})
@@ -228,6 +239,9 @@ elif case == "skills":
 elif case == "hooks":
     send({"type": "control_request", "request_id": "kiln-hooks-1",
           "request": {"subtype": "get_hooks_listing"}})
+elif case == "effort":
+    request_id, request = EFFORT[0]
+    send({"type": "control_request", "request_id": request_id, "request": request})
 elif case == "login":
     send({"type": "control_request", "request_id": "kiln-login-1",
           "request": {"subtype": "claude_authenticate", "loginWithClaudeAi": True}})
@@ -287,6 +301,13 @@ for line in proc.stdout:
             break
         if case == "skills" and msg["response"].get("request_id") == "kiln-skills-1":
             break
+        ids = [request_id for request_id, _ in EFFORT]
+        if case == "effort" and msg["response"].get("request_id") in ids:
+            done = ids.index(msg["response"]["request_id"])
+            if done + 1 == len(EFFORT):
+                break
+            request_id, request = EFFORT[done + 1]
+            send({"type": "control_request", "request_id": request_id, "request": request})
         if case == "hooks" and msg["response"].get("request_id") == "kiln-hooks-1":
             listed = msg["response"]["response"]["hooks"][0]
             stop = {"type": "command", "command": "echo kiln-stop"}

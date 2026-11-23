@@ -1,13 +1,16 @@
 //! What the chat knows about the agent itself, apart from the conversation:
-//! the models it offers, the model and mode in use, and context usage. Kept
-//! across restarts so a new process starts with the user's choices.
+//! the models it offers, the model, mode and effort in use, context usage
+//! and the prompt cache. Kept across restarts so a new process starts with
+//! the user's choices.
 
 use std::{collections::HashMap, time::SystemTime};
 
 use kiln_agent::{
-    Account, AgentEvent, ContextUsage, Limited, ModelOption, PermissionMode, SessionCommand,
-    SlashCommand, Usage,
+    Account, AgentEvent, ContextUsage, Effort, Limited, ModelOption, PermissionMode,
+    SessionCommand, SlashCommand, Usage,
 };
+
+use crate::prompt_cache::PromptCache;
 
 /// Modes offered in the composer's menu. `DontAsk` and `BypassPermissions`
 /// are shown when the agent reports them but never offered.
@@ -31,7 +34,10 @@ pub struct AgentState {
     /// `None` until the agent reports it, so the first process starts in
     /// whatever mode the user's own settings say.
     mode: Option<PermissionMode>,
+    /// `None` until the agent reports it, or while the model takes none.
+    effort: Option<Effort>,
     context: Option<ContextUsage>,
+    cache: PromptCache,
     account: Option<Account>,
     usage: Usage,
     usage_updated_at: Option<SystemTime>,
@@ -52,7 +58,7 @@ impl AgentState {
                 self.commands.clone_from(&info.commands);
             }
             AgentEvent::CommandsChanged(commands) => self.commands.clone_from(commands),
-            AgentEvent::ConversationReset => self.context = None,
+            AgentEvent::ConversationReset => self.reset_context(),
             AgentEvent::Usage(usage) => {
                 // A report may leave a window out; the last known value
                 // stands until a report includes it.
@@ -67,6 +73,8 @@ impl AgentState {
                 self.model = Some(model.clone());
             }
             AgentEvent::ModeChanged(mode) => self.mode = Some(*mode),
+            AgentEvent::EffortChanged(effort) => self.effort = *effort,
+            AgentEvent::PromptTokens(tokens) => self.cache.record(*tokens, SystemTime::now()),
             AgentEvent::ContextUsage(usage) => self.context = Some(usage.clone()),
             _ => return false,
         }
@@ -77,12 +85,18 @@ impl AgentState {
     /// header current.
     pub fn refreshes_after(event: &AgentEvent) -> &'static [SessionCommand] {
         match event {
-            AgentEvent::Ready(_) | AgentEvent::TurnEnded(_) => {
-                &[SessionCommand::RefreshContext, SessionCommand::RefreshUsage]
-            }
-            AgentEvent::ModelChanged(_) | AgentEvent::ConversationReset => {
-                &[SessionCommand::RefreshContext]
-            }
+            // A turn may have run `/effort` or `/model`.
+            AgentEvent::Ready(_) | AgentEvent::TurnEnded(_) => &[
+                SessionCommand::RefreshContext,
+                SessionCommand::RefreshUsage,
+                SessionCommand::RefreshEffort,
+            ],
+            // Each model has an effort of its own.
+            AgentEvent::ModelChanged(_) => &[
+                SessionCommand::RefreshContext,
+                SessionCommand::RefreshEffort,
+            ],
+            AgentEvent::ConversationReset => &[SessionCommand::RefreshContext],
             _ => &[],
         }
     }
@@ -130,6 +144,7 @@ impl AgentState {
     /// Forgets the conversation's usage; the models and choices stay.
     pub fn reset_context(&mut self) {
         self.context = None;
+        self.cache = PromptCache::default();
     }
 
     /// Moves from account `from` to `to`: keeps how much of `from`'s plan
@@ -172,6 +187,25 @@ impl AgentState {
     /// The mode to start a new process in, once one is known.
     pub fn start_mode(&self) -> Option<PermissionMode> {
         self.mode
+    }
+
+    pub fn effort(&self) -> Option<Effort> {
+        self.effort
+    }
+
+    /// The effort to start a new process with, once one is known.
+    pub fn start_effort(&self) -> Option<Effort> {
+        self.effort
+    }
+
+    /// The efforts the selected model takes.
+    pub fn efforts(&self) -> &[Effort] {
+        self.selected_model()
+            .map_or(&[], |option| option.efforts.as_slice())
+    }
+
+    pub fn prompt_cache(&self) -> &PromptCache {
+        &self.cache
     }
 
     pub fn models(&self) -> &[ModelOption] {
@@ -241,6 +275,26 @@ pub fn mode_description(mode: PermissionMode) -> &'static str {
         PermissionMode::Auto => "A classifier approves most actions instead of asking",
         PermissionMode::DontAsk => "Anything not already allowed is denied",
         PermissionMode::BypassPermissions => "Claude runs everything without asking",
+    }
+}
+
+pub fn effort_label(effort: Effort) -> &'static str {
+    match effort {
+        Effort::Low => "Low",
+        Effort::Medium => "Medium",
+        Effort::High => "High",
+        Effort::Xhigh => "Extra high",
+        Effort::Max => "Max",
+    }
+}
+
+pub fn effort_description(effort: Effort) -> &'static str {
+    match effort {
+        Effort::Low => "Quick, straightforward implementation",
+        Effort::Medium => "Balanced approach with standard testing",
+        Effort::High => "Comprehensive implementation with extensive testing",
+        Effort::Xhigh => "Extended reasoning with thorough analysis",
+        Effort::Max => "Maximum capability with deepest reasoning",
     }
 }
 

@@ -73,12 +73,39 @@ pub struct StreamEvent {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ApiEvent {
+    MessageStart {
+        message: StartedMessage,
+    },
     ContentBlockDelta {
         index: u64,
         delta: Delta,
     },
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StartedMessage {
+    #[serde(default)]
+    pub usage: PromptUsage,
+}
+
+/// How the request's prompt was billed, as the API reports it.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct PromptUsage {
+    pub input_tokens: u64,
+    pub cache_creation_input_tokens: u64,
+    pub cache_read_input_tokens: u64,
+    pub cache_creation: CacheCreation,
+}
+
+/// What was written to the cache, by how long it is kept.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct CacheCreation {
+    pub ephemeral_5m_input_tokens: u64,
+    pub ephemeral_1h_input_tokens: u64,
 }
 
 #[derive(Debug, Deserialize)]

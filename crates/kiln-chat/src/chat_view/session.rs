@@ -1,11 +1,11 @@
 //! The agent process behind the chat: starting it, folding its events in,
-//! and the commands the composer sends (model, mode, context usage).
+//! and the commands the composer sends (model, mode, effort, context usage).
 
 use gpui_kit::prelude::*;
 use std::time::SystemTime;
 
 use gpui_kit::{Context, Window};
-use kiln_agent::{AgentEvent, PermissionMode, SessionCommand, SessionSpec};
+use kiln_agent::{AgentEvent, Effort, PermissionMode, SessionCommand, SessionSpec};
 
 use super::{ChatView, LiveSession};
 
@@ -24,9 +24,34 @@ impl ChatView {
     pub fn set_mode(&mut self, mode: PermissionMode, cx: &mut Context<Self>) {
         if !self.send_command(SessionCommand::SetMode(mode)) {
             self.agent.apply(&AgentEvent::ModeChanged(mode));
-            cx.emit(super::ChatEvent::ModeChanged);
+            cx.emit(super::ChatEvent::ChoicesChanged);
         }
         cx.notify();
+    }
+
+    /// Asks the agent for `effort`, as for a mode.
+    pub fn set_effort(&mut self, effort: Effort, cx: &mut Context<Self>) {
+        if !self.send_command(SessionCommand::SetEffort(effort)) {
+            self.agent.apply(&AgentEvent::EffortChanged(Some(effort)));
+            cx.emit(super::ChatEvent::ChoicesChanged);
+        }
+        cx.notify();
+    }
+
+    /// The effort the agent reported or the user chose; `None` until then,
+    /// while the user's own settings decide it.
+    #[must_use]
+    pub fn known_effort(&self) -> Option<Effort> {
+        self.agent.start_effort()
+    }
+
+    /// Runs the chat with `effort` from its first process, as with
+    /// [`Self::start_in_mode`].
+    pub fn start_with_effort(&mut self, effort: Effort, cx: &mut Context<Self>) {
+        if self.session.is_none() {
+            self.agent.apply(&AgentEvent::EffortChanged(Some(effort)));
+            cx.notify();
+        }
     }
 
     pub fn cycle_mode(&mut self, cx: &mut Context<Self>) {
@@ -151,6 +176,7 @@ impl ChatView {
                 .map_or_else(Vec::new, |id| self.accounts.read(cx).env(id)),
             model: self.agent.chosen_model().map(str::to_owned),
             mode: self.agent.start_mode(),
+            effort: self.agent.start_effort(),
             resume: self.conversation.as_ref().map(|stored| stored.id.clone()),
             fork: self.conversation.as_ref().is_some_and(|stored| stored.fork),
         })?;
@@ -185,24 +211,33 @@ impl ChatView {
         cx.emit(super::ChatEvent::SessionChanged);
     }
 
+    /// Times what a report makes expire: a usage limit, the prompt cache.
+    fn start_timers(&mut self, event: &AgentEvent, cx: &mut Context<Self>) {
+        match event {
+            AgentEvent::Usage(_) => {
+                self.remember_usage(cx);
+                self.sync_limit_timer(cx);
+            }
+            AgentEvent::PromptTokens(_) => self.sync_cache_timer(cx),
+            _ => {}
+        }
+    }
+
     fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
         for command in AgentState::refreshes_after(&event) {
             if *command != SessionCommand::RefreshUsage || self.asks_usage() {
                 self.send_command(command.clone());
             }
         }
-        let mode = self.agent.start_mode();
+        let choices = (self.agent.start_mode(), self.agent.start_effort());
         if self.agent.apply(&event) {
             cx.notify();
         }
-        if self.agent.start_mode() != mode {
-            cx.emit(super::ChatEvent::ModeChanged);
+        if (self.agent.start_mode(), self.agent.start_effort()) != choices {
+            cx.emit(super::ChatEvent::ChoicesChanged);
         }
         self.follow_session(&event, cx);
-        if matches!(event, AgentEvent::Usage(_)) {
-            self.remember_usage(cx);
-            self.sync_limit_timer(cx);
-        }
+        self.start_timers(&event, cx);
         self.update_skills(&event, cx);
         self.update_hooks(&event, cx);
         let exited = matches!(event, AgentEvent::Exited { .. });

@@ -17,9 +17,9 @@ use gpui_kit::{
 };
 use kiln_accounts::Accounts;
 use kiln_agent::{
-    Account, AgentBackend, AgentEvent, BlockKey, Limited, ModelOption, PermissionMode,
-    PermissionRequest, Remember, Session, SessionCommand, SessionInfo, SessionSpec, SignIn,
-    ToolCall, Usage, UsageWindow,
+    Account, AgentBackend, AgentEvent, BlockKey, Effort, Limited, ModelOption, PermissionMode,
+    PermissionRequest, PromptTokens, Remember, Session, SessionCommand, SessionInfo, SessionSpec,
+    SignIn, ToolCall, Usage, UsageWindow,
 };
 use kiln_chat::ChatView;
 use serde_json::json;
@@ -104,6 +104,13 @@ fn ready() -> AgentEvent {
         resolved: resolved.into(),
         name: name.into(),
         description: description.into(),
+        efforts: vec![
+            Effort::Low,
+            Effort::Medium,
+            Effort::High,
+            Effort::Xhigh,
+            Effort::Max,
+        ],
     };
     AgentEvent::Ready(SessionInfo {
         models: vec![
@@ -196,6 +203,12 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
             session_id: "preview".into(),
             model: "claude-opus-5-5".into(),
         },
+        AgentEvent::PromptTokens(PromptTokens {
+            cached: 38_520,
+            written: 6_662,
+            uncached: 2,
+            kept_for: Some(std::time::Duration::from_hours(1)),
+        }),
         AgentEvent::ThinkingDelta {
             block: block(0),
             text: "The user wants tests for the localization helpers.".into(),

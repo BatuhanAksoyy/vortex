@@ -2,15 +2,16 @@
 //! skills.
 
 use kiln_agent::{
-    AgentEvent, ContextCategory, ContextKind, ContextUsage, Hook, HookEdit, HookEvent, HookScope,
-    Hooks, SessionCommand, Skill, SkillLock, SkillState, SlashCommand, StoredHook,
+    AgentEvent, ContextCategory, ContextKind, ContextUsage, Effort, Hook, HookEdit, HookEvent,
+    HookScope, Hooks, SessionCommand, Skill, SkillLock, SkillState, SlashCommand, StoredHook,
 };
 use serde_json::json;
 
-/// The skills and hooks the preview's panels list and change.
+/// The skills, hooks and effort the preview's panels list and change.
 pub struct Settings {
     skills: Vec<Skill>,
     hooks: Hooks,
+    effort: Effort,
 }
 
 impl Default for Settings {
@@ -18,6 +19,7 @@ impl Default for Settings {
         Self {
             skills: preview_skills(),
             hooks: preview_hooks(),
+            effort: Effort::High,
         }
     }
 }
@@ -36,6 +38,13 @@ impl Settings {
                     AgentEvent::HookEdited { error: None },
                     AgentEvent::Hooks(self.hooks.clone()),
                 ];
+            }
+            SessionCommand::SetEffort(effort) => {
+                self.effort = effort;
+                return vec![AgentEvent::EffortChanged(Some(effort))];
+            }
+            SessionCommand::RefreshEffort => {
+                return vec![AgentEvent::EffortChanged(Some(self.effort))];
             }
             SessionCommand::RefreshSkills | SessionCommand::RefreshHooks => {}
             _ => return Vec::new(),

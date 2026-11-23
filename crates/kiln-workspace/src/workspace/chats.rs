@@ -150,6 +150,7 @@ impl Workspace {
             session: chat.session_id()?.to_owned(),
             account: chat.account().map(str::to_owned),
             mode: chat.known_mode(),
+            effort: chat.known_effort(),
         })
     }
 
@@ -239,7 +240,7 @@ impl Workspace {
                 self.reload_sessions(cx);
                 self.save_layout(cx);
             }
-            ChatEvent::AccountChanged | ChatEvent::ModeChanged => self.save_layout(cx),
+            ChatEvent::AccountChanged | ChatEvent::ChoicesChanged => self.save_layout(cx),
             ChatEvent::TurnStarted => {}
         }
     }

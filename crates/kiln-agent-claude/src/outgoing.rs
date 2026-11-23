@@ -28,6 +28,20 @@ pub fn set_permission_mode(request_id: &str, mode: &str) -> Value {
     )
 }
 
+/// Sets the effort in the session's own settings layer, which outranks the
+/// settings files and is never written to disk.
+pub fn set_effort(request_id: &str, effort: &str) -> Value {
+    control_request(
+        request_id,
+        &json!({"subtype": "apply_flag_settings", "settings": {"effortLevel": effort}}),
+    )
+}
+
+/// The settings in effect, with what the next request will use.
+pub fn get_settings(request_id: &str) -> Value {
+    control_request(request_id, &json!({"subtype": "get_settings"}))
+}
+
 pub fn get_usage(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "get_usage" }))
 }

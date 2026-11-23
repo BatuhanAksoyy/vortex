@@ -1,5 +1,6 @@
 //! The composer: the message box and its strip of mode menu, model menu,
-//! skills button, context meter and send/stop button.
+//! effort menu, skills and hooks buttons, prompt cache button, context
+//! meter and send/stop button.
 
 use std::time::SystemTime;
 
@@ -16,7 +17,7 @@ use gpui_kit::{
     },
     div, px, white,
 };
-use kiln_agent::{ModelOption, PermissionMode};
+use kiln_agent::{Effort, ModelOption, PermissionMode};
 
 use super::{ChatView, header::reset_label};
 use crate::{
@@ -41,9 +42,11 @@ impl ChatView {
             .border_color(cx.theme().border)
             .child(self.mode_menu(&view))
             .children(self.model_menu(&view))
+            .children(self.effort_menu(&view))
             .child(self.skills_button(cx))
             .child(self.hooks_button(cx))
             .child(div().flex_1())
+            .child(self.cache_button(cx))
             .children(self.context_meter(cx))
             .child(self.action_button(cx));
         let menu = self
@@ -121,6 +124,31 @@ impl ChatView {
                         let checked = selected.as_deref() == Some(option.id.as_str());
                         menu.item(model_item(option, checked, &view))
                     })
+                }),
+        )
+    }
+
+    /// Shown once the agent names the effort, for a model that takes one.
+    fn effort_menu(&self, view: &WeakEntity<Self>) -> Option<impl IntoElement> {
+        let current = self.agent.effort()?;
+        let efforts = self.agent.efforts().to_vec();
+        if efforts.is_empty() {
+            return None;
+        }
+        let view = view.clone();
+        Some(
+            Button::new("chat-effort")
+                .ghost()
+                .xsmall()
+                .icon(Icon::new(gpui_kit::assets::IconName::Gauge))
+                .label(agent_state::effort_label(current))
+                .tooltip("Change effort")
+                .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+                    efforts
+                        .iter()
+                        .fold(menu.min_w(px(MENU_WIDTH)), |menu, effort| {
+                            menu.item(effort_item(*effort, *effort == current, &view))
+                        })
                 }),
         )
     }
@@ -212,6 +240,27 @@ fn model_item(option: &ModelOption, checked: bool, view: &WeakEntity<ChatView>) 
     .checked(checked)
     .on_click(move |_, _, cx| {
         let _ = view.update(cx, |view, cx| view.set_model(&model, cx));
+    })
+}
+
+fn effort_item(effort: Effort, checked: bool, view: &WeakEntity<ChatView>) -> PopupMenuItem {
+    let view = view.clone();
+    let id = SharedString::from(format!("chat-effort-{effort:?}"));
+    let (name, description) = (
+        agent_state::effort_label(effort),
+        agent_state::effort_description(effort),
+    );
+    PopupMenuItem::element(move |_, cx| {
+        option_row(
+            id.clone(),
+            name.into(),
+            description.into(),
+            cx.theme().muted_foreground,
+        )
+    })
+    .checked(checked)
+    .on_click(move |_, _, cx| {
+        let _ = view.update(cx, |view, cx| view.set_effort(effort, cx));
     })
 }
 

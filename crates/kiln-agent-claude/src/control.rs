@@ -1,9 +1,10 @@
-//! Replies to the control requests Kiln sends (initialize, model and mode
-//! changes, context usage), and the CLI's names for permission modes.
+//! Replies to the control requests Kiln sends (initialize, model, mode and
+//! effort changes, context usage), and the CLI's names for permission modes
+//! and efforts.
 
 use kiln_agent::{
-    Account, AgentEvent, ContextCategory, ContextKind, ContextUsage, ModelOption, PermissionMode,
-    SessionInfo, SlashCommand,
+    Account, AgentEvent, ContextCategory, ContextKind, ContextUsage, Effort, ModelOption,
+    PermissionMode, SessionInfo, SlashCommand,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -16,6 +17,9 @@ pub enum Asked {
     Initialize,
     Model,
     Mode,
+    /// The effort set, which the reply confirms without naming it.
+    Effort(Effort),
+    Settings,
     Context,
     Usage,
     /// Read by the translator, which keeps the skills' other names.
@@ -44,6 +48,27 @@ pub fn parse_mode(name: &str) -> Option<PermissionMode> {
         "auto" => PermissionMode::Auto,
         "dontAsk" => PermissionMode::DontAsk,
         "bypassPermissions" => PermissionMode::BypassPermissions,
+        _ => return None,
+    })
+}
+
+pub fn effort_name(effort: Effort) -> &'static str {
+    match effort {
+        Effort::Low => "low",
+        Effort::Medium => "medium",
+        Effort::High => "high",
+        Effort::Xhigh => "xhigh",
+        Effort::Max => "max",
+    }
+}
+
+pub fn parse_effort(name: &str) -> Option<Effort> {
+    Some(match name {
+        "low" => Effort::Low,
+        "medium" => Effort::Medium,
+        "high" => Effort::High,
+        "xhigh" => Effort::Xhigh,
+        "max" => Effort::Max,
         _ => return None,
     })
 }
@@ -80,6 +105,20 @@ struct WireModel {
     display_name: String,
     #[serde(default)]
     description: String,
+    #[serde(default)]
+    supported_effort_levels: Vec<String>,
+}
+
+/// The `get_settings` reply's values in use, after the CLI resolved each
+/// model's own defaults; the merged settings files are not what applies.
+#[derive(Deserialize)]
+struct Settings {
+    applied: Applied,
+}
+
+#[derive(Deserialize)]
+struct Applied {
+    effort: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -133,6 +172,12 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
         // The CLI also announces the new mode in a status line, which covers
         // changes Kiln did not ask for; that line is the one translated.
         Asked::Mode | Asked::Skills => None,
+        Asked::Effort(effort) => Some(AgentEvent::EffortChanged(Some(effort))),
+        Asked::Settings => {
+            let settings: Settings = decode(response)?;
+            let effort = settings.applied.effort.as_deref().and_then(parse_effort);
+            Some(AgentEvent::EffortChanged(effort))
+        }
         Asked::Hooks => crate::hooks::from_reply(response).map(AgentEvent::Hooks),
         Asked::Usage => crate::usage::from_reply(&response).map(AgentEvent::Usage),
         Asked::Context => {
@@ -196,6 +241,11 @@ fn model_option(model: WireModel) -> ModelOption {
         id: model.value,
         name,
         description: model.description,
+        efforts: model
+            .supported_effort_levels
+            .iter()
+            .filter_map(|name| parse_effort(name))
+            .collect(),
     }
 }
 
@@ -223,6 +273,20 @@ mod tests {
         }
         assert_eq!(parse_mode("manual"), Some(PermissionMode::AskBeforeEdits));
         assert_eq!(parse_mode("unknown"), None);
+    }
+
+    #[test]
+    fn every_effort_round_trips_through_its_cli_name() {
+        for effort in [
+            Effort::Low,
+            Effort::Medium,
+            Effort::High,
+            Effort::Xhigh,
+            Effort::Max,
+        ] {
+            assert_eq!(parse_effort(effort_name(effort)), Some(effort));
+        }
+        assert_eq!(parse_effort("ultracode"), None);
     }
 
     #[test]

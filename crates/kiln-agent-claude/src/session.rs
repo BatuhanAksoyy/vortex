@@ -93,6 +93,9 @@ impl AgentBackend for ClaudeBackend {
         if let Some(mode) = spec.mode {
             command.args(["--permission-mode", control::mode_name(mode)]);
         }
+        if let Some(effort) = spec.effort {
+            command.args(["--effort", control::effort_name(effort)]);
+        }
         if let Some(session_id) = &spec.resume {
             command.args(["--resume", session_id]);
             if spec.fork {

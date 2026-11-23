@@ -7,7 +7,7 @@ use gpui_kit::{AssetSource, SharedString};
 
 gpui_kit::assets::icon_assets!(
     ChatIcons,
-    [Columns2, FishingHook, Lock, Pencil, Puzzle, Trash]
+    [Columns2, FishingHook, Gauge, Lock, Pencil, Puzzle, Trash]
 );
 
 pub struct Assets;

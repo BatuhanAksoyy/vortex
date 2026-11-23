@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{
     ask,
     control::{self, Asked},
-    hooks, outgoing, skills, usage,
+    hooks, outgoing, skills, stream, usage,
     wire::{self, Line},
 };
 
@@ -54,6 +54,35 @@ impl Translator {
         match command {
             SessionCommand::Send(text) => Some(outgoing::user_message(&text)),
             SessionCommand::Interrupt => Some(outgoing::interrupt(&self.request_id("interrupt"))),
+            SessionCommand::SetModel(_)
+            | SessionCommand::SetMode(_)
+            | SessionCommand::SetEffort(_) => self.change(command),
+            SessionCommand::RefreshContext
+            | SessionCommand::RefreshUsage
+            | SessionCommand::RefreshSkills
+            | SessionCommand::RefreshHooks
+            | SessionCommand::RefreshEffort => self.refresh(&command),
+            // Not messages: the driver runs these edits (see `skill_edit`
+            // and `hook_edit`).
+            SessionCommand::SetSkillState { .. } | SessionCommand::EditHook(_) => None,
+            SessionCommand::Permission {
+                request_id,
+                decision,
+            } => {
+                let pending = self.pending_permissions.remove(&request_id)?;
+                Some(outgoing::permission_response(
+                    &request_id,
+                    &decision,
+                    &pending.input,
+                    pending.remember.as_ref(),
+                ))
+            }
+        }
+    }
+
+    /// A change to the model, mode or effort for the following turns.
+    fn change(&mut self, command: SessionCommand) -> Option<Value> {
+        match command {
             SessionCommand::SetModel(model) => {
                 let id = self.ask("model", Asked::Model);
                 Some(outgoing::set_model(&id, &model))
@@ -62,6 +91,17 @@ impl Translator {
                 let id = self.ask("mode", Asked::Mode);
                 Some(outgoing::set_permission_mode(&id, control::mode_name(mode)))
             }
+            SessionCommand::SetEffort(effort) => {
+                let id = self.ask("effort", Asked::Effort(effort));
+                Some(outgoing::set_effort(&id, control::effort_name(effort)))
+            }
+            _ => None,
+        }
+    }
+
+    /// A request for something the agent reports only when asked.
+    fn refresh(&mut self, command: &SessionCommand) -> Option<Value> {
+        match command {
             SessionCommand::RefreshContext => {
                 let id = self.ask("context", Asked::Context);
                 Some(outgoing::get_context_usage(&id))
@@ -78,21 +118,11 @@ impl Translator {
                 let id = self.ask("hooks", Asked::Hooks);
                 Some(outgoing::get_hooks_listing(&id))
             }
-            // Not messages: the driver runs these edits (see `skill_edit`
-            // and `hook_edit`).
-            SessionCommand::SetSkillState { .. } | SessionCommand::EditHook(_) => None,
-            SessionCommand::Permission {
-                request_id,
-                decision,
-            } => {
-                let pending = self.pending_permissions.remove(&request_id)?;
-                Some(outgoing::permission_response(
-                    &request_id,
-                    &decision,
-                    &pending.input,
-                    pending.remember.as_ref(),
-                ))
+            SessionCommand::RefreshEffort => {
+                let id = self.ask("settings", Asked::Settings);
+                Some(outgoing::get_settings(&id))
             }
+            _ => None,
         }
     }
 
@@ -123,7 +153,7 @@ impl Translator {
     fn on_decoded(&mut self, line: Line) -> Vec<AgentEvent> {
         match line {
             Line::System(system) => system_events(system),
-            Line::StreamEvent(event) => stream_event(event).into_iter().collect(),
+            Line::StreamEvent(event) => stream::event(event).into_iter().collect(),
             Line::Assistant(message) => assistant_events(message),
             Line::User(message) => tool_results(message),
             Line::ControlRequest(request) => self.control_request(request).into_iter().collect(),
@@ -158,7 +188,9 @@ impl Translator {
             // background refreshes run every turn and just keep the old
             // value.
             wire::Reply::Error { request_id, error } => match self.asked_by(&request_id)? {
-                Asked::Model | Asked::Mode => Some(AgentEvent::CommandFailed(error)),
+                Asked::Model | Asked::Mode | Asked::Effort(_) => {
+                    Some(AgentEvent::CommandFailed(error))
+                }
                 asked => {
                     log::warn!("{asked:?} request failed: {error}");
                     None
@@ -243,31 +275,6 @@ fn assistant_events(message: wire::Assistant) -> Vec<AgentEvent> {
         command_output(message)
     } else {
         tool_calls(message)
-    }
-}
-
-/// Subagent text is not forwarded by the CLI by default; deltas with a parent
-/// are ignored until subagent transcripts are shown.
-fn stream_event(event: wire::StreamEvent) -> Option<AgentEvent> {
-    if event.parent_tool_use_id.is_some() {
-        return None;
-    }
-    let wire::ApiEvent::ContentBlockDelta { index, delta } = event.event else {
-        return None;
-    };
-    let block = BlockKey {
-        message_id: event.api_message_id,
-        index,
-    };
-    match delta {
-        wire::Delta::Text { text } => Some(AgentEvent::TextDelta { block, text }),
-        wire::Delta::Thinking { thinking } if !thinking.is_empty() => {
-            Some(AgentEvent::ThinkingDelta {
-                block,
-                text: thinking,
-            })
-        }
-        wire::Delta::Thinking { .. } | wire::Delta::Other => None,
     }
 }
 

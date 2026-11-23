@@ -171,7 +171,7 @@ impl Workspace {
     }
 }
 
-/// Opens `saved` in `chat`, with its account and mode from the first
+/// Opens `saved` in `chat`, with its account, mode and effort from the first
 /// process on.
 fn resume(
     chat: &mut ChatView,
@@ -185,6 +185,9 @@ fn resume(
     }
     if let Some(mode) = saved.mode {
         chat.start_in_mode(mode, cx);
+    }
+    if let Some(effort) = saved.effort {
+        chat.start_with_effort(effort, cx);
     }
     chat.open_session(&saved.session, open_elsewhere, window, cx);
 }

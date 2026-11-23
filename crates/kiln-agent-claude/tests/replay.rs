@@ -226,6 +226,7 @@ mod replay {
                 )],
                 model: None,
                 mode: None,
+                effort: None,
                 resume: None,
                 fork: false,
             })
@@ -334,6 +335,7 @@ mod live {
             env: Vec::new(),
             model: Some("haiku".into()),
             mode: None,
+            effort: None,
             resume: None,
             fork: false,
         };
