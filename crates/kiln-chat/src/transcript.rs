@@ -61,6 +61,9 @@ pub struct Transcript {
     /// above the composer, not as transcript rows.
     pending: Vec<PermissionRequest>,
     status: Status,
+    /// The last message was taken back before any reply, so the turn's end
+    /// adds no "Interrupted" line under a message no longer shown.
+    withdrawn: bool,
 }
 
 impl Transcript {
@@ -83,6 +86,31 @@ impl Transcript {
             Entry::User(text) => text.lines().map(str::trim).find(|line| !line.is_empty()),
             _ => None,
         })
+    }
+
+    /// The messages the user sent, newest first.
+    pub fn sent(&self) -> impl Iterator<Item = &str> {
+        self.entries
+            .iter()
+            .rev()
+            .filter_map(|(_, entry)| match entry {
+                Entry::User(text) => Some(text.as_str()),
+                _ => None,
+            })
+    }
+
+    /// Takes the last message back while nothing has come in reply; returns
+    /// it, and the row it was in.
+    pub fn withdraw(&mut self) -> Option<(usize, String)> {
+        let Some((_, Entry::User(_))) = self.entries.last() else {
+            return None;
+        };
+        let (_, entry) = self.entries.pop()?;
+        let Entry::User(text) = entry else {
+            return None;
+        };
+        self.withdrawn = true;
+        Some((self.entries.len(), text))
     }
 
     /// Messages the user has sent; numbers the turns.
@@ -177,8 +205,8 @@ impl Transcript {
             | AgentEvent::CommandsChanged(_)
             | AgentEvent::Skills(_)
             | AgentEvent::SkillStateFailed { .. }
-            | AgentEvent::Rules(_)
-            | AgentEvent::RuleRemovalFailed { .. } => Change::default(),
+            | AgentEvent::Hooks(_)
+            | AgentEvent::HookEdited { .. } => Change::default(),
         }
     }
 
@@ -240,8 +268,10 @@ impl Transcript {
     fn end_turn(&mut self, outcome: TurnOutcome) -> Change {
         self.status = Status::Idle;
         self.pending.clear();
+        let withdrawn = std::mem::take(&mut self.withdrawn);
         match outcome {
             TurnOutcome::Completed => Change::default(),
+            TurnOutcome::Interrupted if withdrawn => Change::default(),
             TurnOutcome::Interrupted => self.push(Entry::Notice {
                 text: "Interrupted".into(),
                 is_error: false,

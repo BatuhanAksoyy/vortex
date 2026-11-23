@@ -14,6 +14,7 @@ use kiln_agent::ToolCall;
 use crate::{
     chat_view::ChatView,
     code_block::{self, CodeLine, LineKind},
+    literal::literal_markdown,
     tool_format::{self, EditDiff},
     transcript::{Entry, EntryId, ToolResult},
 };
@@ -135,7 +136,10 @@ fn user(text: &str, context: &EntryContext, cx: &App) -> AnyElement {
                 .border_1()
                 .border_color(theme.border)
                 .bg(theme.secondary)
-                .child(shown)
+                .child(
+                    TextView::markdown(("user-text", context.id), literal_markdown(&shown))
+                        .selectable(true),
+                )
                 .children(more),
         )
         .into_any_element()

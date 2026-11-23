@@ -33,6 +33,7 @@ impl ChatView {
         match command {
             NativeCommand::Usage => self.set_usage_open(true, cx),
             NativeCommand::Context => self.set_context_open(true, cx),
+            NativeCommand::Hooks => self.set_hooks_open(true, window, cx),
             NativeCommand::Model(Some(model)) => self.set_model(&model, cx),
             NativeCommand::Model(None) => self.open_model_picker(cx),
             NativeCommand::Clear => self.new_conversation(window, cx),

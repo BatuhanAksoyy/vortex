@@ -24,6 +24,7 @@ impl ChatView {
     pub fn set_mode(&mut self, mode: PermissionMode, cx: &mut Context<Self>) {
         if !self.send_command(SessionCommand::SetMode(mode)) {
             self.agent.apply(&AgentEvent::ModeChanged(mode));
+            cx.emit(super::ChatEvent::ModeChanged);
         }
         cx.notify();
     }
@@ -35,6 +36,22 @@ impl ChatView {
     #[must_use]
     pub fn mode(&self) -> PermissionMode {
         self.agent.mode()
+    }
+
+    /// The mode the agent reported or the user chose; `None` until then,
+    /// while the user's own settings decide it.
+    #[must_use]
+    pub fn known_mode(&self) -> Option<PermissionMode> {
+        self.agent.start_mode()
+    }
+
+    /// Runs the chat in `mode` from its first process, as when a kept
+    /// layout reopens it. Ignored once a process has started.
+    pub fn start_in_mode(&mut self, mode: PermissionMode, cx: &mut Context<Self>) {
+        if self.session.is_none() {
+            self.agent.apply(&AgentEvent::ModeChanged(mode));
+            cx.notify();
+        }
     }
 
     /// Asks for fresh plan usage; usage spent elsewhere (another session,
@@ -174,8 +191,12 @@ impl ChatView {
                 self.send_command(command.clone());
             }
         }
+        let mode = self.agent.start_mode();
         if self.agent.apply(&event) {
             cx.notify();
+        }
+        if self.agent.start_mode() != mode {
+            cx.emit(super::ChatEvent::ModeChanged);
         }
         self.follow_session(&event, cx);
         if matches!(event, AgentEvent::Usage(_)) {
@@ -183,7 +204,7 @@ impl ChatView {
             self.sync_limit_timer(cx);
         }
         self.update_skills(&event, cx);
-        self.update_rules(&event, cx);
+        self.update_hooks(&event, cx);
         let exited = matches!(event, AgentEvent::Exited { .. });
         let turn_ended = matches!(event, AgentEvent::TurnEnded(_));
         if event == AgentEvent::ConversationReset {

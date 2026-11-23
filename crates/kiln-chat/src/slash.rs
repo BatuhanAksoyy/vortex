@@ -51,6 +51,8 @@ pub enum NativeCommand {
     Usage,
     /// Show what fills the context window.
     Context,
+    /// Show the hooks; the agent's own `/hooks` menu needs a terminal.
+    Hooks,
     /// Switch to the named model, or choose one when no name is given.
     Model(Option<String>),
     /// Start a new conversation (`/clear`, `/new`, `/reset`).
@@ -66,6 +68,7 @@ pub fn native(text: &str) -> Option<NativeCommand> {
     match name {
         "usage" | "cost" | "stats" => Some(NativeCommand::Usage),
         "context" => Some(NativeCommand::Context),
+        "hooks" => Some(NativeCommand::Hooks),
         "model" => Some(NativeCommand::Model(
             (!argument.is_empty()).then(|| argument.to_owned()),
         )),
@@ -167,6 +170,7 @@ mod tests {
         );
         assert_eq!(native("/new"), Some(NativeCommand::Clear));
         assert_eq!(native("/context"), Some(NativeCommand::Context));
+        assert_eq!(native("/hooks"), Some(NativeCommand::Hooks));
         assert_eq!(native("/compact"), None);
         assert_eq!(native("/usagex"), None);
         assert_eq!(native("usage"), None);

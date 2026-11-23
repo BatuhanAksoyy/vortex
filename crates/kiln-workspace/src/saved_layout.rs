@@ -8,6 +8,7 @@ use std::{
 };
 
 use anyhow::Context as _;
+use kiln_agent::PermissionMode;
 use serde::{Deserialize, Serialize};
 
 /// A group of tabs, or groups split side by side or stacked.
@@ -24,13 +25,17 @@ pub enum Pane {
     },
 }
 
-/// A tab: the conversation it resumes and the added account it runs with.
+/// A tab: the conversation it resumes, and the added account and
+/// permission mode it runs with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedChat {
     pub session: String,
     /// `None` runs it with the usual sign-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
+    /// `None` starts it in the mode the user's settings say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<PermissionMode>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -135,6 +140,7 @@ mod tests {
                 .map(|id| SavedChat {
                     session: (*id).to_owned(),
                     account: id.strip_prefix("s-").map(|n| format!("account-{n}")),
+                    mode: (*id == "s-1").then_some(PermissionMode::Auto),
                 })
                 .collect(),
         }

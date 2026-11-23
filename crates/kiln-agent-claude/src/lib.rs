@@ -5,10 +5,11 @@
 //! a captured fixture under `tests/fixtures/`.
 
 mod ask;
+mod cli_edit;
 mod control;
 mod history;
+mod hooks;
 mod outgoing;
-mod rules;
 mod session;
 mod sign_in;
 mod skills;

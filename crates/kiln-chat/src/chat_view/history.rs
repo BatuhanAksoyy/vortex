@@ -16,6 +16,8 @@ pub enum ChatEvent {
     TurnStarted,
     /// The chat moved to another account.
     AccountChanged,
+    /// The permission mode changed.
+    ModeChanged,
 }
 
 impl EventEmitter<ChatEvent> for ChatView {}

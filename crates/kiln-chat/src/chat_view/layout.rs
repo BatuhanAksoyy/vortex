@@ -99,6 +99,7 @@ impl Render for ChatView {
         v_flex()
             .id("chat")
             .test_support()
+            .on_key_down(cx.listener(Self::on_chat_key))
             .size_full()
             .bg(cx.theme().background)
             .child(self.render_header(cx))

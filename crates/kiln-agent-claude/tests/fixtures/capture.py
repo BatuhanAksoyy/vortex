@@ -3,7 +3,7 @@
 
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
-        | questions | skills | rules | resume | login | history | running
+        | questions | skills | hooks | resume | login | history | running
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -25,9 +25,10 @@ answers; it is answered with two options joined by ", " and with free text
 that matches no option, as the "Other" field would send.
 "skills" sends no prompt, so it spends no usage: it writes two project skills,
 one turned off in the local settings, and asks for the /skills menu's rows.
-"rules" sends no prompt, so it spends no usage: it writes two rules to the
-local settings and lists the session's rules, then removes one from the file,
-as Kiln does, and lists them again to record whether the CLI sees the change.
+"hooks" sends no prompt, so it spends no usage: it writes a hook to the
+local settings and asks for the /hooks listing, then adds a hook, edits the
+first and removes the added one with `claude edit-hook`, as Kiln does, and
+lists them again. "note" records hold each edit and what the command answered.
 "resume" runs two tiny turns: one in a first process, which saves its
 session, then one in a second process started with `--resume`, which is the
 one recorded. A "note" record holds the first session's id, to compare with
@@ -72,11 +73,11 @@ if case == "skills":
             skill.write(f"---\nname: {name}\ndescription: A skill the {name} fixture lists.\n---\nSay hi.\n")
     with open(".claude/settings.local.json", "w") as settings:
         json.dump({"skillOverrides": {"kiln-hidden": "off"}}, settings)
-RULES = {"allow": ["Bash(npm test:*)", "WebFetch"], "deny": ["Read(./.env)"]}
-if case == "rules":
+if case == "hooks":
     os.makedirs(".claude", exist_ok=True)
     with open(".claude/settings.local.json", "w") as settings:
-        json.dump({"permissions": RULES}, settings)
+        json.dump({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
+            {"type": "command", "command": "echo kiln-pre", "timeout": 30}]}]}}, settings)
 env = {k: v for k, v in os.environ.items() if k not in STRIP}
 if case == "login":
     env["CLAUDE_SECURESTORAGE_CONFIG_DIR"] = os.path.abspath("credentials")
@@ -207,7 +208,7 @@ def send(obj):
     proc.stdin.flush()
 
 
-send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "rules", "login") else "init-1",
+send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "hooks", "login") else "init-1",
       "request": {"subtype": "initialize", "hooks": None}})
 # Ids follow Kiln's own scheme (`Translator::request_id`), so a replay can
 # issue the same commands and match the replies.
@@ -224,9 +225,9 @@ if case == "controls":
 elif case == "skills":
     send({"type": "control_request", "request_id": "kiln-skills-1",
           "request": {"subtype": "get_skills_dialog"}})
-elif case == "rules":
-    send({"type": "control_request", "request_id": "kiln-rules-1",
-          "request": {"subtype": "list_permission_rules"}})
+elif case == "hooks":
+    send({"type": "control_request", "request_id": "kiln-hooks-1",
+          "request": {"subtype": "get_hooks_listing"}})
 elif case == "login":
     send({"type": "control_request", "request_id": "kiln-login-1",
           "request": {"subtype": "claude_authenticate", "loginWithClaudeAi": True}})
@@ -286,14 +287,29 @@ for line in proc.stdout:
             break
         if case == "skills" and msg["response"].get("request_id") == "kiln-skills-1":
             break
-        if case == "rules" and msg["response"].get("request_id") == "kiln-rules-1":
-            with open(".claude/settings.local.json", "w") as settings:
-                json.dump({"permissions": {**RULES, "allow": RULES["allow"][1:]}}, settings)
+        if case == "hooks" and msg["response"].get("request_id") == "kiln-hooks-1":
+            listed = msg["response"]["response"]["hooks"][0]
+            stop = {"type": "command", "command": "echo kiln-stop"}
+            for edit in (
+                {"op": "add", "source": "localSettings", "event": "Stop", "matcher": "",
+                 "hook": stop},
+                {"op": "replace", "source": "localSettings", "event": "PreToolUse",
+                 "matcher": "Edit|Write",
+                 "hook": {**listed["editable"]["config"], "command": "echo kiln-edited"},
+                 "target": {"event": "PreToolUse", "matcher": listed["editable"]["matcher"],
+                            "hook": listed["editable"]["config"]}},
+                {"op": "remove", "source": "localSettings", "event": "Stop", "matcher": "",
+                 "target": {"event": "Stop", "matcher": "", "hook": stop}},
+            ):
+                done = subprocess.run(["claude", "edit-hook", "--json"], input=json.dumps(edit),
+                                      capture_output=True, text=True, env=env, timeout=60)
+                record("note", {"edit": edit, "status": done.returncode,
+                                "stdout": done.stdout, "stderr": done.stderr})
             # The CLI notices settings changes by watching the files.
             time.sleep(10)
-            send({"type": "control_request", "request_id": "kiln-rules-2",
-                  "request": {"subtype": "list_permission_rules"}})
-        if case == "rules" and msg["response"].get("request_id") == "kiln-rules-2":
+            send({"type": "control_request", "request_id": "kiln-hooks-2",
+                  "request": {"subtype": "get_hooks_listing"}})
+        if case == "hooks" and msg["response"].get("request_id") == "kiln-hooks-2":
             break
         if case == "login" and msg["response"].get("request_id") == "kiln-login-1":
             urls = msg["response"].get("response") or {}

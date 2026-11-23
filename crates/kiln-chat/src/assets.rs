@@ -7,7 +7,7 @@ use gpui_kit::{AssetSource, SharedString};
 
 gpui_kit::assets::icon_assets!(
     ChatIcons,
-    [Columns2, Lock, Pencil, Puzzle, ShieldCheck, Trash]
+    [Columns2, FishingHook, Lock, Pencil, Puzzle, Trash]
 );
 
 pub struct Assets;
@@ -40,7 +40,7 @@ mod tests {
             "icons/columns-2.svg",
             "icons/puzzle.svg",
             "icons/lock.svg",
-            "icons/shield-check.svg",
+            "icons/fishing-hook.svg",
             "icons/trash.svg",
             "icons/arrow-up.svg",
             "icons/plus.svg",

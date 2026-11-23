@@ -138,8 +138,6 @@ pub struct SessionHandle {
 
 - Kurallar ajanın kendi kurallarıdır; Kiln ayrı bir kural motoru tutmaz. Claude kuralları kendi ayar dosyalarında tutar ve kendisi eşleştirir. Kabuk komutlarının ayrıştırılması (ör. `npm test && rm -rf ~` zincirinin parçalara bölünmesi) güvenlik açısından hassastır; bu işi ajana bırakmak hem daha az kod hem de daha az risk demektir.
 - İzin kartı, Claude'un `permission_suggestions` alanında önerdiği kuralı gösterir (ör. `Bash(npm test:*)`). Kural önerisi olan bir istekte "don't ask again" seçeneği üç kapsamla gelir: bu oturum (`session`), bu proje (`.claude/settings.local.json`, kullanıcının kendi proje ayarı) ve tüm projeler (`~/.claude/settings.json`). Kiln, seçilen kapsamı CLI'ın kendi önerisindeki `destination` alanına yazıp öneriyi geri gönderir. Kuralı dosyaya CLI yazar. Öneri olarak yalnızca "düzenlemeleri otomatik kabul et" gelen isteklerde bu seçenek tek kalır ve yalnızca oturum boyunca geçerlidir.
-- Composer şeridindeki kalkan düğmesi kurallar panelini açar. Liste CLI'ın `list_permission_rules` isteğinden gelir (`/permissions` ile aynı veri): her kural, CLI'ın düz metin okunuşu ve kaynağıyla. Reddedilenler en üstte gösterilir.
-- Ayar dosyasında tutulan bir kural (proje, paylaşılan proje, kullanıcı) panelden silinebilir. CLI'ın kural değiştiren bir isteği yoktur. Bu yüzden Kiln kuralı ilgili dosyadan siler (diğer anahtarlar ve sıraları korunur, dosya geçici dosya üzerinden yazılır), CLI de değişikliği kendi dosya izleyicisiyle görür. İzleyici değişikliği birkaç saniye geç fark ettiğinden, Kiln listeyi dosyayla karşılaştırır ve dosyadan silinmiş bir kuralı listede yeniden göstermez. Oturum kuralları ve politika ile gelen kurallar salt okunurdur.
 - Codex geldiğinde onun onay istekleri (`*RequestApproval`) aynı izin kartında gösterilir. Kural kapsamları Codex'in desteklediği kadarıyla eşlenir.
 
 ## 7. Worktree'ler ve oturumlar arası koordinasyon
@@ -226,6 +224,14 @@ pub struct SessionHandle {
   - Dosya/klasör sürükle-bırak → `@path` referansı.
   - Slash komutları (`initialize` cevabındaki liste).
   - Model ve izin modu seçici, Stop (interrupt).
+  - Yukarı/Aşağı ok, kutu boşken (ya da geri çağrılan mesaj değişmeden duruyorken) gönderilmiş mesajlar arasında gezer.
+  - ESC çalışan turu keser. Mesaja henüz hiçbir cevap gelmediyse mesaj transcript'ten geri alınır ve kutuya döner; "Interrupted" satırı eklenmez. Açık bir panel varken ESC yalnızca paneli kapatır.
+- Kullanıcı mesajları seçilebilir ve kopyalanabilir. Metin markdown olarak yorumlanmaz: olduğu gibi gösterilir, satır sonları ve girinti korunur.
+- **Hook paneli** (composer şeridindeki kanca düğmesi ya da `/hooks`):
+  - Liste CLI'ın `get_hooks_listing` isteğinden gelir (terminaldeki `/hooks` menüsüyle aynı veri). Hook'lar olaya göre, olayların gerçekleşme sırasıyla gruplanır; her satırda komut, eşleştirici ve kaynak görünür.
+  - Ekleme, düzenleme ve silme CLI'ın `claude edit-hook --json` alt komutuyla yapılır (VS Code eklentisinin kullandığı yol). Dosyayı CLI yazar ve düzenlemeyi kendisi doğrular; Kiln ayar dosyalarına dokunmaz.
+  - Yeni hook komut türündedir. Düzenleme yalnızca komut hook'larında yapılır ve hook'u kendi dosyasında yerinde değiştirir (`replace`); formda görünmeyen ayarlar (ör. `timeout`) korunur. Üç yerden birine kaydedilir: bu proje (`.claude/settings.local.json`), paylaşılan proje (`.claude/settings.json`) ya da tüm projeler (`~/.claude/settings.json`). Eklenti ve politika hook'ları salt okunurdur. Kurum ayarları hook'ları kilitliyorsa panel düzenlemeye kapanır.
+  - CLI ayar değişikliğini dosya izleyicisiyle birkaç saniye geç görür. Kiln düzenlemeyi hemen gösterir ve listeyi saniyede bir, değişiklik görünene kadar (en çok 12 kez) yeniden ister.
 - **Başlık:** ajan ikonu, hesap rozeti, model, context ölçeri, kota ölçeri, worktree/branch.
 
 ## 13. Yerleşim
@@ -246,7 +252,7 @@ pub struct SessionHandle {
   - Sekme çubuğunda "New session" (aynı grupta yeni sekme) ve "Split right" (yanda yeni grup) düğmeleri var. Dock bir alanın son sekmesini kapattırmaz, pencerede hep bir sohbet kalır.
   - Soldaki listeden bir oturum açılınca: başka bir sekmede açıksa o sekmeye geçilir; odaktaki sohbet boşsa onda açılır; değilse odaktaki grupta yeni sekmede açılır. "New session" de boş sohbeti yeniden kullanır.
   - Liste odaktaki sohbeti seçili, turu süren sohbetleri işaretli gösterir.
-  - Sohbet yerleşimi proje başına `<data>/layouts.json`'da tutulur: gruplar, bölmelerin yönü ve boyu, her gruptaki konuşmalar, her sekmenin hesabı ve gösterilen sekme. Kaldırılmış bir hesabın sekmesi ilk eklenen hesapla açılır. Dock her değiştiğinde ve bir sohbetin konuşması değiştiğinde yazılır. Boş sekmeler tutulmaz, sürecek konuşmaları yoktur.
+  - Sohbet yerleşimi proje başına `<data>/layouts.json`'da tutulur: gruplar, bölmelerin yönü ve boyu, her gruptaki konuşmalar, her sekmenin hesabı ve izin modu, gösterilen sekme. Kaldırılmış bir hesabın sekmesi ilk eklenen hesapla açılır. İzin modu kaydedilmemiş bir sekme kullanıcının kendi ayarındaki modla açılır. Dock her değiştiğinde, bir sohbetin konuşması, hesabı ya da modu değiştiğinde yazılır. Boş sekmeler tutulmaz, sürecek konuşmaları yoktur.
   - Açılışta yerleşim oturum listesi yüklenince kurulur: artık saklanmayan konuşmalar atlanır, başka bir süreçte açık olan kopya olarak sürer. Her sekme kendi sürecini başlatır. Hiçbir konuşma kalmazsa tek boş sohbetle başlanır.
 
 ## 14. Ayarlar, tuş atamaları, tema

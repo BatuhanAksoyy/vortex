@@ -7,15 +7,19 @@ mod composer;
 mod context_panel;
 mod header;
 mod history;
+mod hook_form;
+mod hooks;
+mod hooks_panel;
 mod layout;
 mod menu_keys;
 mod native;
-mod rules;
-mod rules_panel;
 mod session;
 mod skills;
 mod skills_panel;
 mod slash_menu;
+mod turn_keys;
+
+use hooks::HooksPanel;
 
 use std::{collections::HashSet, path::PathBuf, rc::Rc};
 
@@ -34,7 +38,6 @@ use crate::{
     agent_state::AgentState,
     permission_prompt::{Answered, PermissionPrompt},
     question_prompt::QuestionPrompt,
-    rule_list::RuleList,
     skill_menu::SkillMenu,
     slash, spinner,
     transcript::{Change, Status, Transcript},
@@ -69,7 +72,7 @@ enum StripPanel {
     Usage,
     Context,
     Skills,
-    Rules,
+    Hooks,
 }
 
 pub struct ChatView {
@@ -94,6 +97,9 @@ pub struct ChatView {
     /// Transcript rows plus one trailing row for the spinner.
     scroller: Entity<MessageScrollerState>,
     composer: Entity<TextareaState>,
+    /// The sent message Up last put in the box, by its place from the
+    /// newest, while the box still holds it unchanged.
+    recalled: Option<(usize, String)>,
     slash: SlashMenu,
     model_picker: Option<ModelPicker>,
     open_panel: Option<StripPanel>,
@@ -101,7 +107,7 @@ pub struct ChatView {
     skill_menu: SkillMenu,
     /// Reads the skills again until a saved state shows up.
     skill_check: Option<Task<()>>,
-    rule_list: RuleList,
+    hooks: HooksPanel,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
     /// Lifts a usage limit when its reset time comes.
@@ -159,13 +165,14 @@ impl ChatView {
             agent: AgentState::default(),
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             composer,
+            recalled: None,
             slash: SlashMenu::default(),
             model_picker: None,
             open_panel: None,
             prompt: None,
             skill_menu: SkillMenu::default(),
             skill_check: None,
-            rule_list: RuleList::default(),
+            hooks: HooksPanel::new(window, cx),
             spinner_frame: 0,
             spinner: None,
             limit_timer: None,

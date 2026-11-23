@@ -2,19 +2,11 @@
 //! that saves a skill's state. The CLI writes the edit itself, through its
 //! `edit-skill-overrides` subcommand, as the VS Code extension does.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
-use async_process::{Command, Stdio};
-use futures::AsyncWriteExt as _;
 use kiln_agent::{Skill, SkillLock, SkillState};
 use serde::Deserialize;
 use serde_json::{Value, json};
-
-use crate::session::PARENT_SESSION_VARS;
-
-/// Also set by a parent Claude Code process; the extension clears it for
-/// the edit too.
-const TRACE_VAR: &str = "TRACEPARENT";
 
 #[derive(Deserialize)]
 struct WireSkills {
@@ -111,57 +103,6 @@ fn parse_lock(name: &str) -> SkillLock {
         "plugin" => SkillLock::Plugin,
         "reserved-name" => SkillLock::ReservedName,
         _ => SkillLock::Policy,
-    }
-}
-
-/// Runs the CLI's settings writer for one edit.
-pub struct SkillEditor {
-    pub program: PathBuf,
-    pub cwd: PathBuf,
-    pub env: Vec<(String, String)>,
-}
-
-impl SkillEditor {
-    /// The error is the CLI's own message, ready to show.
-    pub async fn run(&self, edit: &Value) -> Result<(), String> {
-        let mut command = Command::new(&self.program);
-        command
-            .args(["edit-skill-overrides", "--json"])
-            .current_dir(&self.cwd)
-            .envs(self.env.iter().cloned())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        for var in PARENT_SESSION_VARS.iter().chain(&[TRACE_VAR]) {
-            command.env_remove(var);
-        }
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("cannot start {}: {error}", self.program.display()))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            let written = stdin.write_all(edit.to_string().as_bytes()).await;
-            drop(stdin);
-            written.map_err(|error| format!("cannot send the edit: {error}"))?;
-        }
-        let output = child
-            .output()
-            .await
-            .map_err(|error| format!("cannot read the edit's result: {error}"))?;
-        if output.status.success() {
-            return Ok(());
-        }
-        let said = if output.stderr.iter().all(u8::is_ascii_whitespace) {
-            output.stdout
-        } else {
-            output.stderr
-        };
-        let message = String::from_utf8_lossy(&said).trim().to_owned();
-        Err(if message.is_empty() {
-            format!("claude edit-skill-overrides exited with {}", output.status)
-        } else {
-            message
-        })
     }
 }
 

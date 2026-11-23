@@ -1,22 +1,23 @@
-//! The canned agent state the preview shows: context, commands, rules and
+//! The canned agent state the preview shows: context, commands, hooks and
 //! skills.
 
 use kiln_agent::{
-    AgentEvent, ContextCategory, ContextKind, ContextUsage, PermissionRule, RuleBehavior,
-    RuleSource, SessionCommand, Skill, SkillLock, SkillState, SlashCommand,
+    AgentEvent, ContextCategory, ContextKind, ContextUsage, Hook, HookEdit, HookEvent, HookScope,
+    Hooks, SessionCommand, Skill, SkillLock, SkillState, SlashCommand, StoredHook,
 };
+use serde_json::json;
 
-/// The skills and rules the preview's panels list and change.
+/// The skills and hooks the preview's panels list and change.
 pub struct Settings {
     skills: Vec<Skill>,
-    rules: Vec<PermissionRule>,
+    hooks: Hooks,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             skills: preview_skills(),
-            rules: preview_rules(),
+            hooks: preview_hooks(),
         }
     }
 }
@@ -29,17 +30,24 @@ impl Settings {
             SessionCommand::SetSkillState { name, state } => {
                 set_skill_state(&mut self.skills, &name, state);
             }
-            SessionCommand::RemoveRule(rule) => self.rules.retain(|kept| *kept != rule),
-            SessionCommand::RefreshSkills | SessionCommand::RefreshRules => {}
+            SessionCommand::EditHook(edit) => {
+                edit_hooks(&mut self.hooks.hooks, edit);
+                return vec![
+                    AgentEvent::HookEdited { error: None },
+                    AgentEvent::Hooks(self.hooks.clone()),
+                ];
+            }
+            SessionCommand::RefreshSkills | SessionCommand::RefreshHooks => {}
             _ => return Vec::new(),
         }
         vec![
             AgentEvent::Skills(self.skills.clone()),
-            AgentEvent::Rules(self.rules.clone()),
+            AgentEvent::Hooks(self.hooks.clone()),
         ]
     }
 }
 
+/// Context as the CLI breaks it down, deferred tools included.
 pub fn context() -> ContextUsage {
     let category = |name: &str, tokens: u64, kind: ContextKind| ContextCategory {
         name: name.into(),
@@ -103,38 +111,95 @@ pub fn preview_commands() -> Vec<SlashCommand> {
     .collect()
 }
 
-/// One skill per source, with one locked by its plugin and one turned off.
-/// A second account beside the default one, kept out of the user's list.
-fn preview_rules() -> Vec<PermissionRule> {
-    let rule = |rule: &str, behavior, description: Option<&str>, source| PermissionRule {
-        rule: rule.into(),
-        behavior,
-        description: description.map(Into::into),
-        source,
-    };
-    vec![
-        rule(
-            "Bash(npm test:*)",
-            RuleBehavior::Allow,
-            Some("Any Bash command starting with npm test"),
-            RuleSource::Project,
-        ),
-        rule(
-            "WebFetch",
-            RuleBehavior::Allow,
-            Some("Any use of the WebFetch tool"),
-            RuleSource::User,
-        ),
-        rule("Bash(ls:*)", RuleBehavior::Allow, None, RuleSource::Session),
-        rule(
-            "Read(./.env)",
-            RuleBehavior::Deny,
-            None,
-            RuleSource::SharedProject,
-        ),
-    ]
+fn edit_hooks(hooks: &mut Vec<Hook>, edit: HookEdit) {
+    match edit {
+        HookEdit::Add {
+            scope,
+            event,
+            matcher,
+            command,
+        } => hooks.push(hook(&event, &matcher, &command, scope)),
+        HookEdit::Replace {
+            event,
+            matcher,
+            command,
+            target_event,
+            target,
+        } => {
+            hooks
+                .retain(|hook| hook.event != target_event || hook.stored.as_ref() != Some(&target));
+            hooks.push(hook(&event, &matcher, &command, target.scope));
+        }
+        HookEdit::Remove { event, stored } => {
+            hooks.retain(|hook| hook.event != event || hook.stored.as_ref() != Some(&stored));
+        }
+    }
 }
 
+fn hook(event: &str, matcher: &str, command: &str, scope: HookScope) -> Hook {
+    let source = match scope {
+        HookScope::Project => "Local settings (.claude/settings.local.json)",
+        HookScope::SharedProject => "Project settings (.claude/settings.json)",
+        HookScope::User => "User settings (~/.claude/settings.json)",
+    };
+    Hook {
+        event: event.into(),
+        matcher: matcher.into(),
+        source: source.into(),
+        text: command.into(),
+        kind: "command".into(),
+        disabled: false,
+        stored: Some(StoredHook {
+            scope,
+            matcher: matcher.into(),
+            config: json!({ "type": "command", "command": command }),
+        }),
+    }
+}
+
+/// A hook in each settings file, and one from a plugin that can't be
+/// removed here.
+fn preview_hooks() -> Hooks {
+    let event = |name: &str, summary: &str, takes_matcher| HookEvent {
+        name: name.into(),
+        summary: summary.into(),
+        takes_matcher,
+    };
+    let plugin = Hook {
+        source: "Plugin (formatter)".into(),
+        stored: None,
+        ..hook("PostToolUse", "Edit|Write", "cargo fmt", HookScope::Project)
+    };
+    Hooks {
+        hooks: vec![
+            hook(
+                "PreToolUse",
+                "Bash",
+                "./scripts/guard.sh",
+                HookScope::SharedProject,
+            ),
+            plugin,
+            hook("Stop", "", "say \"Claude is done\"", HookScope::User),
+            hook(
+                "Notification",
+                "",
+                "terminal-notifier -message ready",
+                HookScope::Project,
+            ),
+        ],
+        events: vec![
+            event("PreToolUse", "Before tool execution", true),
+            event("PostToolUse", "After tool execution", true),
+            event("Notification", "When notifications are sent", true),
+            event("UserPromptSubmit", "When the user submits a prompt", false),
+            event("Stop", "Right before Claude concludes its response", false),
+            event("SessionStart", "When a new session is started", true),
+        ],
+        locked: None,
+    }
+}
+
+/// One skill per source, with one locked by its plugin and one turned off.
 fn preview_skills() -> Vec<Skill> {
     let skill = |name: &str, source: &str, tokens: u64, state: SkillState| Skill {
         name: name.into(),

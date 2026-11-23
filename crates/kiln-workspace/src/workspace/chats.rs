@@ -149,6 +149,7 @@ impl Workspace {
         Some(SavedChat {
             session: chat.session_id()?.to_owned(),
             account: chat.account().map(str::to_owned),
+            mode: chat.known_mode(),
         })
     }
 
@@ -238,7 +239,7 @@ impl Workspace {
                 self.reload_sessions(cx);
                 self.save_layout(cx);
             }
-            ChatEvent::AccountChanged => self.save_layout(cx),
+            ChatEvent::AccountChanged | ChatEvent::ModeChanged => self.save_layout(cx),
             ChatEvent::TurnStarted => {}
         }
     }

@@ -2,14 +2,13 @@
 //! `kiln-agent-codex`) translates its own protocol into these types, so the UI
 //! never sees protocol details.
 
+mod hooks;
 mod past;
 mod permission;
 
+pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
 pub use past::{PastMessage, PastSession};
-pub use permission::{
-    Decision, PermissionRequest, PermissionRule, Question, QuestionOption, Remember, RuleBehavior,
-    RuleScope, RuleSource,
-};
+pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Remember, RuleScope};
 
 use std::{
     future::Future,
@@ -96,15 +95,16 @@ pub enum SessionCommand {
         name: String,
         state: SkillState,
     },
-    /// Asks for a fresh [`AgentEvent::Rules`].
-    RefreshRules,
-    /// Takes a rule out of the settings file it is kept in; a fresh
-    /// [`AgentEvent::Rules`] or an [`AgentEvent::RuleRemovalFailed`] follows.
-    RemoveRule(PermissionRule),
+    /// Asks for a fresh [`AgentEvent::Hooks`].
+    RefreshHooks,
+    /// Adds or removes a hook in its settings file; an
+    /// [`AgentEvent::HookEdited`] follows.
+    EditHook(HookEdit),
 }
 
 /// How much the agent may do without asking.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PermissionMode {
     /// Asks before edits and most commands.
     #[default]
@@ -322,12 +322,12 @@ pub enum AgentEvent {
         name: String,
         error: String,
     },
-    /// The permission rules in effect, from every source.
-    Rules(Vec<PermissionRule>),
-    /// Removing the rule failed; the message says why.
-    RuleRemovalFailed {
-        rule: String,
-        error: String,
+    /// The hooks configured for the session, from every source.
+    Hooks(Hooks),
+    /// A hook edit was saved, or failed with the message given. The agent
+    /// may list the change only a moment later.
+    HookEdited {
+        error: Option<String>,
     },
     /// The agent started over with an empty conversation, e.g. on `/clear`.
     ConversationReset,

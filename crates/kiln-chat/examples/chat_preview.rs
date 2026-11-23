@@ -136,7 +136,7 @@ fn ready() -> AgentEvent {
     })
 }
 
-/// Context as the CLI breaks it down, deferred tools included.
+/// A second account beside the default one, kept out of the user's list.
 fn preview_accounts() -> Accounts {
     let mut accounts = Accounts::empty(std::env::temp_dir().join("kiln-chat-preview"));
     let _ = accounts.add(kiln_accounts::Account {

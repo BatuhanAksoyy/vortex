@@ -59,12 +59,17 @@ impl AgentBackend for Stored {
     }
 }
 
-/// Holds both test ends open for the session's length.
+/// Holds both test ends open for the session's length, and switches modes
+/// as the agent does when asked.
 async fn hold(
-    _events: async_channel::Sender<kiln_agent::AgentEvent>,
+    events: async_channel::Sender<kiln_agent::AgentEvent>,
     commands: async_channel::Receiver<kiln_agent::SessionCommand>,
 ) {
-    while commands.recv().await.is_ok() {}
+    while let Ok(command) = commands.recv().await {
+        if let kiln_agent::SessionCommand::SetMode(mode) = command {
+            let _ = events.send(kiln_agent::AgentEvent::ModeChanged(mode)).await;
+        }
+    }
 }
 
 /// No added accounts: chats run with the usual sign-in.

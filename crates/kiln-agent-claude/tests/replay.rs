@@ -26,7 +26,7 @@ mod replay {
         "ask",
         "questions",
         "skills",
-        "rules",
+        "hooks",
         "resume",
     ];
 

@@ -36,8 +36,8 @@ pub fn get_skills_dialog(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "get_skills_dialog" }))
 }
 
-pub fn list_permission_rules(request_id: &str) -> Value {
-    control_request(request_id, &json!({ "subtype": "list_permission_rules" }))
+pub fn get_hooks_listing(request_id: &str) -> Value {
+    control_request(request_id, &json!({ "subtype": "get_hooks_listing" }))
 }
 
 pub fn get_context_usage(request_id: &str) -> Value {

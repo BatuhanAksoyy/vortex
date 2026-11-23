@@ -11,6 +11,7 @@ mod layouts {
 
     use gpui_kit::{AnyWindowHandle, AppContext as _, test::TestWindowExt as _};
     use kiln_accounts::{Account, Accounts};
+    use kiln_agent::PermissionMode;
 
     use super::common::{Stored, chats, click, labels, no_accounts, open_keeping, spawned};
 
@@ -109,5 +110,30 @@ mod layouts {
         assert_eq!(env("s-new"), accounts().env(&second), "the one picked");
         assert_eq!(env("s-old"), accounts().env(&first), "the first added");
         assert_eq!(spawned(&backend), 2, "no restart to switch accounts");
+    }
+
+    #[gpui_kit::test]
+    fn each_tab_comes_back_in_its_permission_mode(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let layouts = dir.path().join("layouts.json");
+        let before = open_keeping(cx, Stored::default(), Some(layouts.clone()), no_accounts());
+        click(cx, before, "session-s-new");
+        click(cx, before, "chat-mode");
+        click(cx, before, "chat-mode-Auto");
+        click(cx, before, "chat-split-right");
+        click(cx, before, "session-s-old");
+
+        let backend = Stored::default();
+        open_keeping(cx, backend.clone(), Some(layouts), no_accounts());
+        let mode = |session: &str| {
+            let specs = backend.0.borrow();
+            let spec = specs
+                .iter()
+                .find(|spec| spec.resume.as_deref() == Some(session))
+                .expect("resumed");
+            spec.mode
+        };
+        assert_eq!(mode("s-new"), Some(PermissionMode::Auto), "the one picked");
+        assert_eq!(mode("s-old"), None, "the user's own default");
     }
 }

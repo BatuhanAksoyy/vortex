@@ -4,15 +4,15 @@
 use std::collections::HashMap;
 
 use kiln_agent::{
-    AgentEvent, BlockKey, PermissionRequest, Remember, SessionCommand, SkillState, ToolCall,
-    TurnOutcome,
+    AgentEvent, BlockKey, HookEdit, PermissionRequest, Remember, SessionCommand, SkillState,
+    ToolCall, TurnOutcome,
 };
 use serde_json::Value;
 
 use crate::{
     ask,
     control::{self, Asked},
-    outgoing, rules, skills, usage,
+    hooks, outgoing, skills, usage,
     wire::{self, Line},
 };
 
@@ -74,13 +74,13 @@ impl Translator {
                 let id = self.ask("skills", Asked::Skills);
                 Some(outgoing::get_skills_dialog(&id))
             }
-            SessionCommand::RefreshRules => {
-                let id = self.ask("rules", Asked::Rules);
-                Some(outgoing::list_permission_rules(&id))
+            SessionCommand::RefreshHooks => {
+                let id = self.ask("hooks", Asked::Hooks);
+                Some(outgoing::get_hooks_listing(&id))
             }
             // Not messages: the driver runs these edits (see `skill_edit`
-            // and `RuleFiles`).
-            SessionCommand::SetSkillState { .. } | SessionCommand::RemoveRule(_) => None,
+            // and `hook_edit`).
+            SessionCommand::SetSkillState { .. } | SessionCommand::EditHook(_) => None,
             SessionCommand::Permission {
                 request_id,
                 decision,
@@ -101,6 +101,12 @@ impl Translator {
     #[must_use]
     pub fn skill_edit(&self, name: &str, state: SkillState) -> Value {
         skills::edit(name, state, self.skill_handles.get(name))
+    }
+
+    /// What `edit-hook` reads to make `edit`.
+    #[must_use]
+    pub fn hook_edit(&self, edit: &HookEdit) -> Value {
+        hooks::edit(edit)
     }
 
     fn request_id(&mut self, kind: &str) -> String {
@@ -146,7 +152,6 @@ impl Translator {
                     self.skill_handles = listed.handles;
                     Some(AgentEvent::Skills(listed.skills))
                 }
-                Asked::Rules => rules::from_reply(response).map(AgentEvent::Rules),
                 asked => control::on_success(asked, response),
             },
             // Only changes the user asked for are worth showing as failed;

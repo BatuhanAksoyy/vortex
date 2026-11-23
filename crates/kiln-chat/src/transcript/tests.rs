@@ -160,3 +160,30 @@ fn a_pasted_document_is_titled_by_its_first_line() {
     let _ = transcript.push_user("\n  # Handover notes\n\nRead AGENTS.md first.".into());
     assert_eq!(transcript.title(), Some("# Handover notes"));
 }
+
+#[test]
+fn a_message_taken_back_before_any_reply_leaves_no_trace() {
+    let mut transcript = Transcript::default();
+    transcript.push_user("first".into());
+    transcript.apply(text(0, "done"));
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Completed));
+    transcript.push_user("second".into());
+    assert_eq!(transcript.sent().collect::<Vec<_>>(), ["second", "first"]);
+    assert_eq!(transcript.withdraw(), Some((2, "second".to_owned())));
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
+    assert_eq!(transcript.len(), 2, "no interrupted line");
+    assert_eq!(transcript.status(), Status::Idle);
+}
+
+#[test]
+fn a_message_with_a_reply_is_not_taken_back() {
+    let mut transcript = Transcript::default();
+    transcript.push_user("go".into());
+    transcript.apply(text(0, "on it"));
+    assert_eq!(transcript.withdraw(), None);
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
+    assert!(matches!(
+        transcript.entry(2),
+        Some((_, Entry::Notice { .. }))
+    ));
+}
