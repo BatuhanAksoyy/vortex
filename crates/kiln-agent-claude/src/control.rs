@@ -18,6 +18,8 @@ pub enum Asked {
     Mode,
     Context,
     Usage,
+    /// Read by the translator, which keeps the skills' other names.
+    Skills,
 }
 
 pub fn mode_name(mode: PermissionMode) -> &'static str {
@@ -119,7 +121,7 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
         }
         // The CLI also announces the new mode in a status line, which covers
         // changes Kiln did not ask for; that line is the one translated.
-        Asked::Mode => None,
+        Asked::Mode | Asked::Skills => None,
         Asked::Usage => crate::usage::from_reply(&response).map(AgentEvent::Usage),
         Asked::Context => {
             let context: WireContext = decode(response)?;

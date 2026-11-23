@@ -6,10 +6,10 @@ use futures::{
     AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, StreamExt as _, io::BufReader,
     stream,
 };
-use kiln_agent::{AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec};
+use kiln_agent::{AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec, SkillState};
 use serde_json::Value;
 
-use crate::{control, outgoing, translate::Translator};
+use crate::{control, outgoing, skills::SkillEditor, translate::Translator};
 
 const ARGS: &[&str] = &[
     "-p",
@@ -25,7 +25,7 @@ const ARGS: &[&str] = &[
 
 /// Set by a parent Claude Code process. Inherited, they make the child behave
 /// as a nested session of whatever terminal launched Kiln.
-const PARENT_SESSION_VARS: &[&str] = &[
+pub(crate) const PARENT_SESSION_VARS: &[&str] = &[
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",
     "CLAUDE_CODE_SESSION_ID",
@@ -64,6 +64,11 @@ impl AgentBackend for ClaudeBackend {
         if let Some(mode) = spec.mode {
             command.args(["--permission-mode", control::mode_name(mode)]);
         }
+        let editor = SkillEditor {
+            program: self.program.clone(),
+            cwd: spec.cwd.clone(),
+            env: spec.env.clone(),
+        };
         command
             .current_dir(&spec.cwd)
             .envs(spec.env)
@@ -82,7 +87,7 @@ impl AgentBackend for ClaudeBackend {
         Ok(Session {
             events,
             commands,
-            driver: Box::pin(drive(child, event_tx, command_rx)),
+            driver: Box::pin(drive(child, editor, event_tx, command_rx)),
         })
     }
 }
@@ -98,6 +103,7 @@ enum Input {
 
 async fn drive(
     mut child: Child,
+    editor: SkillEditor,
     events: async_channel::Sender<AgentEvent>,
     commands: async_channel::Receiver<SessionCommand>,
 ) {
@@ -121,6 +127,11 @@ async fn drive(
         while written.is_ok() {
             match inputs.next().await {
                 Some(Input::Line(line)) => send_all(&events, translator.on_line(&line)).await,
+                Some(Input::Command(SessionCommand::SetSkillState { name, state })) => {
+                    edit_skill(&editor, &translator, &events, name, state).await;
+                    written =
+                        forward(&mut stdin, &mut translator, SessionCommand::RefreshSkills).await;
+                }
                 Some(Input::Command(command)) => {
                     written = forward(&mut stdin, &mut translator, command).await;
                 }
@@ -137,6 +148,22 @@ async fn drive(
     let ((), stderr_tail) = futures::future::join(session, stderr_tail).await;
     let error = exit_error(&mut child, &stderr_tail).await;
     let _ = events.send(AgentEvent::Exited { error }).await;
+}
+
+/// Awaited inside the driver loop: the CLI's output waits in the pipe
+/// meanwhile, and an edit takes a moment.
+async fn edit_skill(
+    editor: &SkillEditor,
+    translator: &Translator,
+    events: &async_channel::Sender<AgentEvent>,
+    name: String,
+    state: SkillState,
+) {
+    if let Err(error) = editor.run(&translator.skill_edit(&name, state)).await {
+        let _ = events
+            .send(AgentEvent::SkillStateFailed { name, error })
+            .await;
+    }
 }
 
 async fn forward(

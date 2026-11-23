@@ -8,6 +8,8 @@ mod layout;
 mod menu_keys;
 mod native;
 mod session;
+mod skills;
+mod skills_panel;
 mod slash_menu;
 
 use std::{collections::HashSet, path::PathBuf, rc::Rc};
@@ -26,6 +28,7 @@ use crate::{
     agent_state::AgentState,
     permission_prompt::{Answered, PermissionPrompt},
     question_prompt::QuestionPrompt,
+    skill_menu::SkillMenu,
     slash, spinner,
     transcript::{Change, Status, Transcript},
 };
@@ -66,6 +69,10 @@ pub struct ChatView {
     usage_open: bool,
     context_open: bool,
     prompt: Option<ShownPrompt>,
+    skill_menu: SkillMenu,
+    skills_open: bool,
+    /// Reads the skills again until a saved state shows up.
+    skill_check: Option<Task<()>>,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
     /// Lifts a usage limit when its reset time comes.
@@ -119,6 +126,9 @@ impl ChatView {
             usage_open: false,
             context_open: false,
             prompt: None,
+            skill_menu: SkillMenu::default(),
+            skills_open: false,
+            skill_check: None,
             spinner_frame: 0,
             spinner: None,
             limit_timer: None,

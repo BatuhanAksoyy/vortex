@@ -8,6 +8,7 @@ mod ask;
 mod control;
 mod outgoing;
 mod session;
+mod skills;
 mod translate;
 mod usage;
 mod wire;

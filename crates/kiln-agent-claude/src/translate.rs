@@ -4,14 +4,15 @@
 use std::collections::HashMap;
 
 use kiln_agent::{
-    AgentEvent, BlockKey, PermissionRequest, Remember, SessionCommand, ToolCall, TurnOutcome,
+    AgentEvent, BlockKey, PermissionRequest, Remember, SessionCommand, SkillState, ToolCall,
+    TurnOutcome,
 };
 use serde_json::Value;
 
 use crate::{
     ask,
     control::{self, Asked},
-    outgoing, usage,
+    outgoing, skills, usage,
     wire::{self, Line},
 };
 
@@ -21,6 +22,8 @@ pub struct Translator {
     /// Requests Kiln sent and awaits a reply to, by request id.
     asked: HashMap<String, Asked>,
     next_request: u64,
+    /// Each skill's other names, from the last skills reply.
+    skill_handles: HashMap<String, Value>,
 }
 
 /// An open permission request: the tool input, echoed back on allow, and the
@@ -67,6 +70,12 @@ impl Translator {
                 let id = self.ask("usage", Asked::Usage);
                 Some(outgoing::get_usage(&id))
             }
+            SessionCommand::RefreshSkills => {
+                let id = self.ask("skills", Asked::Skills);
+                Some(outgoing::get_skills_dialog(&id))
+            }
+            // Not a message: the driver runs the edit (see `skill_edit`).
+            SessionCommand::SetSkillState { .. } => None,
             SessionCommand::Permission {
                 request_id,
                 decision,
@@ -80,6 +89,13 @@ impl Translator {
                 ))
             }
         }
+    }
+
+    /// What `edit-skill-overrides` reads to set the state of the skill
+    /// `name`.
+    #[must_use]
+    pub fn skill_edit(&self, name: &str, state: SkillState) -> Value {
+        skills::edit(name, state, self.skill_handles.get(name))
     }
 
     fn request_id(&mut self, kind: &str) -> String {
@@ -119,7 +135,14 @@ impl Translator {
             wire::Reply::Success {
                 request_id,
                 response,
-            } => control::on_success(self.asked_by(&request_id)?, response),
+            } => match self.asked_by(&request_id)? {
+                Asked::Skills => {
+                    let listed = skills::from_reply(response)?;
+                    self.skill_handles = listed.handles;
+                    Some(AgentEvent::Skills(listed.skills))
+                }
+                asked => control::on_success(asked, response),
+            },
             // Only changes the user asked for are worth showing as failed;
             // background refreshes run every turn and just keep the old
             // value.
@@ -332,5 +355,5 @@ fn remember(suggestions: &[Value]) -> Option<(Remember, Value)> {
         .into_iter()
         .filter(|suggestion| suggestion.get("mode").and_then(Value::as_str) == Some("acceptEdits"))
         .collect();
-    (!accept_edits.is_empty()).then(|| (Remember::AcceptEdits, Value::Array(accept_edits)))
+    (!accept_edits.is_empty()).then_some((Remember::AcceptEdits, Value::Array(accept_edits)))
 }

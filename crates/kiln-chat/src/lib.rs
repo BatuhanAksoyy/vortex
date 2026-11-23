@@ -8,6 +8,7 @@ mod entry_view;
 mod permission_prompt;
 mod question_form;
 mod question_prompt;
+mod skill_menu;
 mod slash;
 mod spinner;
 mod tool_format;

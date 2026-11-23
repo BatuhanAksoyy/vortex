@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use gpui_kit::{AssetSource, SharedString};
 
-gpui_kit::assets::icon_assets!(ChatIcons, [Pencil]);
+gpui_kit::assets::icon_assets!(ChatIcons, [Lock, Pencil, Puzzle]);
 
 pub struct Assets;
 
@@ -32,7 +32,13 @@ mod tests {
 
     #[test]
     fn chat_icons_and_default_icons_both_load() {
-        for path in ["icons/pencil.svg", "icons/arrow-up.svg", "icons/plus.svg"] {
+        for path in [
+            "icons/pencil.svg",
+            "icons/puzzle.svg",
+            "icons/lock.svg",
+            "icons/arrow-up.svg",
+            "icons/plus.svg",
+        ] {
             assert!(Assets.load(path).unwrap().is_some(), "{path}");
         }
     }

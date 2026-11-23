@@ -3,7 +3,7 @@
 
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
-        | questions
+        | questions | skills
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -23,6 +23,8 @@ back.
 "questions" has the model ask two questions at once, one allowing several
 answers; it is answered with two options joined by ", " and with free text
 that matches no option, as the "Other" field would send.
+"skills" sends no prompt, so it spends no usage: it writes two project skills,
+one turned off in the local settings, and asks for the /skills menu's rows.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -45,6 +47,13 @@ PROMPTS = {
 }
 
 case, out_path = sys.argv[1], sys.argv[2]
+if case == "skills":
+    for name in ("kiln-fixture", "kiln-hidden"):
+        os.makedirs(f".claude/skills/{name}", exist_ok=True)
+        with open(f".claude/skills/{name}/SKILL.md", "w") as skill:
+            skill.write(f"---\nname: {name}\ndescription: A skill the {name} fixture lists.\n---\nSay hi.\n")
+    with open(".claude/settings.local.json", "w") as settings:
+        json.dump({"skillOverrides": {"kiln-hidden": "off"}}, settings)
 env = {k: v for k, v in os.environ.items() if k not in STRIP}
 proc = subprocess.Popen(
     ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
@@ -70,7 +79,7 @@ def send(obj):
     proc.stdin.flush()
 
 
-send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands") else "init-1",
+send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills") else "init-1",
       "request": {"subtype": "initialize", "hooks": None}})
 # Ids follow Kiln's own scheme (`Translator::request_id`), so a replay can
 # issue the same commands and match the replies.
@@ -84,6 +93,9 @@ CONTROLS = [
 if case == "controls":
     for request_id, request in CONTROLS:
         send({"type": "control_request", "request_id": request_id, "request": request})
+elif case == "skills":
+    send({"type": "control_request", "request_id": "kiln-skills-1",
+          "request": {"subtype": "get_skills_dialog"}})
 elif case == "fallback":
     send({"type": "control_request", "request_id": "kiln-model-1",
           "request": {"subtype": "set_model", "model": "fable"}})
@@ -137,6 +149,8 @@ for line in proc.stdout:
         if case == "controls" and not awaiting:
             break
         if case == "usage" and msg["response"].get("request_id") == "kiln-usage-1":
+            break
+        if case == "skills" and msg["response"].get("request_id") == "kiln-skills-1":
             break
     if kind == "control_response" and case == "fallback" \
             and msg["response"].get("request_id") == "kiln-model-1":

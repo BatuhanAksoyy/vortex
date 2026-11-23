@@ -36,7 +36,40 @@ def shrink(msg):
         msg["response"]["response"] = context_reply(response)
     if isinstance(response, dict) and "rate_limits" in response:
         msg["response"]["response"] = usage_reply(response)
+    if isinstance(response, dict) and is_skills_menu(response):
+        msg["response"]["response"] = skills_reply(response)
     return msg
+
+
+def is_skills_menu(response):
+    rows = response.get("skills")
+    return isinstance(rows, list) and all(isinstance(r, dict) and "state" in r for r in rows)
+
+
+def skills_reply(response):
+    """Keeps the fixture's own project skills. The other rows name the
+    capturing user's skills and plugins; one row of each other source stays,
+    renamed, to show its shape (a plugin's lock, a synced skill's handles)."""
+    rows, seen = [], set()
+    for row in response["skills"]:
+        source = row.get("source")
+        if source == "project":
+            rows.append(row)
+        elif source not in seen:
+            seen.add(source)
+            rows.append(example_skill(row, len(seen)))
+    return {"skills": rows}
+
+
+def example_skill(row, number):
+    short = f"example-{number}"
+    handles = {}
+    if "unqualified_name" in row.get("handles", {}):
+        handles["unqualified_name"] = short
+    if "aliases" in row.get("handles", {}):
+        handles["aliases"] = [short]
+    return {**row, "name": f"example-source:{short}", "display_name": short,
+            "description": "An example skill.", "handles": handles}
 
 
 CONTEXT_KEEP = ("totalTokens", "maxTokens", "percentage", "model")
@@ -96,8 +129,9 @@ class Placeholders:
 
     def scrub(self, text):
         text = re.sub(r'"signature": ?"[^"]*"', '"signature": "SIG"', text)
-        text = re.sub(r'(?:/tmp|/home)/[^"\s]*?/work\b', "/work", text)
-        text = re.sub(r"(?:/tmp|/home)/[A-Za-z0-9._/-]+", "/redacted", text)
+        roots = r"(?:/private)?(?:/tmp|/var|/home|/Users)"
+        text = re.sub(roots + r'/[^"\s]*?/work\b', "/work", text)
+        text = re.sub(roots + r"/[A-Za-z0-9._/-]+", "/redacted", text)
         # Streamed tool input splits paths across deltas, out of reach of the
         # path patterns above; the user name can still show in a fragment.
         text = text.replace(getpass.getuser(), "user")

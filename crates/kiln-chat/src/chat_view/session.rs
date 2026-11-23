@@ -147,6 +147,7 @@ impl ChatView {
         if matches!(event, AgentEvent::Usage(_)) {
             self.sync_limit_timer(cx);
         }
+        self.update_skills(&event, cx);
         let exited = matches!(event, AgentEvent::Exited { .. });
         if event == AgentEvent::ConversationReset {
             self.toggled.clear();

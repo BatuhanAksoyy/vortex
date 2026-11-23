@@ -1,5 +1,5 @@
 //! The composer: the message box and its strip of mode menu, model menu,
-//! context meter and send/stop button.
+//! skills button, context meter and send/stop button.
 
 use std::time::SystemTime;
 
@@ -41,6 +41,7 @@ impl ChatView {
             .border_color(cx.theme().border)
             .child(self.mode_menu(&view))
             .children(self.model_menu(&view))
+            .child(self.skills_button(cx))
             .child(div().flex_1())
             .children(self.context_meter(cx))
             .child(self.action_button(cx));
@@ -210,7 +211,7 @@ fn model_item(option: &ModelOption, checked: bool, view: &WeakEntity<ChatView>) 
 }
 
 /// A menu option: its name over a one-line description.
-fn option_row(
+pub(super) fn option_row(
     id: SharedString,
     name: SharedString,
     description: SharedString,

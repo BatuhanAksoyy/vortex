@@ -18,7 +18,8 @@ use gpui_kit::{
 use kiln_agent::{
     Account, AgentBackend, AgentEvent, BlockKey, ContextCategory, ContextKind, ContextUsage,
     Limited, ModelOption, PermissionMode, PermissionRequest, Remember, Session, SessionCommand,
-    SessionInfo, SessionSpec, SlashCommand, ToolCall, Usage, UsageWindow,
+    SessionInfo, SessionSpec, Skill, SkillLock, SkillState, SlashCommand, ToolCall, Usage,
+    UsageWindow,
 };
 use kiln_chat::ChatView;
 use serde_json::json;
@@ -54,6 +55,7 @@ async fn play(
 ) {
     let _ = events.send(ready()).await;
     let mut script = Some(script);
+    let mut skills = preview_skills();
     while let Ok(command) = commands.recv().await {
         let replies = match command {
             SessionCommand::Send(_) => script.take().unwrap_or_default(),
@@ -61,6 +63,11 @@ async fn play(
             SessionCommand::SetMode(mode) => vec![AgentEvent::ModeChanged(mode)],
             SessionCommand::SetModel(model) => vec![AgentEvent::ModelChanged(model)],
             SessionCommand::RefreshUsage => vec![AgentEvent::Usage(usage)],
+            SessionCommand::RefreshSkills => vec![AgentEvent::Skills(skills.clone())],
+            SessionCommand::SetSkillState { name, state } => {
+                set_skill_state(&mut skills, &name, state);
+                vec![AgentEvent::Skills(skills.clone())]
+            }
             SessionCommand::Permission { .. } | SessionCommand::Interrupt => Vec::new(),
         };
         for event in replies {
@@ -141,6 +148,16 @@ fn preview_commands() -> Vec<SlashCommand> {
         ),
         ("context", "", "Show current context usage"),
         (
+            "release-notes",
+            "",
+            "Draft release notes from the merged changes",
+        ),
+        (
+            "docs:style-guide",
+            "",
+            "Check prose against the house style",
+        ),
+        (
             "effort",
             "<low|medium|high|xhigh|max|auto>",
             "Set effort level for model usage",
@@ -159,6 +176,35 @@ fn preview_commands() -> Vec<SlashCommand> {
         aliases: Vec::new(),
     })
     .collect()
+}
+
+/// One skill per source, with one locked by its plugin and one turned off.
+fn preview_skills() -> Vec<Skill> {
+    let skill = |name: &str, source: &str, tokens: u64, state: SkillState| Skill {
+        name: name.into(),
+        display_name: name.rsplit(':').next().unwrap_or(name).into(),
+        description: String::new(),
+        source: source.into(),
+        tokens,
+        state,
+        locked_by: None,
+        advertised: state != SkillState::Off,
+    };
+    let mut plugin = skill("docs:style-guide", "plugin", 212, SkillState::On);
+    plugin.locked_by = Some(SkillLock::Plugin);
+    vec![
+        skill("code-review", "user", 148, SkillState::On),
+        skill("release-notes", "project", 64, SkillState::NameOnly),
+        plugin,
+        skill("draft-email", "user", 51, SkillState::Off),
+    ]
+}
+
+fn set_skill_state(skills: &mut [Skill], name: &str, state: SkillState) {
+    for skill in skills.iter_mut().filter(|skill| skill.name == name) {
+        skill.state = state;
+        skill.advertised = state != SkillState::Off;
+    }
 }
 
 fn usage(limited: bool) -> Usage {

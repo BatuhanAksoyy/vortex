@@ -142,7 +142,9 @@ impl Transcript {
             | AgentEvent::ModeChanged(_)
             | AgentEvent::ContextUsage(_)
             | AgentEvent::Usage(_)
-            | AgentEvent::CommandsChanged(_) => Change::default(),
+            | AgentEvent::CommandsChanged(_)
+            | AgentEvent::Skills(_)
+            | AgentEvent::SkillStateFailed { .. } => Change::default(),
         }
     }
 
