@@ -23,6 +23,7 @@ mod layout;
 use crate::{
     permission_prompt::Answered,
     question_form::{Picked, QuestionForm},
+    spinner,
 };
 
 /// Sent back when the user dismisses the questions without answering.
@@ -202,7 +203,7 @@ impl Render for QuestionPrompt {
             .p_3()
             .rounded(theme.radius * 2.)
             .border_1()
-            .border_color(theme.primary)
+            .border_color(spinner::accent())
             .bg(theme.secondary)
             .child(tabs)
             .children(question.map(|question| {

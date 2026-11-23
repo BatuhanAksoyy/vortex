@@ -17,7 +17,7 @@ use gpui_kit::{
 };
 use kiln_agent::{Decision, PermissionRequest, Remember};
 
-use crate::tool_format;
+use crate::{spinner, tool_format};
 
 const DETAIL_MAX_HEIGHT: f32 = 240.;
 
@@ -126,7 +126,7 @@ impl PermissionPrompt {
         let theme = cx.theme();
         let selected = index == self.selected;
         let (background, foreground) = if selected {
-            (theme.primary, theme.primary_foreground)
+            (spinner::accent(), theme.primary_foreground)
         } else {
             (theme.background, theme.foreground)
         };
@@ -139,7 +139,7 @@ impl PermissionPrompt {
             .rounded(theme.radius)
             .border_1()
             .border_color(if selected {
-                theme.primary
+                spinner::accent()
             } else {
                 theme.border
             })
@@ -233,7 +233,7 @@ impl Render for PermissionPrompt {
             .p_3()
             .rounded(theme.radius * 2.)
             .border_1()
-            .border_color(theme.primary)
+            .border_color(spinner::accent())
             .bg(theme.secondary)
             .child(
                 div()

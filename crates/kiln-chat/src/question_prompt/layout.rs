@@ -16,6 +16,7 @@ use gpui_kit::{
 use kiln_agent::Question;
 
 use super::QuestionPrompt;
+use crate::spinner;
 
 impl QuestionPrompt {
     pub(super) fn render_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -37,7 +38,7 @@ impl QuestionPrompt {
                     .font_weight(FontWeight::MEDIUM)
                     .border_b_2()
                     .border_color(if active {
-                        theme.primary
+                        spinner::accent()
                     } else {
                         transparent_black()
                     })
@@ -124,7 +125,7 @@ impl QuestionPrompt {
             .rounded(theme.radius)
             .border_l_2()
             .border_color(if highlighted {
-                theme.primary
+                spinner::accent()
             } else {
                 transparent_black()
             })
@@ -144,7 +145,7 @@ impl QuestionPrompt {
             .px_3()
             .py_1p5()
             .rounded(theme.radius)
-            .bg(theme.primary)
+            .bg(spinner::accent())
             .text_color(theme.primary_foreground)
             .font_weight(FontWeight::MEDIUM)
             .when(!ready, |this| this.opacity(0.5))
@@ -198,13 +199,13 @@ fn indicator(multi: bool, picked: bool, cx: &App) -> impl IntoElement + use<> {
         .justify_center()
         .border_1()
         .border_color(if picked {
-            theme.primary
+            spinner::accent()
         } else {
             theme.muted_foreground.opacity(0.6)
         });
     if multi {
         mark.rounded(px(3.)).when(picked, |this| {
-            this.bg(theme.primary).child(
+            this.bg(spinner::accent()).child(
                 Icon::new(IconName::Check)
                     .xsmall()
                     .text_color(theme.primary_foreground),
@@ -212,7 +213,7 @@ fn indicator(multi: bool, picked: bool, cx: &App) -> impl IntoElement + use<> {
         })
     } else {
         mark.rounded_full().when(picked, |this| {
-            this.child(div().size_2().rounded_full().bg(theme.primary))
+            this.child(div().size_2().rounded_full().bg(spinner::accent()))
         })
     }
 }
