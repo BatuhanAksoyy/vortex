@@ -2,7 +2,7 @@
 //! the models it offers, the model and mode in use, and context usage. Kept
 //! across restarts so a new process starts with the user's choices.
 
-use std::time::SystemTime;
+use std::{collections::HashMap, time::SystemTime};
 
 use kiln_agent::{
     Account, AgentEvent, ContextUsage, Limited, ModelOption, PermissionMode, SessionCommand,
@@ -35,6 +35,9 @@ pub struct AgentState {
     account: Option<Account>,
     usage: Usage,
     usage_updated_at: Option<SystemTime>,
+    /// Usage last known for the accounts the chat moved away from, by
+    /// account id; `None` is the usual sign-in.
+    left_accounts: HashMap<Option<String>, (Usage, Option<SystemTime>)>,
     commands: Vec<SlashCommand>,
 }
 
@@ -118,6 +121,31 @@ impl AgentState {
     /// Forgets the conversation's usage; the models and choices stay.
     pub fn reset_context(&mut self) {
         self.context = None;
+    }
+
+    /// Moves from account `from` to `to`: keeps how much of `from`'s plan
+    /// is spent and brings back what was last known of `to`'s. The
+    /// conversation and the choices stay.
+    pub fn change_account(&mut self, from: Option<String>, to: Option<&str>) {
+        self.account = None;
+        let left = (
+            std::mem::take(&mut self.usage),
+            self.usage_updated_at.take(),
+        );
+        self.left_accounts.insert(from, left);
+        if let Some((usage, updated_at)) = self.left_accounts.remove(&to.map(str::to_owned)) {
+            self.usage = usage;
+            self.usage_updated_at = updated_at;
+        }
+    }
+
+    /// The limit account `id` was last known to be under at `now`, if the
+    /// chat moved away from it.
+    pub fn left_limit_at(&self, id: &str, now: SystemTime) -> Option<Limited> {
+        self.left_accounts
+            .get(&Some(id.to_owned()))
+            .and_then(|(usage, _)| usage.limited)
+            .filter(|limited| limited.until.is_none_or(|until| until > now))
     }
 
     pub fn choose_model(&mut self, id: &str) {
@@ -235,162 +263,4 @@ fn compact(count: u64, unit: u64, suffix: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use kiln_agent::SessionInfo;
-
-    fn option(id: &str, resolved: &str, name: &str) -> ModelOption {
-        ModelOption {
-            id: id.into(),
-            resolved: resolved.into(),
-            name: name.into(),
-            description: String::new(),
-        }
-    }
-
-    fn ready() -> AgentEvent {
-        AgentEvent::Ready(SessionInfo {
-            models: vec![
-                option("default", "claude-opus-5-5", "Default (recommended)"),
-                option("opus", "claude-opus-5-5", "Opus 5.5"),
-                option("sonnet", "claude-sonnet-5-5", "Sonnet 5.5"),
-            ],
-            mode: PermissionMode::AskBeforeEdits,
-            account: None,
-            commands: Vec::new(),
-        })
-    }
-
-    #[test]
-    fn the_running_model_shows_by_its_own_name_not_the_default_alias() {
-        let mut state = AgentState::default();
-        state.apply(&ready());
-        state.apply(&AgentEvent::Started {
-            session_id: "s".into(),
-            model: "claude-opus-5-5".into(),
-        });
-        assert_eq!(state.model_label().as_deref(), Some("Opus 5.5"));
-        state.choose_model("default");
-        assert_eq!(
-            state.model_label().as_deref(),
-            Some("Default (recommended)")
-        );
-    }
-
-    #[test]
-    fn before_the_first_turn_the_default_option_shows() {
-        let mut state = AgentState::default();
-        state.apply(&ready());
-        assert_eq!(
-            state.model_label().as_deref(),
-            Some("Default (recommended)")
-        );
-    }
-
-    #[test]
-    fn the_model_the_agent_reports_wins_over_the_pick() {
-        let mut state = AgentState::default();
-        state.apply(&ready());
-        state.choose_model("sonnet");
-        assert_eq!(state.model_label().as_deref(), Some("Sonnet 5.5"));
-        state.apply(&AgentEvent::Started {
-            session_id: "s".into(),
-            model: "claude-opus-5-5".into(),
-        });
-        assert_eq!(state.model_label().as_deref(), Some("Opus 5.5"));
-    }
-
-    #[test]
-    fn an_unknown_model_shows_its_id() {
-        let mut state = AgentState::default();
-        state.apply(&AgentEvent::ModelChanged("claude-x".into()));
-        assert_eq!(state.model_label().as_deref(), Some("claude-x"));
-    }
-
-    #[test]
-    fn mode_is_unknown_until_reported() {
-        let mut state = AgentState::default();
-        assert_eq!(state.start_mode(), None);
-        state.apply(&AgentEvent::ModeChanged(PermissionMode::Plan));
-        assert_eq!(state.start_mode(), Some(PermissionMode::Plan));
-    }
-
-    #[test]
-    fn context_percent_rounds_up() {
-        let mut state = AgentState::default();
-        assert_eq!(state.context_percent(), None);
-        state.apply(&AgentEvent::ContextUsage(ContextUsage {
-            used_tokens: 15_338,
-            max_tokens: 1_000_000,
-            ..ContextUsage::default()
-        }));
-        assert_eq!(state.context_percent(), Some(2));
-        state.apply(&AgentEvent::ContextUsage(ContextUsage {
-            used_tokens: 13_925,
-            max_tokens: 400_000,
-            percent: Some(3),
-            ..ContextUsage::default()
-        }));
-        assert_eq!(state.context_percent(), Some(3), "the agent's figure wins");
-    }
-
-    #[test]
-    fn shift_tab_cycles_the_menu_modes() {
-        assert_eq!(
-            next_mode(PermissionMode::AskBeforeEdits),
-            PermissionMode::EditAutomatically
-        );
-        assert_eq!(
-            next_mode(PermissionMode::Auto),
-            PermissionMode::AskBeforeEdits
-        );
-        assert_eq!(
-            next_mode(PermissionMode::DontAsk),
-            PermissionMode::AskBeforeEdits
-        );
-    }
-
-    #[test]
-    fn a_partial_report_keeps_the_other_window() {
-        let window = |percent| kiln_agent::UsageWindow {
-            percent,
-            resets_at: None,
-        };
-        let mut state = AgentState::default();
-        state.apply(&AgentEvent::Usage(Usage {
-            session: Some(window(4)),
-            weekly: Some(window(19)),
-            limited: None,
-        }));
-        state.apply(&AgentEvent::Usage(Usage {
-            session: Some(window(5)),
-            weekly: None,
-            limited: None,
-        }));
-        assert_eq!(state.usage().weekly, Some(window(19)));
-        assert_eq!(state.usage().session, Some(window(5)));
-    }
-
-    #[test]
-    fn a_limit_ends_at_its_reset_time() {
-        let now = SystemTime::now();
-        let hour = std::time::Duration::from_secs(3600);
-        let mut state = AgentState::default();
-        state.apply(&AgentEvent::Usage(Usage {
-            limited: Some(Limited {
-                until: Some(now + hour),
-            }),
-            ..Usage::default()
-        }));
-        assert!(state.limit_at(now).is_some());
-        assert!(state.limit_at(now + hour).is_none());
-    }
-
-    #[test]
-    fn token_counts_are_compact() {
-        assert_eq!(tokens(950), "950");
-        assert_eq!(tokens(15_338), "15.3k");
-        assert_eq!(tokens(200_000), "200k");
-        assert_eq!(tokens(1_000_000), "1M");
-    }
-}
+mod tests;

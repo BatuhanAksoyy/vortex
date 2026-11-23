@@ -40,7 +40,17 @@ impl ChatView {
     /// Asks for fresh plan usage; usage spent elsewhere (another session,
     /// claude.ai) shows only when asked for.
     pub fn refresh_usage(&mut self, _: &mut Context<Self>) {
-        self.send_command(SessionCommand::RefreshUsage);
+        if self.asks_usage() {
+            self.send_command(SessionCommand::RefreshUsage);
+        }
+    }
+
+    /// An added account's usage comes only from the limits reported during
+    /// its turns. Asked for, the CLI answers from a cache in the profile all
+    /// accounts share, which holds the usage of whichever account signed in
+    /// last.
+    fn asks_usage(&self) -> bool {
+        self.account.is_none()
     }
 
     /// Keeps the header's usage current while the chat sits idle.
@@ -61,7 +71,7 @@ impl ChatView {
     /// Waits for the limit's reset time, then lifts it and asks for fresh
     /// usage. A limit without a reset time lasts until the agent reports
     /// otherwise.
-    fn sync_limit_timer(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn sync_limit_timer(&mut self, cx: &mut Context<Self>) {
         let wait = self
             .agent
             .limit_at(SystemTime::now())
@@ -77,7 +87,7 @@ impl ChatView {
 
     fn end_limit(&mut self, cx: &mut Context<Self>) {
         self.agent.end_limit();
-        self.send_command(SessionCommand::RefreshUsage);
+        self.refresh_usage(cx);
         cx.notify();
     }
 
@@ -118,7 +128,10 @@ impl ChatView {
     ) -> anyhow::Result<LiveSession> {
         let session = self.backend.spawn(SessionSpec {
             cwd: self.cwd.clone(),
-            env: Vec::new(),
+            env: self
+                .account
+                .as_deref()
+                .map_or_else(Vec::new, |id| self.accounts.read(cx).env(id)),
             model: self.agent.chosen_model().map(str::to_owned),
             mode: self.agent.start_mode(),
             resume: self.session_id.clone(),
@@ -140,7 +153,9 @@ impl ChatView {
 
     fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
         for command in AgentState::refreshes_after(&event) {
-            self.send_command(command.clone());
+            if *command != SessionCommand::RefreshUsage || self.asks_usage() {
+                self.send_command(command.clone());
+            }
         }
         if self.agent.apply(&event) {
             cx.notify();
@@ -153,6 +168,7 @@ impl ChatView {
         }
         self.update_skills(&event, cx);
         let exited = matches!(event, AgentEvent::Exited { .. });
+        let turn_ended = matches!(event, AgentEvent::TurnEnded(_));
         if event == AgentEvent::ConversationReset {
             self.toggled.clear();
             self.scroller
@@ -164,5 +180,8 @@ impl ChatView {
             self.session = None;
         }
         self.sync_prompt(window, cx);
+        if turn_ended {
+            self.adopt_added_account(window, cx);
+        }
     }
 }

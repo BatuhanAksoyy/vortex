@@ -46,7 +46,7 @@ pub fn on_timeline(entry: &Entry) -> bool {
 pub fn render(entry: &Entry, context: &EntryContext, cx: &App) -> AnyElement {
     match entry {
         Entry::User(text) => user(text, cx),
-        Entry::Notice { text, is_error } => notice(text, *is_error, cx),
+        Entry::Notice { text, is_error } => notice(text, *is_error, context.id, cx),
         Entry::Text { text, .. } => {
             let body = TextView::markdown(("text", context.id), text.clone()).selectable(true);
             timeline_row(cx.theme().muted_foreground, context, cx)
@@ -240,13 +240,16 @@ fn toggle(
     }
 }
 
-fn notice(text: &str, is_error: bool, cx: &App) -> AnyElement {
+fn notice(text: &str, is_error: bool, id: u64, cx: &App) -> AnyElement {
     let color = if is_error {
         cx.theme().danger
     } else {
         cx.theme().muted_foreground
     };
     div()
+        .id(("notice", id))
+        .test_support()
+        .aria_label(SharedString::from(text.to_owned()))
         .pb_3()
         .text_sm()
         .text_color(color)

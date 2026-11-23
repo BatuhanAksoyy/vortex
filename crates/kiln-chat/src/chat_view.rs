@@ -1,6 +1,8 @@
 //! The chat panel's state: one agent session, its transcript, the open
 //! permission prompt and the composer. Layout lives in `layout`.
 
+mod accounts;
+mod accounts_panel;
 mod composer;
 mod context_panel;
 mod header;
@@ -22,6 +24,7 @@ use gpui_kit::{
         message_scroller::MessageScrollerState,
     },
 };
+use kiln_accounts::Accounts;
 use kiln_agent::{AgentBackend, SessionCommand};
 
 use crate::{
@@ -32,6 +35,7 @@ use crate::{
     slash, spinner,
     transcript::{Change, Status, Transcript},
 };
+use accounts::AccountsPanel;
 use native::ModelPicker;
 use slash_menu::SlashMenu;
 
@@ -55,6 +59,12 @@ struct ShownPrompt {
 
 pub struct ChatView {
     backend: Rc<dyn AgentBackend>,
+    /// Shared by every chat; added accounts show in all of them.
+    accounts: Entity<Accounts>,
+    /// The added account the chat runs with, by id; `None` is the user's
+    /// usual sign-in, used only while no account is added.
+    account: Option<String>,
+    accounts_panel: AccountsPanel,
     cwd: PathBuf,
     transcript: Transcript,
     /// Entries the user toggled away from their default expansion.
@@ -87,6 +97,7 @@ pub struct ChatView {
 impl ChatView {
     pub fn new(
         backend: Rc<dyn AgentBackend>,
+        accounts: Entity<Accounts>,
         cwd: PathBuf,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -115,8 +126,20 @@ impl ChatView {
                     _ => {}
                 },
             );
+        let accounts_changed = cx.observe_in(&accounts, window, |this, _, window, cx| {
+            this.adopt_added_account(window, cx);
+            cx.notify();
+        });
+        let account = accounts
+            .read(cx)
+            .added()
+            .first()
+            .map(|account| account.id.clone());
         let mut view = Self {
             backend,
+            accounts,
+            account,
+            accounts_panel: AccountsPanel::default(),
             cwd,
             transcript: Transcript::default(),
             toggled: HashSet::new(),
@@ -137,7 +160,7 @@ impl ChatView {
             spinner: None,
             limit_timer: None,
             _usage_poll: cx.spawn(Self::poll_usage),
-            _subscriptions: vec![subscription],
+            _subscriptions: vec![subscription, accounts_changed],
         };
         // Started now, not on the first message: the composer shows the
         // models, mode and context the agent reports when it starts.

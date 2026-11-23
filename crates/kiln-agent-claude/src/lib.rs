@@ -8,6 +8,7 @@ mod ask;
 mod control;
 mod outgoing;
 mod session;
+mod sign_in;
 mod skills;
 mod translate;
 mod usage;

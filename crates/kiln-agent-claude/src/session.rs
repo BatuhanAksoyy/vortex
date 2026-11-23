@@ -6,12 +6,14 @@ use futures::{
     AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, StreamExt as _, io::BufReader,
     stream,
 };
-use kiln_agent::{AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec, SkillState};
+use kiln_agent::{
+    AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec, SignIn, SkillState,
+};
 use serde_json::Value;
 
-use crate::{control, outgoing, skills::SkillEditor, translate::Translator};
+use crate::{control, outgoing, sign_in, skills::SkillEditor, translate::Translator};
 
-const ARGS: &[&str] = &[
+pub(crate) const ARGS: &[&str] = &[
     "-p",
     "--input-format",
     "stream-json",
@@ -92,6 +94,10 @@ impl AgentBackend for ClaudeBackend {
             commands,
             driver: Box::pin(drive(child, editor, event_tx, command_rx)),
         })
+    }
+
+    fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn> {
+        sign_in::start(&self.program, env)
     }
 }
 
@@ -186,7 +192,7 @@ async fn send_all(events: &async_channel::Sender<AgentEvent>, batch: Vec<AgentEv
     }
 }
 
-async fn write(stdin: &mut ChildStdin, message: &Value) -> std::io::Result<()> {
+pub(crate) async fn write(stdin: &mut ChildStdin, message: &Value) -> std::io::Result<()> {
     let mut line = message.to_string();
     line.push('\n');
     stdin.write_all(line.as_bytes()).await?;

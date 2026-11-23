@@ -5,23 +5,21 @@ use std::time::SystemTime;
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Anchor, Context, Hsla, SharedString, TestSupportExt, WeakEntity,
+    Anchor, Context, Hsla, TestSupportExt, WeakEntity,
     component::{
         ActiveTheme, Icon, IconName, Sizable,
         button::{Button, ButtonVariants},
         h_flex,
         popover::Popover,
-        tooltip::Tooltip,
         v_flex,
     },
     div, px, relative,
 };
-use kiln_agent::{Account, Usage, UsageWindow};
+use kiln_agent::{Usage, UsageWindow};
 
 use super::ChatView;
 
 const USAGE_PANEL_WIDTH: f32 = 260.;
-const ACCOUNT_MAX_WIDTH: f32 = 240.;
 
 impl ChatView {
     pub(super) fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -38,11 +36,7 @@ impl ChatView {
             .border_b_1()
             .border_color(theme.border)
             .child(div().flex_1().min_w_0().truncate().child(title))
-            .children(
-                self.agent
-                    .account()
-                    .map(|account| account_badge(account, cx)),
-            )
+            .child(self.account_button(cx))
             .children(usage_meter(
                 self.agent.usage(),
                 self.agent.usage_updated_at(),
@@ -63,44 +57,6 @@ impl ChatView {
                     .on_click(cx.listener(|this, _, window, cx| this.new_conversation(window, cx))),
             )
     }
-}
-
-/// The address the agent is signed in with and its plan, e.g.
-/// "dev@example.com · Pro"; the organization shows on hover.
-fn account_badge(account: &Account, cx: &gpui_kit::App) -> impl IntoElement + use<> {
-    let plan = account
-        .plan
-        .strip_prefix("Claude ")
-        .unwrap_or(&account.plan);
-    let label: SharedString = [account.email.as_str(), plan]
-        .into_iter()
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join(" · ")
-        .into();
-    let label = if label.is_empty() {
-        "Account".into()
-    } else {
-        label
-    };
-    let organization = SharedString::from(account.organization.clone());
-    let theme = cx.theme();
-    div()
-        .id("chat-account")
-        .test_support()
-        .aria_label(label.clone())
-        .max_w(px(ACCOUNT_MAX_WIDTH))
-        .truncate()
-        .px_1p5()
-        .rounded(theme.radius)
-        .border_1()
-        .border_color(theme.border)
-        .text_xs()
-        .text_color(theme.muted_foreground)
-        .child(label)
-        .when(!organization.is_empty(), |this| {
-            this.tooltip(move |window, cx| Tooltip::new(organization.clone()).build(window, cx))
-        })
 }
 
 /// The session window's percent; a click asks for fresh numbers and shows

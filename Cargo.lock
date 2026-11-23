@@ -4013,9 +4013,21 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "gpui-kit",
+ "kiln-accounts",
  "kiln-agent-claude",
  "kiln-workspace",
  "log",
+]
+
+[[package]]
+name = "kiln-accounts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -4050,8 +4062,10 @@ dependencies = [
  "async-channel",
  "gpui-kit",
  "jiff",
+ "kiln-accounts",
  "kiln-agent",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -4094,6 +4108,7 @@ dependencies = [
  "anyhow",
  "futures",
  "gpui-kit",
+ "kiln-accounts",
  "kiln-agent",
  "kiln-chat",
  "kiln-keymap",

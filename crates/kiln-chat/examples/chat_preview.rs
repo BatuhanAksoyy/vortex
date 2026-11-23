@@ -15,10 +15,11 @@ use gpui_kit::{
     component::{Theme, ThemeMode, ThemeRegistry},
     px, size,
 };
+use kiln_accounts::Accounts;
 use kiln_agent::{
     Account, AgentBackend, AgentEvent, BlockKey, ContextCategory, ContextKind, ContextUsage,
     Limited, ModelOption, PermissionMode, PermissionRequest, Remember, Session, SessionCommand,
-    SessionInfo, SessionSpec, Skill, SkillLock, SkillState, SlashCommand, ToolCall, Usage,
+    SessionInfo, SessionSpec, SignIn, Skill, SkillLock, SkillState, SlashCommand, ToolCall, Usage,
     UsageWindow,
 };
 use kiln_chat::ChatView;
@@ -42,6 +43,10 @@ impl AgentBackend for ScriptedBackend {
             commands,
             driver: Box::pin(play(script, usage(self.limited), events_tx, commands_rx)),
         })
+    }
+
+    fn sign_in(&self, _: Vec<(String, String)>) -> anyhow::Result<SignIn> {
+        anyhow::bail!("the preview cannot sign in")
     }
 }
 
@@ -179,6 +184,17 @@ fn preview_commands() -> Vec<SlashCommand> {
 }
 
 /// One skill per source, with one locked by its plugin and one turned off.
+/// A second account beside the default one, kept out of the user's list.
+fn preview_accounts() -> Accounts {
+    let mut accounts = Accounts::empty(std::env::temp_dir().join("kiln-chat-preview"));
+    let _ = accounts.add(kiln_accounts::Account {
+        id: "account-preview".into(),
+        email: "second@example.com".into(),
+        plan: "Claude Max".into(),
+    });
+    accounts
+}
+
 fn preview_skills() -> Vec<Skill> {
     let skill = |name: &str, source: &str, tokens: u64, state: SkillState| Skill {
         name: name.into(),
@@ -345,7 +361,9 @@ fn main() {
                 cx.new(|cx| {
                     let backend: Rc<dyn AgentBackend> =
                         Rc::new(ScriptedBackend { prompt, limited });
-                    let mut view = ChatView::new(backend, PathBuf::from(ROOT), window, cx);
+                    let accounts = cx.new(|_| preview_accounts());
+                    let mut view =
+                        ChatView::new(backend, accounts, PathBuf::from(ROOT), window, cx);
                     view.submit(
                         "can you add tests for the localization utils?".into(),
                         window,

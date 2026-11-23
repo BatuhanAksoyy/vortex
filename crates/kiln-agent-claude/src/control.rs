@@ -99,6 +99,16 @@ struct WireCategory {
     kind: String,
 }
 
+/// The account a finished sign-in reports, if it names one.
+pub fn signed_in(response: &Value) -> Option<Account> {
+    let account: WireAccount = decode(response.get("account")?.clone())?;
+    (!account.email.is_empty()).then_some(Account {
+        email: account.email,
+        organization: account.organization,
+        plan: account.subscription_type,
+    })
+}
+
 /// The event a successful reply means, if any.
 pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
     match asked {

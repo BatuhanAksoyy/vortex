@@ -40,6 +40,22 @@ pub fn get_context_usage(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "get_context_usage" }))
 }
 
+/// Starts a claude.ai sign-in; the reply carries the page to sign in on.
+pub fn claude_authenticate(request_id: &str) -> Value {
+    control_request(
+        request_id,
+        &json!({ "subtype": "claude_authenticate", "loginWithClaudeAi": true }),
+    )
+}
+
+/// Answered once the sign-in in the browser has finished.
+pub fn claude_oauth_wait_for_completion(request_id: &str) -> Value {
+    control_request(
+        request_id,
+        &json!({ "subtype": "claude_oauth_wait_for_completion" }),
+    )
+}
+
 pub fn interrupt(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "interrupt" }))
 }

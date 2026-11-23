@@ -92,6 +92,14 @@ impl Transcript {
             .count()
     }
 
+    /// A line from Kiln itself, such as a change of account.
+    pub fn push_notice(&mut self, text: String) -> Change {
+        self.push(Entry::Notice {
+            text,
+            is_error: false,
+        })
+    }
+
     pub fn push_user(&mut self, text: String) -> Change {
         self.status = Status::Running;
         self.push(Entry::User(text))

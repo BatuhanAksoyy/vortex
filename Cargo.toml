@@ -11,6 +11,7 @@ publish = false
 license = "UNLICENSED"
 
 [workspace.dependencies]
+kiln-accounts = { path = "crates/kiln-accounts" }
 kiln-agent = { path = "crates/kiln-agent" }
 kiln-agent-claude = { path = "crates/kiln-agent-claude" }
 kiln-chat = { path = "crates/kiln-chat" }

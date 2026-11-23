@@ -17,6 +17,7 @@ use gpui_kit::{
         v_flex,
     },
 };
+use kiln_accounts::Accounts;
 use kiln_agent::AgentBackend;
 use kiln_chat::ChatView;
 use kiln_project::ListOptions;
@@ -42,6 +43,7 @@ pub struct Workspace {
     root: PathBuf,
     /// Starts the agent behind the chat; injected so tests run no real CLI.
     backend: Rc<dyn AgentBackend>,
+    accounts: Entity<Accounts>,
     file_tree: Entity<FileTree>,
     editor_pane: Entity<EditorPane>,
     chat: Entity<ChatView>,
@@ -59,6 +61,7 @@ impl Workspace {
     pub fn new(
         root: PathBuf,
         backend: Rc<dyn AgentBackend>,
+        accounts: Entity<Accounts>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -70,7 +73,7 @@ impl Workspace {
         cx.on_release(|_, cx| cx.quit()).detach();
         let file_tree = cx.new(FileTree::new);
         let editor_pane = cx.new(EditorPane::new);
-        let chat = new_chat(root.clone(), backend.clone(), window, cx);
+        let chat = new_chat(root.clone(), backend.clone(), accounts.clone(), window, cx);
         let subscriptions = vec![
             cx.subscribe_in(
                 &file_tree,
@@ -91,6 +94,7 @@ impl Workspace {
         Self {
             root,
             backend,
+            accounts,
             file_tree,
             editor_pane,
             chat,
@@ -243,10 +247,11 @@ async fn next_change(
 fn new_chat(
     root: PathBuf,
     backend: Rc<dyn AgentBackend>,
+    accounts: Entity<Accounts>,
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) -> Entity<ChatView> {
-    cx.new(|cx| ChatView::new(backend, root, window, cx))
+    cx.new(|cx| ChatView::new(backend, accounts, root, window, cx))
 }
 
 fn project_name(root: &Path) -> String {

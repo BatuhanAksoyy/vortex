@@ -20,6 +20,16 @@ mod workspace {
         fn spawn(&self, _: kiln_agent::SessionSpec) -> anyhow::Result<kiln_agent::Session> {
             anyhow::bail!("no agent in workspace tests")
         }
+
+        fn sign_in(&self, _: Vec<(String, String)>) -> anyhow::Result<kiln_agent::SignIn> {
+            anyhow::bail!("no agent in workspace tests")
+        }
+    }
+
+    /// Workspace tests add no account, so the list is never written.
+    fn no_accounts(cx: &mut gpui_kit::App) -> Entity<kiln_accounts::Accounts> {
+        let dir = std::env::temp_dir().join("kiln-workspace-tests");
+        cx.new(|_| kiln_accounts::Accounts::empty(dir))
     }
 
     fn open_workspace(
@@ -40,7 +50,8 @@ mod workspace {
                 cx,
                 |window, cx| {
                     let backend = std::rc::Rc::new(NoAgent);
-                    cx.new(|cx| Workspace::new(root, backend, window, cx))
+                    let accounts = no_accounts(cx);
+                    cx.new(|cx| Workspace::new(root, backend, accounts, window, cx))
                 },
             )
             .expect("open test window")

@@ -23,6 +23,18 @@ pub struct SessionSpec {
 
 pub trait AgentBackend {
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session>;
+
+    /// Signs an account in to the credential store `env` points at. The user
+    /// finishes in the browser, on the page `SignIn::url` hands out.
+    fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn>;
+}
+
+/// A sign-in in progress. Dropping `done` cancels it.
+pub struct SignIn {
+    /// The page to sign in on, sent once the agent has it.
+    pub url: async_channel::Receiver<String>,
+    /// Ends with the account signed in; the owner must poll it.
+    pub done: Pin<Box<dyn Future<Output = anyhow::Result<Account>> + Send>>,
 }
 
 /// A running session. The owner must poll `driver` (typically on a

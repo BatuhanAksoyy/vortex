@@ -38,7 +38,21 @@ def shrink(msg):
         msg["response"]["response"] = usage_reply(response)
     if isinstance(response, dict) and is_skills_menu(response):
         msg["response"]["response"] = skills_reply(response)
+    if isinstance(response, dict) and "automaticUrl" in response:
+        msg["response"]["response"] = {k: SIGN_IN_URL for k in ("manualUrl", "automaticUrl")}
+    if isinstance(response, dict) and "account" in response and "commands" not in response:
+        msg["response"]["response"] = {**response, "account": redact_account(response["account"])}
     return msg
+
+
+# The real URLs carry a one-time PKCE challenge and state.
+SIGN_IN_URL = "https://claude.com/cai/oauth/authorize?redacted"
+
+
+def redact_account(account):
+    """Keeps which fields are present and the plan; hides who signed in."""
+    redacted = {"email": "user.redacted", "organization": "Redacted Org"}
+    return {k: redacted.get(k, v) for k, v in (account or {}).items()}
 
 
 def is_skills_menu(response):
@@ -112,9 +126,7 @@ def initialize_reply(response):
     return {
         "commands": sample_commands(response.get("commands", [])),
         "models": [m for m in response.get("models", []) if m.get("value") in ("default", "sonnet", "haiku")],
-        "account": {"email": "user.redacted", "organization": "Redacted Org",
-                    "subscriptionType": response.get("account", {}).get("subscriptionType"),
-                    "apiProvider": "firstParty"},
+        "account": redact_account(response.get("account")),
         "current_permission_mode": response.get("current_permission_mode"),
         "claude_code_version": response.get("claude_code_version"),
     }

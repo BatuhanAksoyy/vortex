@@ -14,7 +14,8 @@ Aşağıdakiler 2026-11-19'da Linux üzerinde (Claude Code 2.1.325, Codex CLI 0.
 | Subagent ilişkisi ve model | ✅ | Her `assistant` mesajında `parent_tool_use_id`, `message.model`, `usage` var; `--forward-subagent-text` subagent metnini akışa ekliyor; `result` içinde `subagent_stats`, `modelUsage` var |
 | Abonelik kota bilgisi | ✅ | `rate_limit_event.rate_limit_info.unifiedWindows.{five_hour,seven_day}.{utilization,resetsAt}` |
 | Slash komut listesi | ✅ | `initialize` cevabı `commands` listesini döndürüyor |
-| Hesap izolasyonu (Claude) | ✅ Linux / ❓ macOS | `CLAUDE_CONFIG_DIR=<boş dizin> claude auth status` → `loggedIn:false`, ana giriş etkilenmiyor. macOS Keychain çakışması doğrulanmadı (S1) |
+| Hesap izolasyonu (Claude) | ✅ | `CLAUDE_SECURESTORAGE_CONFIG_DIR=<boş dizin> claude auth status --json` → `loggedIn:false`, ama `projectsDirectory` ve `configDirectory` yine `~/.claude` (macOS, Claude Code 2.1.311). Belgelenmemiş bir değişken: yalnızca kimlik deposunu taşır; macOS'ta Keychain kaydı `Claude Code-credentials-<sha256(dizin)[:8]>` olur. Hesap bilgisi (`oauthAccount`) ve kullanım önbelleği (`cachedUsageUtilization`) ortak `~/.claude.json`'da kalır ve her girişte son girilen hesapla üzerine yazılır (iki gerçek girişle doğrulandı); istekler yine de deponun hesabına gider |
+| Terminalsiz giriş (Claude) | ✅ kısmen | VS Code eklentisi gibi kontrol protokolüyle: `claude_authenticate{loginWithClaudeAi}` → `{manualUrl, automaticUrl}`, `claude_oauth_wait_for_completion` → `{account}`. İlk yarı kaydedildi; tamamlanan giriş henüz kaydedilmedi |
 | Hesap izolasyonu (Codex) | ✅ | `CODEX_HOME=<boş dizin> codex login status` → `Not logged in`. Codex, `CODEX_HOME` `/tmp` altındaysa yardımcı binary oluşturmayı reddediyor → profil dizinleri kalıcı veri dizininde olmalı |
 | Co-author kapatma | ⚠️ kısmen | `includeCoAuthoredBy` ayar adı Claude binary'sinde var, ama `--settings` ile verilip denenmedi; attribution başka bir anahtarla da yönetiliyor olabilir. Codex için ayar aranmadı. Garanti IDE tarafı temizlemedir (§8) |
 | Codex yapılandırılmış I/O | ⚠️ sadece şema | `codex app-server` stdio üzerinden JSON-RPC (deneysel). Olay akışı canlı denenmedi (S5). `codex app-server generate-json-schema` şema üretiyor: `CommandExecutionRequestApproval`, `FileChangeRequestApproval`, `PermissionsRequestApproval`, `tokenUsage`, `RateLimitSnapshot`, `SubAgentActivity`, `collabAgentToolCall`, `SubagentStart/Stop` |
@@ -117,9 +118,14 @@ pub struct SessionHandle {
 
 ## 5. Hesaplar
 
-- Profil: `{id, label, color, agent, dir}`. Dizinler platform veri dizininde: `<data>/accounts/<id>/`.
-- Giriş: Kiln `claude auth login` / `codex login` komutunu profil ortamıyla çalıştırır, tarayıcıyı açar, çıktıyı küçük bir diyalogda gösterir, kod yapıştırmak gerekirse stdin'e yazar (S2).
-- **Paylaşılan katman:** Her `CLAUDE_CONFIG_DIR` kendi `settings.json`, `CLAUDE.md`, skill, agent ve MCP tanımlarına sahiptir; yani ikinci hesapta global skill'lerin görünmez. Kiln, ana dizindeki `skills/`, `agents/`, `commands/`, `CLAUDE.md`, `settings.json` dosyalarını profil başına seçmeli olarak symlink'ler (kimlik bilgileri ve oturum durumu hariç). Codex için `config.toml`, `AGENTS.md`, skill'ler aynı şekilde.
+- `kiln-accounts`: eklenen hesaplar `<data>/accounts.json`'da (`{id, email, plan}`), her birinin kimlik deposu `<data>/accounts/<id>/`. `<data>` macOS'ta `~/Library/Application Support/kiln`, Linux'ta `~/.local/share/kiln`. Hiç hesap eklenmemişken sohbetler kullanıcının olağan Claude Code girişiyle çalışır; ilk hesap eklenince sohbetler tur aralarında ona geçer. Olağan giriş listede yer almaz.
+- **Yalnızca giriş ayrı:** Claude oturumu `CLAUDE_SECURESTORAGE_CONFIG_DIR=<hesabın deposu>` ile başlar. Oturum geçmişi, ayarlar, skill'ler ve MCP tanımları ortak `~/.claude`'da kalır; bu yüzden bir konuşma başka bir hesapla `--resume <id>` ile sürer. Hesap başına `CLAUDE_CONFIG_DIR` geçmişi de ayırırdı.
+- Hesap kimlikleri tekrar kullanılmaz: macOS'ta Keychain kaydı depo yolunun özetiyle adlandırılır ve depo silinince kalır.
+- Giriş: Kiln hesabın ortamıyla bir CLI süreci açar, `claude_authenticate` ile aldığı sayfayı tarayıcıda açar, `claude_oauth_wait_for_completion` yanıtındaki hesabı kaydeder. Aynı e-posta ikinci kez eklenmez.
+- Hesap değiştirme: sohbetin süreci yeni hesabın ortamıyla ve aynı oturumla yeniden başlar; tur sürerken yapılmaz.
+- Eklenen hesabın adı ve planı Kiln'in kaydından gelir, CLI'nin bildirdiği hesaptan değil. Kullanımı yalnızca kendi turlarındaki `rate_limit_event`'ten okunur; `get_usage` ortak önbellekten yanıt verdiği için sorulmaz. Sohbet, ayrıldığı hesapların son kullanımını hatırlar.
+- Limit dolunca: limit uyarısında limitli olduğu bilinmeyen ilk diğer hesap için "Continue with <e-posta>" düğmesi çıkar; tıklayınca o hesaba geçilir.
+- Codex için `CODEX_HOME` ile benzeri sonra değerlendirilecek.
 - Rozet: Hesap etiketi + rengi oturum sekmesinde, sohbet başlığında ve her subagent kartında görünür.
 
 ## 6. İzinler
@@ -351,8 +357,8 @@ allow-expect-in-tests = true
 | # | Konu | Ne zaman |
 |---|---|---|
 | S0 | gpui-kit 0.10 boş pencere: Linux ✅ (Wayland, RSS ≈ 93 MB). macOS doğrulanmadı | M0 başı |
-| S1 | macOS'ta `CLAUDE_CONFIG_DIR` başına Keychain kaydı ayrışıyor mu? | M1 başı |
-| S2 | `claude auth login` / `codex login` TTY'siz akışı | M1 başı |
+| S1 | ✅ macOS'ta kimlik deposu başına ayrı Keychain kaydı; ortak `oauthAccount` son girişi gösterir, Kiln ona dayanmaz (§0, §5) | M1 başı |
+| S2 | ✅ Claude: kontrol protokolüyle terminalsiz giriş (§5). `codex login` açık | M1 başı |
 | S3 | Ana ajan ve subagent için güvenilir context boyutu hesabı (Claude + Codex) | M1 |
 | S4 | gpui-kit editörü: LSP tamamen kapalı mı, salt okunur mod, 50k satır performansı, tema eşlemesi, diff bileşeni yeterli mi? | M0 |
 | S5 | Codex app-server "experimental": protokol değişimi, sürüm aralığı sabitleme | M4 |

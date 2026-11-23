@@ -7,7 +7,8 @@ use gpui_kit::{
     AnyWindowHandle, AppContext, Bounds, Entity, TestAppContext, WindowBounds, WindowOptions, px,
     size,
 };
-use kiln_agent::{AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec};
+use kiln_accounts::Accounts;
+use kiln_agent::{Account, AgentBackend, AgentEvent, Session, SessionCommand, SessionSpec, SignIn};
 use kiln_chat::{ChatView, Status};
 
 /// The test's ends of the most recently spawned session.
@@ -17,7 +18,16 @@ pub struct Script {
     pub commands: Option<async_channel::Receiver<SessionCommand>>,
     pub spawned: usize,
     pub last_spec: Option<SessionSpec>,
+    pub sign_in: Option<ScriptedSignIn>,
 }
+
+/// The test's ends of the latest sign-in: the page to send, the result to
+/// finish it with, and the environment it was started in.
+pub type ScriptedSignIn = (
+    async_channel::Sender<String>,
+    async_channel::Sender<anyhow::Result<Account>>,
+    Vec<(String, String)>,
+);
 
 pub struct FakeBackend(Rc<RefCell<Script>>);
 
@@ -36,12 +46,28 @@ impl AgentBackend for FakeBackend {
             driver: Box::pin(async {}),
         })
     }
+
+    fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn> {
+        let (url_tx, url) = async_channel::unbounded();
+        let (done_tx, done) = async_channel::unbounded();
+        self.0.borrow_mut().sign_in = Some((url_tx, done_tx, env));
+        Ok(SignIn {
+            url,
+            done: Box::pin(async move {
+                done.recv()
+                    .await
+                    .unwrap_or_else(|_| Err(anyhow::anyhow!("the test dropped the sign-in")))
+            }),
+        })
+    }
 }
 
 pub struct Harness {
     pub window: AnyWindowHandle,
     pub view: Entity<ChatView>,
     pub script: Rc<RefCell<Script>>,
+    /// Holds the account list and credential stores for the test's length.
+    _data: tempfile::TempDir,
 }
 
 impl Harness {
@@ -49,12 +75,16 @@ impl Harness {
         cx.update(gpui_kit::init);
         let script = Rc::new(RefCell::new(Script::default()));
         let backend = Rc::new(FakeBackend(script.clone()));
-        let (window, view) = cx.update(|cx| open(backend, cx));
+        let data = tempfile::tempdir().expect("temp dir");
+        let accounts = cx
+            .update(|cx| cx.new(|_| Accounts::load(data.path().to_owned()).expect("account list")));
+        let (window, view) = cx.update(|cx| open(backend, accounts, cx));
         cx.run_until_parked();
         Self {
             window,
             view,
             script,
+            _data: data,
         }
     }
 
@@ -101,7 +131,11 @@ impl Harness {
     }
 }
 
-fn open(backend: Rc<FakeBackend>, cx: &mut gpui_kit::App) -> (AnyWindowHandle, Entity<ChatView>) {
+fn open(
+    backend: Rc<FakeBackend>,
+    accounts: Entity<Accounts>,
+    cx: &mut gpui_kit::App,
+) -> (AnyWindowHandle, Entity<ChatView>) {
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::new(
             gpui_kit::Point::default(),
@@ -110,7 +144,7 @@ fn open(backend: Rc<FakeBackend>, cx: &mut gpui_kit::App) -> (AnyWindowHandle, E
         ..Default::default()
     };
     let build = |window: &mut gpui_kit::Window, cx: &mut gpui_kit::App| {
-        cx.new(|cx| ChatView::new(backend, std::env::temp_dir(), window, cx))
+        cx.new(|cx| ChatView::new(backend, accounts, std::env::temp_dir(), window, cx))
     };
     gpui_kit::open_window(options, cx, build).expect("open test window")
 }

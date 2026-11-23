@@ -153,10 +153,13 @@ impl ChatView {
             None => "Usage limit reached".to_owned(),
         };
         Some(
-            div()
+            h_flex()
                 .id("chat-limit")
                 .test_support()
                 .aria_label(SharedString::from(text.clone()))
+                .flex_wrap()
+                .justify_between()
+                .gap_2()
                 .mb_2()
                 .px_3()
                 .py_1p5()
@@ -164,7 +167,8 @@ impl ChatView {
                 .border_1()
                 .border_color(cx.theme().warning)
                 .text_sm()
-                .child(text),
+                .child(text)
+                .children(self.limit_offer(now, cx)),
         )
     }
 }

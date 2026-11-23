@@ -3,7 +3,7 @@
 
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
-        | questions | skills | resume
+        | questions | skills | resume | login
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -29,6 +29,10 @@ one turned off in the local settings, and asks for the /skills menu's rows.
 session, then one in a second process started with `--resume`, which is the
 one recorded. A "note" record holds the first session's id, to compare with
 the id the resumed process reports.
+"login" sends no prompt: it starts a claude.ai sign-in in a credential store
+of its own (`./credentials`, so the usual login is not touched), prints the
+sign-in URL and waits until the sign-in in the browser completes. Run it from
+a plain terminal, not from inside Claude Code.
 """
 import json, os, subprocess, sys, threading, time
 
@@ -60,6 +64,8 @@ if case == "skills":
     with open(".claude/settings.local.json", "w") as settings:
         json.dump({"skillOverrides": {"kiln-hidden": "off"}}, settings)
 env = {k: v for k, v in os.environ.items() if k not in STRIP}
+if case == "login":
+    env["CLAUDE_SECURESTORAGE_CONFIG_DIR"] = os.path.abspath("credentials")
 BASE = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
         "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio",
         "--model", "haiku"]
@@ -117,7 +123,7 @@ def send(obj):
     proc.stdin.flush()
 
 
-send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills") else "init-1",
+send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "login") else "init-1",
       "request": {"subtype": "initialize", "hooks": None}})
 # Ids follow Kiln's own scheme (`Translator::request_id`), so a replay can
 # issue the same commands and match the replies.
@@ -134,6 +140,9 @@ if case == "controls":
 elif case == "skills":
     send({"type": "control_request", "request_id": "kiln-skills-1",
           "request": {"subtype": "get_skills_dialog"}})
+elif case == "login":
+    send({"type": "control_request", "request_id": "kiln-login-1",
+          "request": {"subtype": "claude_authenticate", "loginWithClaudeAi": True}})
 elif case == "fallback":
     send({"type": "control_request", "request_id": "kiln-model-1",
           "request": {"subtype": "set_model", "model": "fable"}})
@@ -144,7 +153,7 @@ awaiting = {request_id for request_id, _ in CONTROLS} if case == "controls" else
 
 deltas = 0
 interrupted = False
-deadline = time.time() + 120
+deadline = time.time() + (600 if case == "login" else 120)
 for line in proc.stdout:
     line = line.strip()
     if not line:
@@ -189,6 +198,13 @@ for line in proc.stdout:
         if case == "usage" and msg["response"].get("request_id") == "kiln-usage-1":
             break
         if case == "skills" and msg["response"].get("request_id") == "kiln-skills-1":
+            break
+        if case == "login" and msg["response"].get("request_id") == "kiln-login-1":
+            urls = msg["response"].get("response") or {}
+            print("Sign in at:", urls.get("automaticUrl") or msg["response"], flush=True)
+            send({"type": "control_request", "request_id": "kiln-login-2",
+                  "request": {"subtype": "claude_oauth_wait_for_completion"}})
+        if case == "login" and msg["response"].get("request_id") == "kiln-login-2":
             break
     if kind == "control_response" and case == "fallback" \
             and msg["response"].get("request_id") == "kiln-model-1":
