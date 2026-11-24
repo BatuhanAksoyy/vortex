@@ -5,25 +5,37 @@ use std::path::{Path, PathBuf};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, PathPromptOptions, Window,
+    Context, Window,
     component::{WindowExt, notification::Notification},
 };
 
 use super::Workspace;
 use crate::{
     config,
+    editor_pane::EditorPane,
     pickers::{self, CommandPalette, QuickOpen, QuickOpenEvent},
+    side_panel::Page,
 };
 
 impl Workspace {
     pub fn quick_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let view = cx.new(|cx| QuickOpen::new(self.files.clone(), window, cx));
-        cx.subscribe_in(&view, window, |this, _, event, window, cx| match event {
-            QuickOpenEvent::Open(relative) => {
-                window.close_dialog(cx);
-                this.open_relative(relative, window, cx);
-            }
-        })
+        let Some(project) = self.project(cx).cloned() else {
+            Self::needs_project(window, cx);
+            return;
+        };
+        let files = project.read(cx).files();
+        let view = cx.new(|cx| QuickOpen::new(files, window, cx));
+        cx.subscribe_in(
+            &view,
+            window,
+            move |this, _, event, window, cx| match event {
+                QuickOpenEvent::Open(relative) => {
+                    window.close_dialog(cx);
+                    let root = project.read(cx).root().to_owned();
+                    this.open_absolute(root.join(relative), window, cx);
+                }
+            },
+        )
         .detach();
         pickers::open_in_dialog(view.clone(), window, cx);
         view.update(cx, |view, cx| view.focus(window, cx));
@@ -60,10 +72,10 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.pages.editor.update(cx, |pane, cx| {
+        self.with_editor(window, cx, |pane, window, cx| {
             pane.open_virtual_json(title, text, window, cx);
         });
-        self.show_page(super::pages::Page::Files, window, cx);
+        self.show_page(Page::Files, window, cx);
     }
 
     /// Opens a user config file, creating it with `template` when missing.
@@ -86,60 +98,41 @@ impl Workspace {
         self.open_absolute(path, window, cx);
     }
 
-    pub fn prompt_open_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: false,
-            prompt: None,
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = paths.await else {
-                return;
-            };
-            if let Some(root) = paths.into_iter().next() {
-                let _ = this.update_in(cx, |this, window, cx| this.open_folder(root, window, cx));
-            }
-        })
-        .detach();
-    }
-
-    fn open_folder(&mut self, root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        self.root = root;
-        self.pages = super::pages::ProjectPages::new(&self.root, window, cx);
-        self.files = std::sync::Arc::from([]);
-        self.load_project(window, cx);
-        cx.notify();
+    /// Runs `command` on the active session's editor.
+    fn with_editor(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        command: impl FnOnce(&mut EditorPane, &mut Window, &mut Context<EditorPane>),
+    ) {
+        if let Some(project) = self.project(cx).cloned() {
+            let editor = project.read(cx).editor().clone();
+            editor.update(cx, |pane, cx| command(pane, window, cx));
+        }
     }
 
     pub fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.pages
-            .editor
-            .update(cx, |pane, cx| pane.save_active(window, cx));
+        self.with_editor(window, cx, EditorPane::save_active);
     }
 
     pub fn toggle_changes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.pages
-            .editor
-            .update(cx, |pane, cx| pane.toggle_changes(window, cx));
+        self.with_editor(window, cx, EditorPane::toggle_changes);
     }
 
     pub fn close_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.pages
-            .editor
-            .update(cx, |pane, cx| pane.close_active(window, cx));
+        self.with_editor(window, cx, EditorPane::close_active);
     }
 
     pub fn next_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.pages
-            .editor
-            .update(cx, |pane, cx| pane.activate_relative(1, window, cx));
+        self.with_editor(window, cx, |pane, window, cx| {
+            pane.activate_relative(1, window, cx);
+        });
     }
 
     pub fn previous_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.pages
-            .editor
-            .update(cx, |pane, cx| pane.activate_relative(-1, window, cx));
+        self.with_editor(window, cx, |pane, window, cx| {
+            pane.activate_relative(-1, window, cx);
+        });
     }
 
     pub fn zoom_in(&mut self, _: &mut Window, cx: &mut Context<Self>) {

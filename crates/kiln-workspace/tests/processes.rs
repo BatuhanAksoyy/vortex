@@ -14,7 +14,7 @@ mod processes {
         AgentBackend, PastMessage, PastSession, Pending, Session, SessionSpec, SignIn,
     };
 
-    use super::common::{Stored, chats, click, labels, no_accounts, open_keeping, pick, spawned};
+    use super::common::{Stored, chats, click, labels, no_accounts, open_in, pick, spawned};
 
     /// A backend whose agents all run as process `pid`.
     struct Running {
@@ -105,7 +105,13 @@ mod processes {
             stored: Stored::default(),
             pid: agent.id(),
         };
-        let window = open_keeping(cx, backend, None, no_accounts());
+        let window = open_in(
+            cx,
+            backend,
+            None,
+            no_accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         click(cx, window, "chat-processes");
         assert!(has(cx, window, "chat-processes-overlay".into()));
         assert_eq!(labels(cx, window, "sleep 30"), 1);
@@ -124,7 +130,13 @@ mod processes {
             stored: stored.clone(),
             pid: agent.id(),
         };
-        let window = open_keeping(cx, backend, None, no_accounts());
+        let window = open_in(
+            cx,
+            backend,
+            None,
+            no_accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         pick(cx, window, "s-old");
         assert!(spawned(&stored) > 0);
         assert_eq!(chats(cx, window).len(), 1, "one chat runs the agent");

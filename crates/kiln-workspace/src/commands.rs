@@ -17,7 +17,8 @@ actions!(
         ShowChat,
         ShowFiles,
         ShowGit,
-        ToggleLeftPanel,
+        ToggleSidePanel,
+        ToggleBrowser,
         ToggleChanges,
         OpenSettings,
         OpenDefaultSettings,
@@ -61,12 +62,15 @@ pub const COMMANDS: &[CommandSpec] = &[
     spec("workbench.view.explorer", "Show Files", || {
         Box::new(ShowFiles)
     }),
-    spec("workbench.view.scm", "Show Git", || Box::new(ShowGit)),
+    spec("workbench.view.scm", "Show Changes", || Box::new(ShowGit)),
     spec(
         "workbench.action.toggleSidebarVisibility",
-        "Toggle Left Panel",
-        || Box::new(ToggleLeftPanel),
+        "Toggle Side Panel",
+        || Box::new(ToggleSidePanel),
     ),
+    spec("simpleBrowser.show", "Toggle Browser", || {
+        Box::new(ToggleBrowser)
+    }),
     spec("git.openChange", "Show File Changes", || {
         Box::new(ToggleChanges)
     }),
@@ -141,7 +145,8 @@ pub fn register(cx: &mut App) {
     on::<ShowChat>(cx, Workspace::show_chat);
     on::<ShowFiles>(cx, Workspace::show_files);
     on::<ShowGit>(cx, Workspace::show_git);
-    on::<ToggleLeftPanel>(cx, Workspace::toggle_left_panel);
+    on::<ToggleSidePanel>(cx, Workspace::toggle_side_panel);
+    on::<ToggleBrowser>(cx, Workspace::toggle_browser);
     on::<ToggleChanges>(cx, Workspace::toggle_changes);
     on::<OpenSettings>(cx, Workspace::open_user_settings);
     on::<OpenDefaultSettings>(cx, Workspace::open_default_settings);

@@ -31,6 +31,7 @@ impl ChatView {
             .py_2()
             .border_b_1()
             .border_color(theme.border)
+            .child(self.project_button(cx))
             .child(
                 div().flex_1().min_w_0().child(
                     h_flex()
@@ -81,6 +82,21 @@ impl ChatView {
                     .child(Icon::new(IconName::Plus).small())
                     .on_click(cx.listener(|this, _, window, cx| this.new_conversation(window, cx))),
             )
+    }
+}
+
+impl ChatView {
+    /// The folder the agent works in, which opens the projects page.
+    fn project_button(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let name = self.cwd.file_name().unwrap_or(self.cwd.as_os_str());
+        Button::new("chat-project")
+            .ghost()
+            .small()
+            .flex_none()
+            .icon(gpui_kit::assets::IconName::FolderOpen)
+            .label(name.to_string_lossy().into_owned())
+            .tooltip(self.cwd.display().to_string())
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(super::ChatEvent::PickProject)))
     }
 }
 

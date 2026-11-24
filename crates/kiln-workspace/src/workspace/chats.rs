@@ -4,10 +4,11 @@
 use std::collections::HashSet;
 
 use gpui_kit::{
-    AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Window,
+    AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, WeakEntity,
+    Window,
     component::dock::{
-        DockArea, DockLayout, DockPlacement, DockSkin, InsertTarget, NodeId, PanelId, PanelStyle,
-        panel_handle,
+        DockArea, DockPlacement, DockSkin, InsertTarget, NodeId, PaneNode, PaneRef, PanelId,
+        PanelStyle, panel_handle,
     },
 };
 use kiln_chat::{ChatEvent, ChatView, Status};
@@ -15,8 +16,8 @@ use kiln_chat::{ChatEvent, ChatView, Status};
 use super::Workspace;
 use crate::{
     chat_panel::{ChatPanel, ChatPanelEvent},
+    project::Project,
     saved_layout::SavedChat,
-    session_list::{SessionList, SessionListEvent},
 };
 
 pub(super) struct ChatTab {
@@ -39,26 +40,27 @@ pub(super) fn new_dock(window: &mut Window, cx: &mut gpui_kit::App) -> Entity<Do
 }
 
 impl Workspace {
-    /// A chat for the project, not yet placed in the dock.
+    /// A chat in `project`, not yet placed in the dock.
     pub(super) fn new_chat_panel(
         &mut self,
+        project: &Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<ChatPanel> {
         let (backend, accounts, root) = (
             self.backend.clone(),
             self.accounts.clone(),
-            self.root.clone(),
+            project.read(cx).root().to_owned(),
         );
         let chat = cx.new(|cx| ChatView::new(backend, accounts, root, window, cx));
-        let sessions = self.sessions.clone();
-        let panel = cx.new(|cx| ChatPanel::new(chat.clone(), sessions, window, cx));
+        let panel = cx.new(|cx| ChatPanel::new(chat.clone(), project.clone(), window, cx));
+        let weak = panel.downgrade();
         let subscriptions = [
             cx.subscribe_in(&panel, window, |this, panel, event, window, cx| {
                 this.on_chat_panel(panel, event, window, cx);
             }),
-            cx.subscribe_in(&chat, window, |this, _, event: &ChatEvent, window, cx| {
-                this.on_chat(event, window, cx);
+            cx.subscribe_in(&chat, window, move |this, _, event, window, cx| {
+                this.on_chat(&weak, event, window, cx);
             }),
         ];
         self.chats.push(ChatTab {
@@ -68,14 +70,15 @@ impl Workspace {
         panel
     }
 
-    /// Starts a chat for the project beside the focused one.
+    /// Starts a chat in `project` beside the focused one.
     pub(super) fn add_chat(
         &mut self,
         place: Place,
+        project: &Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<ChatView> {
-        let panel = self.new_chat_panel(window, cx);
+        let panel = self.new_chat_panel(project, window, cx);
         let chat = panel.read(cx).chat().clone();
         let beside = self.focused_group(cx);
         let id = PanelId::from(panel.entity_id());
@@ -106,18 +109,9 @@ impl Workspace {
             };
             dock.move_panel(id, target, window, cx);
         });
-        self.active_chat = Some(panel);
+        self.activate(Some(panel), window, cx);
         self.sync_running(cx);
         chat
-    }
-
-    /// Ends every chat, leaving the dock empty.
-    pub(super) fn clear_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.chats.clear();
-        self.active_chat = None;
-        self.dock.update(cx, |dock, cx| {
-            dock.set_center(DockLayout::h_split(), window, cx);
-        });
     }
 
     /// The tab group holding the chat the user last worked in.
@@ -137,6 +131,7 @@ impl Workspace {
             .find(|tab| PanelId::from(tab.panel.entity_id()) == id)?;
         let chat = tab.panel.read(cx).chat().read(cx);
         Some(SavedChat {
+            folder: Some(chat.cwd().to_owned()),
             session: chat.session_id()?.to_owned(),
             account: chat.account().map(str::to_owned),
             mode: chat.known_mode(),
@@ -164,26 +159,14 @@ impl Workspace {
             .cloned()
     }
 
-    pub(super) fn on_session_list(
-        &mut self,
-        _: &Entity<SessionList>,
-        event: &SessionListEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match event {
-            SessionListEvent::Loaded => {
-                self.restore_layout(window, cx);
-                self.sync_titles(cx);
-            }
-        }
-    }
-
     /// Names each chat after its conversation in the stored list, as the
     /// conversations page shows it.
-    fn sync_titles(&self, cx: &mut Context<Self>) {
-        let sessions = self.sessions.read(cx).sessions().to_vec();
+    pub(super) fn sync_titles(&self, project: &Entity<Project>, cx: &mut Context<Self>) {
+        let sessions = project.read(cx).sessions().read(cx).sessions().to_vec();
         for tab in &self.chats {
+            if tab.panel.read(cx).project() != project {
+                continue;
+            }
             let chat = tab.panel.read(cx).chat().clone();
             chat.update(cx, |chat, cx| {
                 let listed = chat
@@ -209,22 +192,52 @@ impl Workspace {
             return;
         };
         if let Some(shown) = self.chat_showing(id, cx) {
-            let panel_id = PanelId::from(shown.entity_id());
-            self.dock
-                .update(cx, |dock, cx| dock.select_panel(panel_id, window, cx));
-            let chat = shown.read(cx).chat().clone();
-            focus(&chat, window, cx);
+            self.show_chat_panel(&shown, window, cx);
             return;
         }
+        let project = panel.read(cx).project().clone();
         let mut chat = panel.read(cx).chat().clone();
         if chat.read(cx).status() == Status::Running {
-            chat = self.add_chat(Place::Tab, window, cx);
+            chat = self.add_chat(Place::Tab, &project, window, cx);
         }
         chat.update(cx, |chat, cx| {
             chat.open_session(id, open_elsewhere, window, cx);
         });
-        self.sync_titles(cx);
+        self.sync_titles(&project, cx);
         focus(&chat, window, cx);
+    }
+
+    /// Shows `panel`'s tab and focuses its chat.
+    pub(super) fn show_chat_panel(
+        &mut self,
+        panel: &Entity<ChatPanel>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let id = PanelId::from(panel.entity_id());
+        self.dock
+            .update(cx, |dock, cx| dock.select_panel(id, window, cx));
+        self.activate(Some(panel.clone()), window, cx);
+        self.focus_active_chat(window, cx);
+    }
+
+    pub(super) fn focus_active_chat(&self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(panel) = &self.active_chat {
+            let chat = panel.read(cx).chat().clone();
+            focus(&chat, window, cx);
+        }
+    }
+
+    /// An open chat in `project`.
+    pub(super) fn chats_in(
+        &self,
+        project: &Entity<Project>,
+        cx: &gpui_kit::App,
+    ) -> Option<Entity<ChatPanel>> {
+        let mut panels = self.chats.iter().map(|tab| &tab.panel);
+        panels
+            .find(|panel| panel.read(cx).project() == project)
+            .cloned()
     }
 
     fn on_chat_panel(
@@ -234,52 +247,112 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if matches!(event, ChatPanelEvent::Removed) {
+            self.remove_chat(panel, window, cx);
+            return;
+        }
+        self.activate(Some(panel.clone()), window, cx);
         let place = match event {
             ChatPanelEvent::Open { id, open_elsewhere } => {
-                self.active_chat = Some(panel.clone());
                 self.switch_conversation(id, *open_elsewhere, window, cx);
                 return;
             }
-            ChatPanelEvent::Activated => {
-                self.active_chat = Some(panel.clone());
+            ChatPanelEvent::OpenProject(folder) => {
+                self.open_folder(folder, window, cx);
                 return;
             }
-            ChatPanelEvent::Removed => {
-                self.remove_chat(panel, cx);
+            ChatPanelEvent::BrowseProjects => {
+                self.prompt_open_folder(window, cx);
                 return;
             }
+            ChatPanelEvent::Activated | ChatPanelEvent::Removed => return,
             ChatPanelEvent::NewTab => Place::Tab,
             ChatPanelEvent::SplitRight => Place::Right,
         };
-        self.active_chat = Some(panel.clone());
-        let chat = self.add_chat(place, window, cx);
+        let project = panel.read(cx).project().clone();
+        let chat = self.add_chat(place, &project, window, cx);
         focus(&chat, window, cx);
     }
 
     /// Forgets a closed tab, which ends its process. The dock never closes
     /// the last one.
-    fn remove_chat(&mut self, panel: &Entity<ChatPanel>, cx: &mut Context<Self>) {
+    fn remove_chat(
+        &mut self,
+        panel: &Entity<ChatPanel>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(ix) = self.chats.iter().position(|tab| &tab.panel == panel) else {
             return;
         };
         self.chats.remove(ix);
         if self.active_chat.as_ref() == Some(panel) {
-            self.active_chat = self.chats.last().map(|tab| tab.panel.clone());
+            let next = self.displayed_chat(cx);
+            self.activate(next, window, cx);
         }
         self.sync_running(cx);
     }
 
-    fn on_chat(&mut self, event: &ChatEvent, window: &mut Window, cx: &mut Context<Self>) {
+    /// Moves on to the tab now shown in the active chat's group, so the side
+    /// panel never shows the folder of a chat that is out of sight.
+    pub(super) fn follow_dock(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(group) = self.focused_group(cx) else {
+            return;
+        };
+        let dock = self.dock.read(cx);
+        let shown = dock
+            .layout(DockPlacement::Center)
+            .and_then(|tree| displayed(tree.root(), Some(group)))
+            .and_then(|id| self.chat_in(id));
+        if shown.is_some() && shown != self.active_chat {
+            self.activate(shown, window, cx);
+        }
+    }
+
+    fn chat_in(&self, id: PanelId) -> Option<Entity<ChatPanel>> {
+        let mut panels = self.chats.iter().map(|tab| &tab.panel);
+        panels
+            .find(|panel| PanelId::from(panel.entity_id()) == id)
+            .cloned()
+    }
+
+    /// The chat the first group of tabs shows.
+    fn displayed_chat(&self, cx: &gpui_kit::App) -> Option<Entity<ChatPanel>> {
+        let dock = self.dock.read(cx);
+        let tree = dock.layout(DockPlacement::Center)?;
+        self.chat_in(displayed(tree.root(), None)?)
+    }
+
+    fn on_chat(
+        &mut self,
+        panel: &WeakEntity<ChatPanel>,
+        event: &ChatEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.sync_running(cx);
+        let Some(panel) = panel.upgrade() else {
+            return;
+        };
         match event {
             ChatEvent::SessionChanged => {
                 // Its turn ended, or it shows another conversation.
                 self.refresh_project(window, cx);
-                self.reload_sessions(cx);
+                let (project, backend) = (panel.read(cx).project().clone(), self.backend.clone());
+                project.update(cx, |project, cx| {
+                    project.reload_sessions(backend.as_ref(), cx);
+                });
                 self.save_layout(cx);
             }
             ChatEvent::AccountChanged | ChatEvent::ChoicesChanged => self.save_layout(cx),
-            ChatEvent::OpenFile(path) => self.open_absolute(path.clone(), window, cx),
+            ChatEvent::OpenFile(path) => {
+                self.activate(Some(panel), window, cx);
+                self.open_absolute(path.clone(), window, cx);
+            }
+            ChatEvent::PickProject => {
+                self.activate(Some(panel), window, cx);
+                self.pick_project(window, cx);
+            }
             ChatEvent::TurnStarted | ChatEvent::PickConversation => {}
         }
     }
@@ -294,11 +367,26 @@ impl Workspace {
             .filter(|chat| chat.status() == Status::Running)
             .filter_map(|chat| chat.session_id().map(str::to_owned))
             .collect();
-        self.sessions
-            .update(cx, |sessions, cx| sessions.set_running(running, cx));
+        for (project, _) in &self.projects {
+            let sessions = project.read(cx).sessions().clone();
+            sessions.update(cx, |sessions, cx| sessions.set_running(running.clone(), cx));
+        }
     }
 }
 
-fn focus(chat: &Entity<ChatView>, window: &mut Window, cx: &mut gpui_kit::App) {
+/// The panel shown by `group`, or by the first group there is.
+fn displayed(node: &PaneNode, group: Option<NodeId>) -> Option<PanelId> {
+    match node.kind() {
+        PaneRef::Split { children, .. } => {
+            children.iter().find_map(|child| displayed(child, group))
+        }
+        PaneRef::Tabs { panels, active_ix } => group
+            .is_none_or(|group| group == node.id())
+            .then(|| panels.get(active_ix).copied())
+            .flatten(),
+    }
+}
+
+pub(super) fn focus(chat: &Entity<ChatView>, window: &mut Window, cx: &mut gpui_kit::App) {
     chat.read(cx).focus_handle(cx).focus(window, cx);
 }

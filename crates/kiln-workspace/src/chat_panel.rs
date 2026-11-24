@@ -1,6 +1,8 @@
 //! A chat as a tab in the dock. Each one runs its own agent process, which
 //! keeps working while another tab is shown.
 
+use std::path::PathBuf;
+
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString, Subscription,
@@ -9,7 +11,7 @@ use gpui_kit::{
         ActiveTheme, Icon, Sizable as _,
         button::{Button, ButtonVariants as _},
         dock::{BasePanel, Panel, PanelEvent},
-        h_flex,
+        h_flex, v_flex,
     },
     div,
 };
@@ -17,7 +19,8 @@ use kiln_chat::{ChatEvent, ChatView, Status};
 
 use crate::{
     conversation_picker::{ConversationPicker, ConversationPickerEvent},
-    session_list::SessionList,
+    project::Project,
+    project_picker::{ProjectPicker, ProjectPickerEvent},
 };
 
 /// Tab titles past this many characters are cut, so a few tabs fit.
@@ -37,13 +40,19 @@ pub enum ChatPanelEvent {
     /// A conversation picked on the chat's conversations page, to show in
     /// this chat.
     Open { id: String, open_elsewhere: bool },
+    /// A folder picked on the projects page.
+    OpenProject(PathBuf),
+    /// A folder that is not on the projects page is wanted.
+    BrowseProjects,
 }
 
 pub struct ChatPanel {
     chat: Entity<ChatView>,
-    sessions: Entity<SessionList>,
+    project: Entity<Project>,
     /// The conversations page over the chat, while open.
     picker: Option<(Entity<ConversationPicker>, Subscription)>,
+    /// The projects page over the chat, while open.
+    projects: Option<(Entity<ProjectPicker>, Subscription)>,
     /// The dock tracks the active panel's handle on the group around it, so
     /// it must not be the chat's own, which the composer tracks too: one
     /// focus reported by two elements panics GPUI's accessibility tree.
@@ -54,7 +63,7 @@ pub struct ChatPanel {
 impl ChatPanel {
     pub fn new(
         chat: Entity<ChatView>,
-        sessions: Entity<SessionList>,
+        project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -77,8 +86,9 @@ impl ChatPanel {
         ];
         Self {
             chat,
-            sessions,
+            project,
             picker: None,
+            projects: None,
             focus,
             _subscriptions: subscriptions,
         }
@@ -88,9 +98,61 @@ impl ChatPanel {
         &self.chat
     }
 
+    /// The project the chat works in.
+    pub fn project(&self) -> &Entity<Project> {
+        &self.project
+    }
+
+    /// Works in `project` from now on, with a new conversation.
+    pub fn move_to(
+        &mut self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.project != project {
+            let root = project.read(cx).root().to_owned();
+            self.project = project;
+            self.chat
+                .update(cx, |chat, cx| chat.move_to(root, window, cx));
+            cx.notify();
+        }
+    }
+
+    /// Shows `folders` over the chat, to pick the one to work in.
+    pub fn open_projects(
+        &mut self,
+        folders: Vec<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let current = self.project.read(cx).root().to_owned();
+        let page = cx.new(|cx| ProjectPicker::new(folders, Some(current), cx));
+        let subscription = cx.subscribe_in(&page, window, |this, _, event, window, cx| {
+            this.close_projects(window, cx);
+            match event {
+                ProjectPickerEvent::Pick(folder) if folder != this.project.read(cx).root() => {
+                    cx.emit(ChatPanelEvent::OpenProject(folder.clone()));
+                }
+                ProjectPickerEvent::Browse => cx.emit(ChatPanelEvent::BrowseProjects),
+                ProjectPickerEvent::Pick(_) | ProjectPickerEvent::Close => {}
+            }
+        });
+        ProjectPicker::focus(&page, window, cx);
+        self.projects = Some((page, subscription));
+        cx.notify();
+    }
+
+    fn close_projects(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.projects.take().is_some() {
+            self.chat.read(cx).focus_handle(cx).focus(window, cx);
+            cx.notify();
+        }
+    }
+
     fn open_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let current = self.chat.read(cx).session_id().map(str::to_owned);
-        let sessions = self.sessions.clone();
+        let sessions = self.project.read(cx).sessions().clone();
         let picker = cx.new(|cx| ConversationPicker::new(sessions, current, window, cx));
         let subscription = cx.subscribe_in(&picker, window, |this, _, event, window, cx| {
             this.close_picker(window, cx);
@@ -136,11 +198,12 @@ impl Panel for ChatPanel {
             .when(running, |this| {
                 this.child(div().size_1p5().rounded_full().bg(cx.theme().primary))
             })
-            .child(tab_title(chat.title()))
+            .children(self.tab_name(cx))
     }
 
     fn tab_name(&self, cx: &App) -> Option<SharedString> {
-        Some(tab_title(self.chat.read(cx).title()))
+        let title = tab_title(self.chat.read(cx).title());
+        Some(format!("{} · {title}", self.project.read(cx).name()).into())
     }
 
     /// Drawn here rather than as toolbar buttons, which the dock shrinks to
@@ -211,12 +274,25 @@ impl Render for ChatPanel {
                 .bg(cx.theme().overlay)
                 .child(picker.clone())
         });
+        let projects = self.projects.as_ref().map(|(page, _)| {
+            v_flex()
+                .id("projects-overlay")
+                .test_support()
+                .absolute()
+                .inset_0()
+                .p_3()
+                .items_center()
+                .occlude()
+                .bg(cx.theme().overlay)
+                .child(page.clone())
+        });
         div()
             .relative()
             .size_full()
             .capture_any_mouse_down(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::Activated)))
             .child(self.chat.clone())
             .children(picker)
+            .children(projects)
     }
 }
 

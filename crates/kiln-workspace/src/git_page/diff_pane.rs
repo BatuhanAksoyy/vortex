@@ -78,6 +78,7 @@ impl GitPage {
             .test_support()
             .aria_label(SharedString::from(format!("{path}: {state}")))
             .flex_none()
+            .flex_wrap()
             .gap_2()
             .px_3()
             .py_2()
@@ -85,7 +86,8 @@ impl GitPage {
             .border_color(theme.border)
             .child(
                 div()
-                    .min_w_0()
+                    .flex_none()
+                    .max_w_full()
                     .truncate()
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(path),

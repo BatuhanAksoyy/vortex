@@ -33,24 +33,7 @@ impl ChatView {
     pub(super) fn render_composer(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let focused = self.composer.read(cx).focus_handle(cx).is_focused(window);
         let view = cx.entity().downgrade();
-        let strip = h_flex()
-            .gap_1()
-            .pl_1()
-            .pr_1p5()
-            .py_1()
-            .border_t_1()
-            .border_color(cx.theme().border)
-            .child(Self::attach_button(cx))
-            .child(self.mode_menu(&view))
-            .children(self.model_menu(&view))
-            .children(self.effort_menu(&view))
-            .child(self.skills_button(cx))
-            .child(self.hooks_button(cx))
-            .child(div().flex_1())
-            .children(self.agents_button(cx))
-            .child(self.cache_button(cx))
-            .children(self.context_meter(cx))
-            .child(self.action_button(cx));
+        let strip = self.strip(&view, cx);
         let paste_view = view.clone();
         let menu = self
             .render_model_picker(cx)
@@ -90,6 +73,34 @@ impl ChatView {
             )
             .child(strip)
             .into_any_element()
+    }
+
+    fn strip(&self, view: &WeakEntity<Self>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        // The choices wrap in a narrow chat, so the send button stays in view.
+        let choices = h_flex()
+            .flex_1()
+            .min_w_0()
+            .flex_wrap()
+            .gap_1()
+            .child(Self::attach_button(cx))
+            .child(self.mode_menu(view))
+            .children(self.model_menu(view))
+            .children(self.effort_menu(view))
+            .child(self.skills_button(cx))
+            .child(self.hooks_button(cx));
+        h_flex()
+            .items_end()
+            .gap_1()
+            .pl_1()
+            .pr_1p5()
+            .py_1()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .child(choices)
+            .children(self.agents_button(cx))
+            .child(self.cache_button(cx))
+            .children(self.context_meter(cx))
+            .child(self.action_button(cx))
     }
 
     /// Shift+Tab cycles the mode, as in the CLI. The text box binds it to

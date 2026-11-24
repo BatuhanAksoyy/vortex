@@ -1,4 +1,4 @@
-//! The Git page, which the activity bar shows in place of the chats: the
+//! The Git page, which the side panel shows beside the chats: the
 //! branch, what changed, and the diff of the change picked. It only reads;
 //! committing is the commit pipeline's, which comes with its rules.
 
@@ -21,7 +21,7 @@ use kiln_git::{Area, Change};
 
 use crate::repo_status::{RepoStatus, StatusRead};
 
-const LIST_WIDTH_REMS: f32 = 24.0;
+const LIST_WIDTH_REMS: f32 = 17.0;
 
 pub enum GitPageEvent {
     /// Show the file at this path in the editor.
@@ -202,6 +202,7 @@ impl Render for GitPage {
                 .child(
                     resizable_panel()
                         .size(window.rem_size() * LIST_WIDTH_REMS)
+                        .fixed()
                         .visible(!self.list_hidden)
                         .children(list),
                 )

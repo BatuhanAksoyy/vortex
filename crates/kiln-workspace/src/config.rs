@@ -45,7 +45,7 @@ pub fn settings(cx: &App) -> &Settings {
 }
 
 /// Files whose changes trigger [`reload`].
-pub fn watched_files(project_root: &Path) -> Vec<PathBuf> {
+pub fn watched_files(project_root: Option<&Path>) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = [
         kiln_settings::user_settings_path(),
         kiln_settings::user_keybindings_path(),
@@ -53,17 +53,22 @@ pub fn watched_files(project_root: &Path) -> Vec<PathBuf> {
     .into_iter()
     .flatten()
     .collect();
-    files.extend(kiln_settings::project_settings_paths(project_root));
+    files.extend(project_layers(project_root));
     files
+}
+
+fn project_layers(project_root: Option<&Path>) -> impl Iterator<Item = PathBuf> {
+    let paths = project_root.map(kiln_settings::project_settings_paths);
+    paths.into_iter().flatten()
 }
 
 /// Reloads settings and keybindings from disk and applies them.
 /// Returns human-readable problems; the previous good values stay in effect
 /// for any file that failed.
-pub fn reload(project_root: &Path, cx: &mut App) -> Vec<String> {
+pub fn reload(project_root: Option<&Path>, cx: &mut App) -> Vec<String> {
     let mut diagnostics = Vec::new();
     let mut layers: Vec<PathBuf> = kiln_settings::user_settings_path().into_iter().collect();
-    layers.extend(kiln_settings::project_settings_paths(project_root));
+    layers.extend(project_layers(project_root));
     match kiln_settings::load(&SettingsSources { layers }) {
         Ok(loaded) => {
             diagnostics.extend(

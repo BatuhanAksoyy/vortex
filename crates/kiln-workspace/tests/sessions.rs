@@ -10,10 +10,16 @@ mod sessions {
     use gpui_kit::test::{TestQueryExt, TestWindowExt};
     use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext};
 
-    use super::common::{Stored, chats, click, labels, no_accounts, open_keeping, pick, spawned};
+    use super::common::{Stored, chats, click, labels, no_accounts, open_in, pick, spawned};
 
     fn open(cx: &mut TestAppContext, backend: Stored) -> AnyWindowHandle {
-        open_keeping(cx, backend, None, no_accounts())
+        open_in(
+            cx,
+            backend,
+            None,
+            no_accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        )
     }
 
     fn last_resume(backend: &Stored) -> Option<String> {

@@ -90,16 +90,17 @@ fn session(id: &str, title: &str, updated_at: SystemTime) -> PastSession {
     }
 }
 
-/// A Kiln window that keeps its chat layout in `layouts`.
-pub fn open_keeping(
+/// A Kiln window started in `folder`, if given, that keeps its chat layout
+/// in `layouts`.
+pub fn open_in(
     cx: &mut TestAppContext,
     backend: impl AgentBackend + 'static,
     layouts: Option<PathBuf>,
     accounts: Accounts,
+    folder: Option<PathBuf>,
 ) -> AnyWindowHandle {
     cx.update(gpui_kit::init);
     cx.update(kiln_workspace::init);
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let (window, _) = cx.update(|cx| {
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::new(
@@ -111,7 +112,7 @@ pub fn open_keeping(
         gpui_kit::open_window(options, cx, |window, cx| {
             let accounts = cx.new(|_| accounts);
             cx.new(|cx| {
-                let workspace = Workspace::new(root, Rc::new(backend), accounts, window, cx);
+                let workspace = Workspace::new(folder, Rc::new(backend), accounts, window, cx);
                 match layouts {
                     Some(path) => workspace.keeping_layouts_in(path),
                     None => workspace,

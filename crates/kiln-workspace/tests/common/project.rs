@@ -61,7 +61,7 @@ pub fn open_workspace(
             |window, cx| {
                 let backend = std::rc::Rc::new(NoAgent);
                 let accounts = no_accounts(cx);
-                cx.new(|cx| Workspace::new(root, backend, accounts, window, cx))
+                cx.new(|cx| Workspace::new(Some(root), backend, accounts, window, cx))
             },
         )
         .expect("open test window")

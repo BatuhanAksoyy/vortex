@@ -1,9 +1,9 @@
-//! The chat layout kept for each project, so Kiln reopens the tabs and
-//! splits the user left. Only conversations are kept: a tab with nothing
+//! The chat layout kept for the window, so Kiln reopens the tabs and splits
+//! the user left. Only conversations are kept: a tab with nothing
 //! said in it has nothing to resume.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 
@@ -25,11 +25,14 @@ pub enum Pane {
     },
 }
 
-/// A tab: the conversation it resumes, and the added account, permission
+/// A tab: the conversation it resumes, the folder it works in, and the added account, permission
 /// mode and effort it runs with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedChat {
     pub session: String,
+    /// `None` in a layout kept for one project, whose folder it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<PathBuf>,
     /// `None` runs it with the usual sign-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
@@ -50,6 +53,44 @@ pub struct Slot {
 }
 
 impl Pane {
+    /// The folders its tabs work in that still exist.
+    #[must_use]
+    pub fn folders(&self) -> BTreeSet<PathBuf> {
+        match self {
+            Self::Split { children, .. } => children
+                .iter()
+                .flat_map(|slot| slot.pane.folders())
+                .collect(),
+            Self::Tabs { chats, .. } => chats
+                .iter()
+                .filter_map(|chat| chat.folder.clone())
+                .filter(|folder| folder.is_dir())
+                .collect(),
+        }
+    }
+
+    /// With every tab that names no folder working in `folder`.
+    fn in_folder(self, folder: &Path) -> Self {
+        match self {
+            Self::Split { vertical, children } => Self::Split {
+                vertical,
+                children: children
+                    .into_iter()
+                    .map(|slot| Slot {
+                        pane: slot.pane.in_folder(folder),
+                        ..slot
+                    })
+                    .collect(),
+            },
+            Self::Tabs { active, mut chats } => {
+                for chat in &mut chats {
+                    chat.folder.get_or_insert_with(|| folder.to_owned());
+                }
+                Self::Tabs { active, chats }
+            }
+        }
+    }
+
     /// Without groups that hold no conversation and splits left with fewer
     /// than two slots; `None` when nothing is left.
     #[must_use]
@@ -78,7 +119,10 @@ impl Pane {
     }
 }
 
-/// The layouts of every project, kept in one file.
+/// The key the window's layout is kept under. Files written while each
+/// project had a window of its own have one layout per project folder.
+const WINDOW: &str = "window";
+
 #[derive(Debug)]
 pub struct LayoutFile {
     path: PathBuf,
@@ -90,21 +134,33 @@ impl LayoutFile {
         Self { path }
     }
 
-    /// The layout kept for `project`. A missing or damaged file keeps none:
-    /// the worst case is one new chat, as on a first start.
+    /// The layout kept for the window, or else the one kept for `project`
+    /// when each had its own. A missing or damaged file keeps none.
     #[must_use]
-    pub fn load(&self, project: &Path) -> Option<Pane> {
-        self.read().remove(&key(project))
+    pub fn load(&self, project: Option<&Path>) -> Option<Pane> {
+        let mut layouts = self.read();
+        layouts.remove(WINDOW).or_else(|| {
+            let project = project?;
+            let pane = layouts.remove(&*project.to_string_lossy())?;
+            Some(pane.in_folder(project))
+        })
     }
 
-    /// Keeps `pane` for `project`, or forgets the project's layout.
-    pub fn save(&self, project: &Path, pane: Option<Pane>) -> anyhow::Result<()> {
-        let mut layouts = self.read();
-        let changed = match pane {
-            Some(pane) => layouts.insert(key(project), pane.clone()) != Some(pane),
-            None => layouts.remove(&key(project)).is_some(),
-        };
-        if !changed {
+    /// The folders with a layout of their own.
+    pub fn projects(&self) -> Vec<PathBuf> {
+        let keys = self.read().into_keys();
+        keys.filter(|key| key != WINDOW)
+            .map(PathBuf::from)
+            .collect()
+    }
+
+    /// Keeps `pane`, or forgets the layout.
+    pub fn save(&self, pane: Option<Pane>) -> anyhow::Result<()> {
+        let layouts: BTreeMap<String, Pane> = pane
+            .map(|pane| (WINDOW.to_owned(), pane))
+            .into_iter()
+            .collect();
+        if self.read() == layouts {
             return Ok(());
         }
         if let Some(dir) = self.path.parent() {
@@ -127,10 +183,6 @@ impl LayoutFile {
     }
 }
 
-fn key(project: &Path) -> String {
-    project.to_string_lossy().into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +194,7 @@ mod tests {
                 .iter()
                 .map(|id| SavedChat {
                     session: (*id).to_owned(),
+                    folder: None,
                     account: id.strip_prefix("s-").map(|n| format!("account-{n}")),
                     mode: (*id == "s-1").then_some(PermissionMode::Auto),
                     effort: (*id == "s-2").then_some(Effort::Max),
@@ -155,24 +208,38 @@ mod tests {
     }
 
     #[test]
-    fn layouts_are_kept_per_project() {
+    fn the_windows_layout_is_kept() {
         let dir = tempfile::tempdir().unwrap();
-        let file = LayoutFile::new(dir.path().join("layouts.json"));
+        let path = dir.path().join("layouts.json");
+        let file = LayoutFile::new(path.clone());
         let split = Pane::Split {
             vertical: false,
             children: vec![
-                slot(tabs(1, &["s-1", "s-2"]), Some(640.0)),
-                slot(tabs(0, &["s-3"]), None),
+                slot(tabs(1, &["s-1", "s-2"]).in_folder(dir.path()), Some(640.0)),
+                slot(tabs(0, &["s-3"]).in_folder(Path::new("/gone")), None),
             ],
         };
-        file.save(Path::new("/a"), Some(split.clone())).unwrap();
-        file.save(Path::new("/b"), Some(tabs(0, &["s-4"]))).unwrap();
-        let again = LayoutFile::new(dir.path().join("layouts.json"));
-        assert_eq!(again.load(Path::new("/a")), Some(split));
-        assert_eq!(again.load(Path::new("/b")), Some(tabs(0, &["s-4"])));
-        again.save(Path::new("/a"), None).unwrap();
-        assert_eq!(again.load(Path::new("/a")), None);
-        assert_eq!(again.load(Path::new("/b")), Some(tabs(0, &["s-4"])));
+        file.save(Some(split.clone())).unwrap();
+        let again = LayoutFile::new(path).load(None).unwrap();
+        assert_eq!(again, split);
+        let folders: Vec<_> = again.folders().into_iter().collect();
+        assert_eq!(folders, [dir.path()], "only those that exist");
+        file.save(None).unwrap();
+        assert_eq!(file.load(None), None);
+    }
+
+    #[test]
+    fn a_layout_kept_for_one_project_opens_in_its_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("layouts.json");
+        let kept = BTreeMap::from([("/a", tabs(0, &["s-1"]))]);
+        std::fs::write(&path, serde_json::to_string(&kept).unwrap()).unwrap();
+        let file = LayoutFile::new(path);
+        assert_eq!(file.projects(), [Path::new("/a")]);
+        assert_eq!(file.load(None), None);
+        assert_eq!(file.load(Some(Path::new("/b"))), None);
+        let opened = file.load(Some(Path::new("/a")));
+        assert_eq!(opened, Some(tabs(0, &["s-1"]).in_folder(Path::new("/a"))));
     }
 
     #[test]
@@ -181,9 +248,9 @@ mod tests {
         let path = dir.path().join("layouts.json");
         std::fs::write(&path, "{").unwrap();
         let file = LayoutFile::new(path);
-        assert_eq!(file.load(Path::new("/a")), None);
-        file.save(Path::new("/a"), Some(tabs(0, &["s-1"]))).unwrap();
-        assert_eq!(file.load(Path::new("/a")), Some(tabs(0, &["s-1"])));
+        assert_eq!(file.load(None), None);
+        file.save(Some(tabs(0, &["s-1"]))).unwrap();
+        assert_eq!(file.load(None), Some(tabs(0, &["s-1"])));
     }
 
     #[test]

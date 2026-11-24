@@ -13,7 +13,7 @@ mod layouts {
     use kiln_accounts::{Account, Accounts};
     use kiln_agent::PermissionMode;
 
-    use super::common::{Stored, chats, click, labels, no_accounts, open_keeping, pick, spawned};
+    use super::common::{Stored, chats, click, labels, no_accounts, open_in, pick, spawned};
 
     fn resumed(backend: &Stored) -> Vec<String> {
         let specs = backend.0.borrow();
@@ -27,13 +27,25 @@ mod layouts {
     fn the_tabs_and_splits_come_back_after_a_restart(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().expect("temp dir");
         let layouts = dir.path().join("layouts.json");
-        let before = open_keeping(cx, Stored::default(), Some(layouts.clone()), no_accounts());
+        let before = open_in(
+            cx,
+            Stored::default(),
+            Some(layouts.clone()),
+            no_accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         pick(cx, before, "s-new");
         click(cx, before, "chat-split-right");
         pick(cx, before, "s-old");
 
         let backend = Stored::default();
-        let after = open_keeping(cx, backend.clone(), Some(layouts), no_accounts());
+        let after = open_in(
+            cx,
+            backend.clone(),
+            Some(layouts),
+            no_accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         let shown = chats(cx, after);
         assert_eq!(shown.len(), 2, "both groups");
         assert!(shown[0].origin.x < shown[1].origin.x, "side by side");
@@ -57,7 +69,13 @@ mod layouts {
         });
         std::fs::write(&layouts, kept.to_string()).expect("write layouts");
         let backend = Stored::default();
-        let window = open_keeping(cx, backend.clone(), Some(layouts), no_accounts());
+        let window = open_in(
+            cx,
+            backend.clone(),
+            Some(layouts),
+            no_accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         assert_eq!(resumed(&backend), ["s-old"]);
         assert!(labels(cx, window, "Plan the release") > 0, "shown");
     }
@@ -90,7 +108,13 @@ mod layouts {
         let layouts = dir.path().join("layouts.json");
         let (first, second) = two_accounts(dir.path());
         let accounts = || Accounts::load(dir.path().to_owned()).expect("list");
-        let before = open_keeping(cx, Stored::default(), Some(layouts.clone()), accounts());
+        let before = open_in(
+            cx,
+            Stored::default(),
+            Some(layouts.clone()),
+            accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         pick(cx, before, "s-new");
         click(cx, before, "chat-account");
         click_in(cx, before, format!("chat-account-{second}"));
@@ -98,7 +122,13 @@ mod layouts {
         pick(cx, before, "s-old");
 
         let backend = Stored::default();
-        open_keeping(cx, backend.clone(), Some(layouts), accounts());
+        open_in(
+            cx,
+            backend.clone(),
+            Some(layouts),
+            accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         let env = |session: &str| {
             let specs = backend.0.borrow();
             let spec = specs
@@ -116,7 +146,13 @@ mod layouts {
     fn each_tab_comes_back_in_its_permission_mode(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().expect("temp dir");
         let layouts = dir.path().join("layouts.json");
-        let before = open_keeping(cx, Stored::default(), Some(layouts.clone()), no_accounts());
+        let before = open_in(
+            cx,
+            Stored::default(),
+            Some(layouts.clone()),
+            no_accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         pick(cx, before, "s-new");
         click(cx, before, "chat-mode");
         click(cx, before, "chat-mode-Auto");
@@ -124,7 +160,13 @@ mod layouts {
         pick(cx, before, "s-old");
 
         let backend = Stored::default();
-        open_keeping(cx, backend.clone(), Some(layouts), no_accounts());
+        open_in(
+            cx,
+            backend.clone(),
+            Some(layouts),
+            no_accounts(),
+            Some(env!("CARGO_MANIFEST_DIR").into()),
+        );
         let mode = |session: &str| {
             let specs = backend.0.borrow();
             let spec = specs

@@ -1,6 +1,8 @@
 //! Reopening a stored conversation: its messages come back into the
 //! transcript and the next process resumes it.
 
+use std::path::{Path, PathBuf};
+
 use gpui_kit::{AppContext as _, Context, EventEmitter, Window};
 
 use super::ChatView;
@@ -22,8 +24,11 @@ pub enum ChatEvent {
     /// The conversation's name was clicked: the user wants to switch to
     /// another conversation.
     PickConversation,
+    /// The project's name was clicked: the user wants to work in another
+    /// folder.
+    PickProject,
     /// A file a tool worked on was clicked, to be shown in the editor.
-    OpenFile(std::path::PathBuf),
+    OpenFile(PathBuf),
 }
 
 impl EventEmitter<ChatEvent> for ChatView {}
@@ -45,6 +50,25 @@ impl ChatView {
     #[must_use]
     pub fn session_id(&self) -> Option<&str> {
         self.conversation.as_ref().map(|stored| stored.id.as_str())
+    }
+
+    /// The folder the agent works in.
+    #[must_use]
+    pub fn cwd(&self) -> &Path {
+        &self.cwd
+    }
+
+    /// Whether nothing was said here yet, so the chat can still move to
+    /// another folder.
+    #[must_use]
+    pub fn is_blank(&self) -> bool {
+        self.conversation.is_none() && self.transcript.len() == 0
+    }
+
+    /// Works in `folder` from now on, with a new conversation.
+    pub fn move_to(&mut self, folder: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.cwd = folder;
+        self.new_conversation(window, cx);
     }
 
     /// The agent's process while it runs, to see what runs under it.

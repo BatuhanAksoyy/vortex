@@ -122,20 +122,24 @@ mod workspace {
     }
 
     #[gpui_kit::test]
-    fn the_activity_bar_shows_one_page_over_the_window(cx: &mut TestAppContext) {
+    fn the_activity_bar_shows_a_page_beside_the_chat(cx: &mut TestAppContext) {
         let dir = project();
         let (window, _) = open_workspace(cx, dir.path().to_path_buf());
         let window = window.into();
         assert!(has(cx, window, "chat"));
+        assert!(!has(cx, window, "side-panel"));
         click(cx, window, "activity-files");
         assert!(has(cx, window, "files-tree"));
-        assert!(!has(cx, window, "chat"), "the chats make room");
+        assert!(has(cx, window, "chat"), "beside it");
         click(cx, window, "activity-git");
         assert!(has(cx, window, "git-page"));
         assert!(!has(cx, window, "files-tree"));
-        click(cx, window, "activity-chat");
+        click(cx, window, "side-maximize");
+        assert!(!has(cx, window, "chat"), "the panel fills the window");
+        click(cx, window, "side-maximize");
         assert!(has(cx, window, "chat"));
-        assert!(!has(cx, window, "git-page"));
+        click(cx, window, "activity-git");
+        assert!(!has(cx, window, "side-panel"), "closed by its own button");
     }
 
     #[gpui_kit::test]
@@ -250,19 +254,43 @@ mod workspace {
     }
 
     #[gpui_kit::test]
-    fn the_left_panel_is_hidden_and_the_open_page_folds_its_list(cx: &mut TestAppContext) {
+    fn the_side_panel_is_hidden_and_folds_its_list(cx: &mut TestAppContext) {
         let dir = project();
         let (window, _) = open_workspace(cx, dir.path().to_path_buf());
         let window = window.into();
         click(cx, window, "activity-files");
-        click(cx, window, "activity-files");
+        click(cx, window, "side-toggle-list");
         assert!(!has(cx, window, "files-tree"), "folded");
         assert!(has(cx, window, "files-empty"));
-        click(cx, window, "activity-files");
+        click(cx, window, "side-toggle-list");
         assert!(has(cx, window, "files-tree"));
         press(cx, window, &primary("b"));
         assert!(!has(cx, window, "activity-bar"));
-        click(cx, window, "toggle-left-panel");
+        assert!(!has(cx, window, "side-panel"));
+        click(cx, window, "toggle-side-panel");
         assert!(has(cx, window, "activity-bar"));
+        assert!(has(cx, window, "files-tree"), "open as it was");
+        click(cx, window, "side-close");
+        assert!(!has(cx, window, "side-panel"));
+    }
+
+    #[gpui_kit::test]
+    fn the_browser_opens_on_the_chats_right(cx: &mut TestAppContext) {
+        let dir = project();
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        click(cx, window, "activity-files");
+        click(cx, window, "toggle-browser");
+        let lefts = cx
+            .update_window(window, |_, window, cx| {
+                window.render_frame(cx);
+                ["side-panel", "chat", "browser"].map(|id| window.find(id).bounds().left())
+            })
+            .expect("window");
+        assert!(lefts[0] < lefts[1] && lefts[1] < lefts[2], "{lefts:?}");
+        click(cx, window, "browser-phone");
+        click(cx, window, "browser-close");
+        assert!(!has(cx, window, "browser"));
+        assert!(has(cx, window, "side-panel"));
     }
 }

@@ -9,43 +9,53 @@ use gpui_kit::{
 
 use kiln_chat::ChatView;
 
-use super::{Workspace, chats::Place};
+use super::Workspace;
 use crate::{
     chat_panel::ChatPanel,
     saved_layout::{Pane, SavedChat, Slot},
 };
 
 impl Workspace {
-    /// Starts the project's chats: the layout kept for it once its
-    /// conversations are listed, otherwise one new chat.
+    /// Opens the layout kept for the window once its conversations are
+    /// listed, then the folder Kiln was started in.
     pub(super) fn start_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.clear_chats(window, cx);
-        // Kept until the listing says which conversations still exist and
+        let folder = self.first_folder.clone();
+        let kept = self.layouts.as_ref();
+        let pane = kept.and_then(|file| file.load(folder.as_deref()));
+        let Some(pane) = pane else {
+            self.start_in_folder(window, cx);
+            return;
+        };
+        // Kept until the listings say which conversations still exist and
         // which are open in another process, so none is resumed blindly.
-        self.pending_layout = self.layouts.as_ref().and_then(|file| file.load(&self.root));
-        if self.pending_layout.is_none() {
-            self.add_chat(Place::Tab, window, cx);
+        for folder in pane.folders() {
+            self.project_at(&folder, window, cx);
         }
+        self.pending_layout = Some(pane);
+        self.restore_layout(window, cx);
     }
 
-    /// Opens the kept layout, once the session list has loaded.
+    /// Opens the kept layout, once every project's conversations are listed.
     pub(super) fn restore_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let projects = self.projects.iter().map(|(project, _)| project.read(cx));
+        if !projects.into_iter().all(|p| p.sessions().read(cx).loaded()) {
+            return;
+        }
         let Some(pane) = self.pending_layout.take() else {
             return;
         };
-        let Some((layout, shown)) = self.build(&pane, window, cx) else {
-            self.add_chat(Place::Tab, window, cx);
-            return;
-        };
-        // The center's root must be a split.
-        let layout = match pane {
-            Pane::Split { .. } => layout,
-            Pane::Tabs { .. } => DockLayout::h_split().child(layout, None),
-        };
-        self.dock
-            .update(cx, |dock, cx| dock.set_center(layout, window, cx));
-        self.active_chat = Some(shown);
-        self.sync_running(cx);
+        if let Some((layout, shown)) = self.build(&pane, window, cx) {
+            // The center's root must be a split.
+            let layout = match pane {
+                Pane::Split { .. } => layout,
+                Pane::Tabs { .. } => DockLayout::h_split().child(layout, None),
+            };
+            self.dock
+                .update(cx, |dock, cx| dock.set_center(layout, window, cx));
+            self.activate(Some(shown), window, cx);
+            self.sync_running(cx);
+        }
+        self.start_in_folder(window, cx);
     }
 
     /// The dock layout for `pane` with a chat resuming each conversation
@@ -88,22 +98,26 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<(DockLayout, Entity<ChatPanel>)> {
-        let listed: Vec<(&SavedChat, bool)> = chats
-            .iter()
-            .filter_map(|saved| {
-                let open_elsewhere = self.sessions.read(cx).open_elsewhere(&saved.session)?;
-                Some((saved, open_elsewhere))
-            })
-            .collect();
+        let mut listed = Vec::new();
+        for saved in chats {
+            let Some(folder) = saved.folder.as_deref().filter(|folder| folder.is_dir()) else {
+                continue;
+            };
+            let project = self.project_at(folder, window, cx);
+            let sessions = project.read(cx).sessions().read(cx);
+            if let Some(open_elsewhere) = sessions.open_elsewhere(&saved.session) {
+                listed.push((saved, open_elsewhere, project));
+            }
+        }
         let displayed = chats.get(active);
         let active = listed
             .iter()
-            .position(|(saved, _)| Some(*saved) == displayed)
+            .position(|(saved, ..)| Some(*saved) == displayed)
             .unwrap_or_default();
         let mut tabs = DockLayout::tabs();
         let mut shown = None;
-        for (ix, (saved, open_elsewhere)) in listed.into_iter().enumerate() {
-            let panel = self.new_chat_panel(window, cx);
+        for (ix, (saved, open_elsewhere, project)) in listed.into_iter().enumerate() {
+            let panel = self.new_chat_panel(&project, window, cx);
             let chat = panel.read(cx).chat().clone();
             chat.update(cx, |chat, cx| {
                 resume(chat, saved, open_elsewhere, window, cx);
@@ -131,7 +145,7 @@ impl Workspace {
             .layout(DockPlacement::Center)
             .map(|tree| self.saved_pane(tree.root(), cx))
             .and_then(Pane::pruned);
-        if let Err(error) = file.save(&self.root, pane) {
+        if let Err(error) = file.save(pane) {
             log::warn!("cannot keep the chat layout: {error:#}");
         }
     }

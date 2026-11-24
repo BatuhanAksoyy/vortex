@@ -1,4 +1,4 @@
-//! The Files page, which the activity bar shows in place of the chats: the
+//! The Files page, which the side panel shows beside the chats: the
 //! project's files as a tree beside the editor.
 
 mod operations;
@@ -29,7 +29,7 @@ use kiln_project::TreeNode;
 
 use crate::{editor_pane::EditorPane, repo_status::RepoStatus};
 
-const TREE_WIDTH_REMS: f32 = 18.0;
+const TREE_WIDTH_REMS: f32 = 15.0;
 /// The header's buttons, in text sizes.
 const ACTION_SIZE: f32 = 1.85;
 
@@ -293,6 +293,7 @@ impl Render for FilesPage {
             .child(
                 resizable_panel()
                     .size(window.rem_size() * TREE_WIDTH_REMS)
+                    .fixed()
                     .visible(!self.tree_hidden)
                     .children(side),
             )

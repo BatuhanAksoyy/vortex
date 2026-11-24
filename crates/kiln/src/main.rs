@@ -9,7 +9,7 @@ use kiln_workspace::Workspace;
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
-    let root = project_root();
+    let folder = project_folder();
 
     gpui_kit::application()
         .with_assets(kiln_workspace::Assets)
@@ -30,7 +30,7 @@ fn main() {
                 let backend = std::rc::Rc::new(ClaudeBackend::new("claude"));
                 let layouts = kiln_accounts::data_dir().map(|dir| dir.join("layouts.json"));
                 cx.new(|cx| {
-                    let workspace = Workspace::new(root, backend, accounts, window, cx);
+                    let workspace = Workspace::new(folder, backend, accounts, window, cx);
                     match layouts {
                         Some(path) => workspace.keeping_layouts_in(path),
                         None => workspace,
@@ -54,11 +54,9 @@ fn load_accounts() -> Accounts {
     })
 }
 
-/// The folder given as the first argument, or the current directory.
-fn project_root() -> PathBuf {
-    let path = std::env::args_os().nth(1).map_or_else(
-        || std::env::current_dir().unwrap_or_default(),
-        PathBuf::from,
-    );
-    std::fs::canonicalize(&path).unwrap_or(path)
+/// The folder given as the first argument; without one, Kiln opens what it
+/// had open or asks for a folder.
+fn project_folder() -> Option<PathBuf> {
+    let path = PathBuf::from(std::env::args_os().nth(1)?);
+    Some(std::fs::canonicalize(&path).unwrap_or(path))
 }

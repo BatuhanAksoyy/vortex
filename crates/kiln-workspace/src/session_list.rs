@@ -45,6 +45,11 @@ impl SessionList {
         &self.sessions
     }
 
+    /// Whether a listing finished, or failed.
+    pub fn loaded(&self) -> bool {
+        self.loaded
+    }
+
     /// Whether a chat here runs a turn in the conversation `id`.
     pub fn is_running(&self, id: &str) -> bool {
         self.running.contains(id)

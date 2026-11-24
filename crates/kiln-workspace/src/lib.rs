@@ -2,6 +2,7 @@
 //! commands that drive them.
 
 mod appearance;
+mod browser;
 mod chat_panel;
 mod commands;
 mod config;
@@ -10,12 +11,15 @@ mod editor_pane;
 mod file_icon;
 mod files_page;
 mod git_page;
-mod left_panel;
 mod name_prompt;
 mod pickers;
+mod project;
+mod project_picker;
+mod recent_projects;
 mod repo_status;
 mod saved_layout;
 mod session_list;
+mod side_panel;
 mod workspace;
 
 use gpui_kit::App;
