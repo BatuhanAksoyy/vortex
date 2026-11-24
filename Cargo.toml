@@ -14,6 +14,7 @@ license = "UNLICENSED"
 kiln-accounts = { path = "crates/kiln-accounts" }
 kiln-agent = { path = "crates/kiln-agent" }
 kiln-agent-claude = { path = "crates/kiln-agent-claude" }
+kiln-browser = { path = "crates/kiln-browser" }
 kiln-chat = { path = "crates/kiln-chat" }
 kiln-file-icons = { path = "crates/kiln-file-icons" }
 kiln-git = { path = "crates/kiln-git" }

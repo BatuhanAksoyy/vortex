@@ -31,6 +31,8 @@ pub use workspace::Workspace;
 /// Call once, after `gpui_kit::init`.
 pub fn init(cx: &mut App) {
     appearance::register_themes(cx);
+    // Before the configuration, which keeps the bindings it finds.
+    browser::bind_keys(cx);
     config::init(cx);
     commands::register(cx);
 }

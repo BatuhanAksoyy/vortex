@@ -4095,6 +4095,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kiln-browser"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "base64 0.22.1",
+ "futures",
+ "log",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "kiln-chat"
 version = "0.1.0"
 dependencies = [
@@ -4180,6 +4193,7 @@ dependencies = [
  "jiff 0.2.46",
  "kiln-accounts",
  "kiln-agent",
+ "kiln-browser",
  "kiln-chat",
  "kiln-file-icons",
  "kiln-git",

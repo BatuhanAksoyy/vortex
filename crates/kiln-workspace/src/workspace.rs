@@ -7,7 +7,8 @@ use std::{
 use futures::StreamExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    BackgroundExecutor, Context, Entity, FocusHandle, Focusable, Subscription, Task, Window,
+    BackgroundExecutor, Context, Entity, EntityId, FocusHandle, Focusable, Subscription, Task,
+    Window,
     component::{
         ActiveTheme, TitleBar, WindowExt,
         dock::{DockArea, DockEvent},
@@ -35,6 +36,7 @@ use crate::{
 
 mod actions;
 mod activity_bar;
+mod browsers;
 mod chats;
 mod layout;
 mod processes;
@@ -59,7 +61,9 @@ pub struct Workspace {
     /// What every agent's processes use, in the status bar.
     process_meter: Entity<ProcessMeter>,
     side_panel: SidePanel,
-    browser: Entity<Browser>,
+    /// The sessions' browsers, by chat, and where they keep their data.
+    browsers: Vec<(EntityId, Entity<Browser>)>,
+    browser_profile: Option<PathBuf>,
     /// Whether the side panel fills the window; not kept across restarts.
     side_maximized: bool,
     /// Where the side panel's state is kept.
@@ -140,7 +144,8 @@ impl Workspace {
             accounts,
             process_meter: meter,
             side_panel: SidePanel::default(),
-            browser: Self::new_browser(window, cx),
+            browsers: Vec::new(),
+            browser_profile: None,
             side_maximized: false,
             side_panel_file: None,
             side_panel_save: None,
@@ -159,12 +164,13 @@ impl Workspace {
     }
 
     /// Keeps the chat layout in the file at `path`, to reopen it on the next
-    /// start, and the recent projects and side panel beside it.
+    /// start, and the recent projects, side panel and browser data beside it.
     #[must_use]
     pub fn keeping_layouts_in(mut self, path: PathBuf) -> Self {
         let side_panel = path.with_file_name("side-panel.json");
         self.side_panel = SidePanel::load(&side_panel);
         self.side_panel_file = Some(side_panel);
+        self.browser_profile = Some(path.with_file_name("browser"));
         let projects = path.with_file_name("projects.json");
         let layouts = LayoutFile::new(path);
         self.recent = RecentProjects::load(projects, || layouts.projects());

@@ -1,5 +1,4 @@
-//! The panels beside the chats: the active session's files or changes on
-//! their left, the browser on their right.
+//! The panel on the chats' left: the active session's files or changes.
 
 use std::time::Duration;
 
@@ -7,7 +6,6 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, Entity, FontWeight, Pixels, TestSupportExt, Window,
     assets::IconName as Lucide,
-    base::Selectable as _,
     component::{
         ActiveTheme, IconName, Sizable as _,
         button::{Button, ButtonVariants as _},
@@ -20,7 +18,6 @@ use gpui_kit::{
 
 use super::Workspace;
 use crate::{
-    browser::{Browser, BrowserEvent},
     files_page::FilesPage,
     git_page::GitPage,
     project::Project,
@@ -31,7 +28,7 @@ const SAVE_DELAY: Duration = Duration::from_millis(500);
 /// A panel's share of the window until the user sizes it.
 const DEFAULT_SHARE: f32 = 0.35;
 /// Narrower, neither the chat nor a panel can be used.
-const MIN_WIDTH: f32 = 280.;
+pub(super) const MIN_WIDTH: f32 = 280.;
 
 impl Workspace {
     pub(super) fn show_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
@@ -181,90 +178,12 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// The chats and, while it is open, the browser on their right.
-    fn render_chats(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
-        let chats = self.dock.clone();
-        if !self.side_panel.browser_open {
-            return chats.into_any_element();
-        }
-        let this = cx.entity().downgrade();
-        let resized = move |state: &Entity<ResizableState>, _: &mut Window, cx: &mut App| {
-            let width = state.read(cx).sizes().get(1).copied().map(f32::from);
-            let _ = this.update(cx, |this, cx| {
-                this.side_panel.browser_width = width;
-                this.save_side_panel(cx);
-            });
-        };
-        h_resizable("chats-and-browser")
-            .child(
-                resizable_panel()
-                    .size_range(px(MIN_WIDTH)..Pixels::MAX)
-                    .child(chats),
-            )
-            .child(
-                resizable_panel()
-                    .size(self.browser_width(window))
-                    .fixed()
-                    .size_range(px(MIN_WIDTH)..Pixels::MAX)
-                    .child(self.browser.clone()),
-            )
-            .on_resize(resized)
-            .into_any_element()
-    }
-
     /// Kept from a wider window, a panel may leave the chat no room, so both
     /// are held to what this one has.
-    fn side_width(&self, window: &Window) -> Pixels {
+    pub(super) fn side_width(&self, window: &Window) -> Pixels {
         let panes = 1. + f32::from(u8::from(self.side_panel.browser_open));
         let width = self.side_panel.page_width;
         share(width, px(MIN_WIDTH * panes + MAX_BAR), window)
-    }
-
-    fn browser_width(&self, window: &Window) -> Pixels {
-        let side = if self.side_open() {
-            self.side_width(window)
-        } else {
-            px(0.)
-        };
-        let width = self.side_panel.browser_width;
-        share(width, side + px(MIN_WIDTH + MAX_BAR), window)
-    }
-
-    pub(super) fn new_browser(window: &mut Window, cx: &mut Context<Self>) -> Entity<Browser> {
-        let browser = cx.new(|cx| Browser::new(window, cx));
-        let close = cx.subscribe_in(&browser, window, |this, _, event, window, cx| match event {
-            BrowserEvent::Close => this.toggle_browser(window, cx),
-        });
-        close.detach();
-        browser
-    }
-
-    pub fn toggle_browser(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.project(cx).is_none() {
-            Self::needs_project(window, cx);
-            return;
-        }
-        self.side_panel.browser_open = !self.side_panel.browser_open;
-        // Opened while the side panel fills the window, it would not show.
-        self.side_maximized = false;
-        self.save_side_panel(cx);
-        cx.notify();
-    }
-
-    pub(super) fn render_browser_toggle(
-        &self,
-        cx: &Context<Self>,
-    ) -> Option<impl IntoElement + use<>> {
-        self.project(cx)?;
-        let open = self.side_panel.browser_open;
-        let toggle = Button::new("toggle-browser")
-            .ghost()
-            .small()
-            .icon(Lucide::Globe)
-            .selected(open)
-            .tooltip(if open { "Hide Browser" } else { "Show Browser" })
-            .on_click(cx.listener(|this, _, window, cx| this.toggle_browser(window, cx)));
-        Some(toggle)
     }
 
     fn render_side(
@@ -347,7 +266,7 @@ impl Workspace {
 
 /// A panel's width: `kept` or its default share, leaving `rest` of the window
 /// to the others.
-fn share(kept: Option<f32>, rest: Pixels, window: &Window) -> Pixels {
+pub(super) fn share(kept: Option<f32>, rest: Pixels, window: &Window) -> Pixels {
     let window = window.viewport_size().width;
     let width = kept.map_or(window * DEFAULT_SHARE, px);
     width.min(window - rest).max(px(MIN_WIDTH))

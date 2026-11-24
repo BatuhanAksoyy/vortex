@@ -76,6 +76,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         self.active_chat = panel;
+        self.sync_browser(window, cx);
         let root = self.project(cx).map(|p| p.read(cx).root().to_owned());
         if self.shown_root == root {
             return;

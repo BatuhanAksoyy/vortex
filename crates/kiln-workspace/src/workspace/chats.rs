@@ -286,6 +286,7 @@ impl Workspace {
             return;
         };
         self.chats.remove(ix);
+        self.browsers.retain(|(chat, _)| *chat != panel.entity_id());
         if self.active_chat.as_ref() == Some(panel) {
             let next = self.displayed_chat(cx);
             self.activate(next, window, cx);

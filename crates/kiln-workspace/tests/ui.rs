@@ -288,6 +288,7 @@ mod workspace {
             })
             .expect("window");
         assert!(lefts[0] < lefts[1] && lefts[1] < lefts[2], "{lefts:?}");
+        assert!(has(cx, window, "browser-notice"));
         click(cx, window, "browser-phone");
         click(cx, window, "browser-close");
         assert!(!has(cx, window, "browser"));
