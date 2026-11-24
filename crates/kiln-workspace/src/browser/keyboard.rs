@@ -31,6 +31,10 @@ impl Browser {
             return;
         }
         cx.stop_propagation();
+        if self.picking.on && stroke.key == "escape" {
+            self.set_picking(false, cx);
+            return;
+        }
         if stroke.modifiers.secondary(cx) && self.command(&stroke.key, window, cx) {
             return;
         }

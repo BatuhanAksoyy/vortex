@@ -23,6 +23,7 @@ impl Browser {
             PageEvent::ChooseFiles { node, multiple } => self.choose_files(node, multiple, cx),
             PageEvent::DownloadStarted { id, name } => self.download_started(id, name, cx),
             PageEvent::Download(progress) => self.download_progressed(&progress, cx),
+            PageEvent::Picked(_) | PageEvent::Console(_) => self.on_inspection(event, window, cx),
             PageEvent::Cursor(name) => {
                 self.cursor = cursor(&name);
                 cx.notify();

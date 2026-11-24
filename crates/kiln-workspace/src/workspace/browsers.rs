@@ -14,11 +14,12 @@ use gpui_kit::{
 };
 
 use super::{
-    Workspace,
+    Workspace, chats,
     side::{MIN_WIDTH, share},
 };
 use crate::{
     browser::{Browser, BrowserEvent},
+    chat_panel::ChatPanel,
     side_panel::MAX_BAR,
 };
 
@@ -74,12 +75,11 @@ impl Workspace {
     /// Follows the active session to its browser while the panel is open.
     pub(super) fn sync_browser(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let open = self.side_panel.browser_open;
-        if let Some(chat) = self.active_chat.as_ref().filter(|_| open) {
-            let chat = chat.entity_id();
-            if self.browser().is_none() {
-                let browser = self.new_browser(window, cx);
-                self.browsers.push((chat, browser));
-            }
+        if let Some(chat) = self.active_chat.clone().filter(|_| open)
+            && self.browser().is_none()
+        {
+            let browser = self.new_browser(&chat, window, cx);
+            self.browsers.push((chat.entity_id(), browser));
         }
         let shown = self.browser().filter(|_| open).map(Entity::entity_id);
         for (_, browser) in &self.browsers {
@@ -89,13 +89,31 @@ impl Workspace {
         cx.notify();
     }
 
-    fn new_browser(&self, window: &mut Window, cx: &mut Context<Self>) -> Entity<Browser> {
+    fn new_browser(
+        &self,
+        chat: &Entity<ChatPanel>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<Browser> {
         let profile = self.browser_profile.clone();
         let browser = cx.new(|cx| Browser::new(profile, window, cx));
-        let close = cx.subscribe_in(&browser, window, |this, _, event, window, cx| match event {
-            BrowserEvent::Close => this.toggle_browser(window, cx),
-        });
-        close.detach();
+        let chat = chat.downgrade();
+        let events = cx.subscribe_in(
+            &browser,
+            window,
+            move |this, _, event, window, cx| match event {
+                BrowserEvent::Close => this.toggle_browser(window, cx),
+                BrowserEvent::Attach(attachments) => {
+                    let Some(panel) = chat.upgrade() else {
+                        return;
+                    };
+                    let chat = panel.read(cx).chat().clone();
+                    chat.update(cx, |chat, cx| chat.attach(attachments.clone(), cx));
+                    chats::focus(&chat, window, cx);
+                }
+            },
+        );
+        events.detach();
         browser
     }
 

@@ -5,7 +5,7 @@ mod accounts;
 mod accounts_panel;
 mod agents_dialog;
 mod agents_panel;
-mod attachments;
+pub(crate) mod attachments;
 mod cache_panel;
 mod composer;
 mod context_panel;

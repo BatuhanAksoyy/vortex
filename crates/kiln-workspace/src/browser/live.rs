@@ -100,6 +100,7 @@ impl Browser {
         self.loading = false;
         self.menu = None;
         self.dialog = None;
+        self.picking.on = false;
         self.unpainted.clear();
         self.ahead = false;
         cx.notify();
@@ -148,6 +149,7 @@ impl Browser {
         self.state = State::PutAway;
         self.menu = None;
         self.dialog = None;
+        self.picking.on = false;
         if let Some((old, _)) = self.picture.take() {
             cx.drop_image(old, Some(window));
         }
@@ -157,6 +159,7 @@ impl Browser {
         match event {
             PageEvent::Opened => {
                 self.menu = None;
+                self.set_picking(false, cx);
                 if self.shown {
                     self.show(cx);
                 }
@@ -164,6 +167,10 @@ impl Browser {
             }
             PageEvent::Navigated => self.read_history(window, cx),
             PageEvent::Loading(loading) => {
+                // Before the new document runs.
+                if loading {
+                    self.console.clear();
+                }
                 self.loading = loading;
                 cx.notify();
             }

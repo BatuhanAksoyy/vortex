@@ -17,7 +17,7 @@ mod installed {
         height: 300,
         phone: false,
     };
-    const PAGE: &str = "<title>Kiln test</title><input autofocus><a href=/next target=_blank style='position:fixed;left:0;top:100px'>x</a><select style='position:fixed;left:0;top:140px' onchange='prompt(value)'><option value=one>One<optgroup label=More><option value=two>Two</select><input type=file style='position:fixed;left:0;top:180px' onchange='alert(files[0].name)'><script>addEventListener('paste', e => alert(e.clipboardData.files[0].type))</script><p>hello</p>";
+    const PAGE: &str = "<title>Kiln test</title><input autofocus><a href=/next target=_blank style='position:fixed;left:0;top:100px'>x</a><select style='position:fixed;left:0;top:140px' onchange='prompt(value)'><option value=one>One<optgroup label=More><option value=two>Two</select><input type=file style='position:fixed;left:0;top:180px' onchange='alert(files[0].name)'><script>console.log('ready', {a: 1});addEventListener('paste', e => alert(e.clipboardData.files[0].type))</script><p>hello</p>";
 
     /// The browser ends with the test, and its events with it, so a hang is a
     /// failure within `limit`.
@@ -129,6 +129,43 @@ mod installed {
         page.answer_dialog(true, "");
     }
 
+    async fn pick_and_read(page: &Page, events: &Receiver<PageEvent>) {
+        page.pick(true);
+        // The pointer picks from the next frame on, which a picture waits for.
+        page.screenshot().await.unwrap();
+        page.mouse(MouseInput {
+            kind: MouseKind::Moved,
+            x: 20.,
+            y: 148.,
+            button: None,
+            clicks: 0,
+            modifiers: Modifiers::default(),
+        });
+        click(page, 20., 148.);
+        let node = loop {
+            match events.recv().await.unwrap() {
+                PageEvent::Picked(node) => break node,
+                PageEvent::Console(entry) => assert_eq!(entry.text, "ready {a: 1}"),
+                _ => {}
+            }
+        };
+        page.pick(false);
+        let element = page.element(node).await.unwrap();
+        assert_eq!(element.name, "select");
+        assert_eq!(element.selector, "html > body > select");
+        let picture = page.element_screenshot(node).await.unwrap();
+        assert_eq!(&picture.data[1..4], b"PNG");
+        let page_picture = page.screenshot().await.unwrap();
+        assert!(page_picture.data.len() > picture.data.len());
+    }
+
+    async fn exchange(page: &Page, events: &Receiver<PageEvent>, file: &Path) {
+        open_popup(page, events).await;
+        choose_and_answer(page, events).await;
+        hand_over(page, events, file).await;
+        pick_and_read(page, events).await;
+    }
+
     async fn drive(chrome: &Chrome, file: &Path) {
         let (page, events) = chrome.open_page(VIEWPORT).await.unwrap();
         let url = format!("file://{}", file.display());
@@ -142,9 +179,7 @@ mod installed {
         assert_eq!(history.title, "Kiln test");
         assert!(!history.can_go_back());
         type_and_select(&page).await;
-        open_popup(&page, &events).await;
-        choose_and_answer(&page, &events).await;
-        hand_over(&page, &events, file).await;
+        exchange(&page, &events, file).await;
         assert!(page.navigate("http://127.0.0.1:1/").await.is_err());
     }
 

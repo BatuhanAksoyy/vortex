@@ -4,6 +4,7 @@ use base64::Engine as _;
 use serde_json::Value;
 
 use crate::{
+    console::{self, ConsoleEntry},
     dialog::{self, Dialog},
     download::{self, DownloadProgress},
     guest::{self, MenuTarget, Select},
@@ -45,6 +46,9 @@ pub enum PageEvent {
         name: String,
     },
     Download(DownloadProgress),
+    /// The element at this node was picked.
+    Picked(i64),
+    Console(ConsoleEntry),
     Crashed,
 }
 
@@ -83,7 +87,8 @@ fn request(method: &str, params: &Value) -> Option<PageEvent> {
             name: params["suggestedFilename"].as_str()?.to_owned(),
         }),
         "Page.downloadProgress" => download::progress(params).map(PageEvent::Download),
-        _ => None,
+        "Overlay.inspectNodeRequested" => params["backendNodeId"].as_i64().map(PageEvent::Picked),
+        _ => console::parse(method, params).map(PageEvent::Console),
     }
 }
 

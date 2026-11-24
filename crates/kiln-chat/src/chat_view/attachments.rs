@@ -25,10 +25,21 @@ use crate::{pictures, slash, transcript::Status};
 /// agent reads itself.
 const MAX_PICTURE_BYTES: u64 = 5 * 1024 * 1024;
 
+/// How much of a note its tooltip shows.
+const MAX_TIP: usize = 300;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Attachment {
-    Picture { name: String, picture: Picture },
+    Picture {
+        name: String,
+        picture: Picture,
+    },
     File(PathBuf),
+    /// Text that goes after the message's own.
+    Note {
+        title: String,
+        text: String,
+    },
 }
 
 impl ChatView {
@@ -184,10 +195,14 @@ impl ChatView {
                 file_name(path),
                 AttachmentMedia::new().child(Icon::new(IconName::File)),
             ),
+            Attachment::Note { title, .. } => (
+                title.clone(),
+                AttachmentMedia::new().child(Icon::new(gpui_kit::assets::IconName::Globe)),
+            ),
         };
         let picture = match attachment {
             Attachment::Picture { picture, .. } => Some(picture.clone()),
-            Attachment::File(_) => None,
+            Attachment::File(_) | Attachment::Note { .. } => None,
         };
         let mut card = Card::new()
             .id(SharedString::from(format!("chat-attachment-card-{index}")))
@@ -195,6 +210,7 @@ impl ChatView {
             .tooltip(match attachment {
                 Attachment::File(path) => path.display().to_string(),
                 Attachment::Picture { name, .. } => name.clone(),
+                Attachment::Note { text, .. } => text.chars().take(MAX_TIP).collect(),
             })
             .media(media)
             .content(AttachmentContent::new().title(AttachmentTitle::new(title.clone())))
@@ -218,7 +234,7 @@ impl ChatView {
             .child(card)
     }
 
-    fn attach(&mut self, attachments: Vec<Attachment>, cx: &mut Context<Self>) {
+    pub fn attach(&mut self, attachments: Vec<Attachment>, cx: &mut Context<Self>) {
         for attachment in attachments {
             if !self.attachments.contains(&attachment) {
                 self.attachments.push(attachment);
@@ -235,6 +251,12 @@ fn message(text: String, attachments: &[Attachment]) -> Message {
         match attachment {
             Attachment::Picture { picture, .. } => message.pictures.push(picture.clone()),
             Attachment::File(path) => message.files.push(path.clone()),
+            Attachment::Note { text, .. } => {
+                if !message.text.is_empty() {
+                    message.text.push_str("\n\n");
+                }
+                message.text.push_str(text);
+            }
         }
     }
     message
@@ -279,6 +301,16 @@ fn file_name(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notes_follow_the_text() {
+        let note = |text: &str| Attachment::Note {
+            title: "note".into(),
+            text: text.into(),
+        };
+        let message = message("Fix this".into(), &[note("a"), note("b")]);
+        assert_eq!(message.text, "Fix this\n\na\n\nb");
+    }
 
     #[test]
     fn small_pictures_go_by_contents_and_other_files_by_name() {

@@ -10,6 +10,7 @@ gpui_kit::assets::icon_assets!(
     [
         ArrowLeft,
         ArrowRight,
+        Camera,
         Columns2,
         CopyMinus,
         Download,
@@ -27,7 +28,7 @@ gpui_kit::assets::icon_assets!(
         Lock,
         Maximize,
         Minimize,
-        Monitor,
+        MousePointerClick,
         PanelLeft,
         PanelLeftClose,
         PanelLeftOpen,
@@ -36,6 +37,7 @@ gpui_kit::assets::icon_assets!(
         Puzzle,
         RefreshCw,
         Smartphone,
+        Terminal,
         Trash
     ]
 );
@@ -78,6 +80,9 @@ mod tests {
             "icons/folder-tree.svg",
             "icons/git-branch.svg",
             "icons/globe.svg",
+            "icons/camera.svg",
+            "icons/terminal.svg",
+            "icons/mouse-pointer-click.svg",
             "icons/download.svg",
             "icons/external-link.svg",
             "icons/arrow-up.svg",

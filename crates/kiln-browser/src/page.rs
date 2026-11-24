@@ -1,6 +1,12 @@
 //! One page in the running browser.
 
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use anyhow::{Context as _, bail};
 use async_channel::Receiver;
@@ -86,6 +92,7 @@ pub struct Page {
     pub(crate) received: Arc<Path>,
     /// What the page is told the browser is.
     agent: String,
+    phone: Arc<AtomicBool>,
 }
 
 impl Page {
@@ -115,10 +122,14 @@ impl Page {
             session,
             received,
             agent,
+            phone: Arc::default(),
         };
         page.send("Page.enable", &json!({}));
         page.send("Inspector.enable", &json!({}));
-        page.send("Runtime.enable", &json!({}));
+        // Elements are picked through the last two.
+        for domain in ["Runtime", "Log", "DOM", "Overlay"] {
+            page.send(&format!("{domain}.enable"), &json!({}));
+        }
         let binding = json!({"name": guest::BINDING, "executionContextName": guest::WORLD});
         page.send("Runtime.addBinding", &binding);
         let script = json!({"source": guest::SOURCE, "worldName": guest::WORLD});
@@ -174,7 +185,12 @@ impl Page {
         }
     }
 
+    pub(crate) fn is_phone(&self) -> bool {
+        self.phone.load(Ordering::Relaxed)
+    }
+
     pub fn resize(&self, viewport: Viewport) {
+        self.phone.store(viewport.phone, Ordering::Relaxed);
         let agent = if viewport.phone {
             phone_agent(&self.agent)
         } else {
@@ -265,7 +281,7 @@ impl Page {
         self.transport.send(method, params, Some(&self.session));
     }
 
-    async fn call(&self, method: &str, params: Value) -> anyhow::Result<Value> {
+    pub(crate) async fn call(&self, method: &str, params: Value) -> anyhow::Result<Value> {
         self.transport
             .call(method, params, Some(&self.session))
             .await

@@ -1,6 +1,7 @@
 //! The browser beside the chats: one page per session, drawn by the browser
 //! installed on this machine.
 
+mod console_panel;
 mod dialog;
 mod downloads;
 mod host;
@@ -8,7 +9,9 @@ mod keyboard;
 mod live;
 mod menus;
 mod page_view;
+mod picking;
 mod requests;
+mod toolbar;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -16,19 +19,16 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, Bounds, Context, CursorStyle, Entity, EventEmitter, FocusHandle, Focusable, Pixels,
     Point, RenderImage, SharedString, Subscription, Task, TestSupportExt, Window,
-    assets::IconName as Lucide,
-    base::Selectable as _,
     component::{
-        ActiveTheme, Disableable as _, Icon, IconName, Sizable as _, WindowExt,
-        button::{Button, ButtonVariants as _},
-        h_flex,
-        input::{Input, InputEvent, InputState},
+        ActiveTheme, WindowExt,
+        input::{InputEvent, InputState},
         notification::Notification,
         v_flex,
     },
     div, px,
 };
 use kiln_browser::{Frame, History, Viewport};
+use kiln_chat::Attachment;
 
 pub use keyboard::bind_keys;
 use live::State;
@@ -44,6 +44,8 @@ enum Device {
 
 pub enum BrowserEvent {
     Close,
+    /// To go with the next message.
+    Attach(Vec<Attachment>),
 }
 
 pub struct Browser {
@@ -75,6 +77,8 @@ pub struct Browser {
     menu: Option<menus::OpenMenu>,
     dialog: Option<dialog::OpenDialog>,
     downloads: Vec<downloads::Download>,
+    console: console_panel::Console,
+    picking: picking::Picking,
     /// The length of the text an input method is composing.
     marked: usize,
     /// Opens the page and follows it; dropping it lets go of both.
@@ -128,6 +132,8 @@ impl Browser {
             menu: None,
             dialog: None,
             downloads: Vec::new(),
+            console: console_panel::Console::default(),
+            picking: picking::Picking::default(),
             marked: 0,
             follow: Task::ready(()),
             navigation: Task::ready(()),
@@ -191,81 +197,6 @@ impl Browser {
         if let Some(page) = self.page() {
             page.go_forward(&self.history);
         }
-    }
-
-    fn toolbar(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let closed = self.page().is_none();
-        let button = |id, icon: Icon, tooltip| {
-            let button = Button::new(id).ghost().small();
-            button.icon(icon).tooltip(tooltip)
-        };
-        let reload = if self.loading {
-            button("browser-stop", IconName::Close.into(), "Stop Loading")
-                .on_click(cx.listener(|this, _, _, _| this.stop()))
-        } else {
-            button("browser-reload", Lucide::RefreshCw.into(), "Reload")
-                .on_click(cx.listener(|this, _, _, _| this.reload()))
-        };
-        h_flex()
-            .flex_none()
-            .gap_1()
-            .px_2()
-            .py_1()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(
-                button("browser-back", Lucide::ArrowLeft.into(), "Back")
-                    .disabled(closed || !self.history.can_go_back())
-                    .on_click(cx.listener(|this, _, _, _| this.go_back())),
-            )
-            .child(
-                button("browser-forward", Lucide::ArrowRight.into(), "Forward")
-                    .disabled(closed || !self.history.can_go_forward())
-                    .on_click(cx.listener(|this, _, _, _| this.go_forward())),
-            )
-            .child(reload.disabled(closed))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .child(Input::new(&self.address).small()),
-            )
-            .child(self.device_button(Device::Desktop, cx))
-            .child(self.device_button(Device::Phone, cx))
-            .child(
-                button(
-                    "browser-outside",
-                    Lucide::ExternalLink.into(),
-                    "Open in Your Browser",
-                )
-                .disabled(!self.url.starts_with("http"))
-                .on_click(cx.listener(|this, _, _, cx| this.open_outside(cx))),
-            )
-            .child(
-                Button::new("browser-close")
-                    .ghost()
-                    .small()
-                    .icon(IconName::Close)
-                    .tooltip("Close Panel")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(BrowserEvent::Close))),
-            )
-    }
-
-    fn device_button(&self, device: Device, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let (id, icon, tooltip) = match device {
-            Device::Desktop => ("browser-desktop", Lucide::Monitor, "Desktop Size"),
-            Device::Phone => ("browser-phone", Lucide::Smartphone, "Phone Size"),
-        };
-        Button::new(id)
-            .ghost()
-            .small()
-            .icon(icon)
-            .tooltip(tooltip)
-            .selected(self.device == device)
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.device = device;
-                cx.notify();
-            }))
     }
 
     fn content(&self, cx: &Context<Self>) -> AnyElement {
@@ -334,6 +265,7 @@ impl Render for Browser {
                     .children(self.render_dialog(cx))
                     .children(self.render_menu()),
             )
+            .children(self.render_console(cx))
             .children(self.render_downloads(cx))
     }
 }
