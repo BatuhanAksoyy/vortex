@@ -1,5 +1,4 @@
-//! The status bar's sidebar toggle, and the process meters: what each agent
-//! runs, and stopping it.
+//! The process meters: what each agent runs, and stopping it.
 
 // Inside a `cfg(test)` module so helpers may `expect`, like unit tests.
 #[cfg(test)]
@@ -15,7 +14,7 @@ mod processes {
         AgentBackend, PastMessage, PastSession, Pending, Session, SessionSpec, SignIn,
     };
 
-    use super::common::{Stored, chats, click, labels, no_accounts, open_keeping, spawned};
+    use super::common::{Stored, chats, click, labels, no_accounts, open_keeping, pick, spawned};
 
     /// A backend whose agents all run as process `pid`.
     struct Running {
@@ -51,20 +50,6 @@ mod processes {
             window.try_find(ElementId::Name(id.into())).is_some()
         })
         .expect("window")
-    }
-
-    #[gpui_kit::test]
-    fn the_sidebar_button_hides_and_shows_the_session_list(cx: &mut TestAppContext) {
-        let window = open_keeping(cx, Stored::default(), None, no_accounts());
-        let narrow = chats(cx, window)[0].size.width;
-        click(cx, window, "toggle-sidebar");
-        assert!(!has(cx, window, "session-list".into()));
-        assert!(
-            chats(cx, window)[0].size.width > narrow,
-            "the chat takes its room"
-        );
-        click(cx, window, "toggle-sidebar");
-        assert!(has(cx, window, "session-list".into()));
     }
 
     fn type_text(cx: &mut TestAppContext, window: AnyWindowHandle, text: &str) {
@@ -140,8 +125,9 @@ mod processes {
             pid: agent.id(),
         };
         let window = open_keeping(cx, backend, None, no_accounts());
-        click(cx, window, "session-s-old");
+        pick(cx, window, "s-old");
         assert!(spawned(&stored) > 0);
+        assert_eq!(chats(cx, window).len(), 1, "one chat runs the agent");
         click(cx, window, "all-processes");
         (agent, window)
     }

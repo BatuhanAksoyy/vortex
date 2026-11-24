@@ -19,6 +19,9 @@ pub enum ChatEvent {
     /// The permission mode or effort a new process would start with
     /// changed.
     ChoicesChanged,
+    /// The conversation's name was clicked: the user wants to switch to
+    /// another conversation.
+    PickConversation,
 }
 
 impl EventEmitter<ChatEvent> for ChatView {}
@@ -49,13 +52,6 @@ impl ChatView {
     #[must_use]
     pub fn title(&self) -> Option<&str> {
         self.transcript.title()
-    }
-
-    /// Nothing was said or opened here yet, so the chat can take another
-    /// conversation without losing one.
-    #[must_use]
-    pub fn is_blank(&self) -> bool {
-        self.conversation.is_none() && self.transcript.len() == 0
     }
 
     /// Shows stored conversation `id` and continues it, as a copy when it

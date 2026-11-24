@@ -1,6 +1,6 @@
-//! The sidebar: a new session, and the conversations stored for the
-//! project, most recently active first and grouped by day, like Claude
-//! Desktop's.
+//! The conversations stored for the project, most recently active first,
+//! which each chat's conversations page lists under day headings, like
+//! Claude Desktop's, and how a row tells when each was active.
 
 use std::{
     collections::HashSet,
@@ -9,21 +9,13 @@ use std::{
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, AnyView, App, Context, EventEmitter, FontWeight, SharedString, Task,
-    TestSupportExt, Window,
-    component::{
-        ActiveTheme, Icon, IconName, Sizable as _, button::Button, h_flex, tooltip::Tooltip, v_flex,
-    },
+    App, Context, EventEmitter, FontWeight, SharedString, Task, TestSupportExt,
+    component::{ActiveTheme, h_flex, tooltip::Tooltip},
     div,
 };
 use kiln_agent::{PastSession, Pending};
 
 pub enum SessionListEvent {
-    New,
-    Open {
-        id: String,
-        open_elsewhere: bool,
-    },
     /// A listing finished, or failed.
     Loaded,
 }
@@ -31,36 +23,41 @@ pub enum SessionListEvent {
 #[derive(Default)]
 pub struct SessionList {
     sessions: Vec<PastSession>,
-    /// The conversation the focused chat shows.
-    current: Option<String>,
     /// Conversations with a turn running in one of the chats.
     running: HashSet<String>,
     loaded: bool,
     error: Option<String>,
     load: Option<Task<()>>,
-    /// Shown at the bottom: what every agent's processes use.
-    footer: Option<AnyView>,
 }
 
 impl EventEmitter<SessionListEvent> for SessionList {}
 
 impl SessionList {
-    pub fn with_footer(footer: impl Into<AnyView>) -> Self {
-        Self {
-            footer: Some(footer.into()),
-            ..Self::default()
+    pub fn set_running(&mut self, running: HashSet<String>, cx: &mut Context<Self>) {
+        if self.running != running {
+            self.running = running;
+            cx.notify();
         }
     }
 
-    pub fn set_current(
-        &mut self,
-        current: Option<String>,
-        running: HashSet<String>,
-        cx: &mut Context<Self>,
-    ) {
-        self.current = current;
-        self.running = running;
-        cx.notify();
+    /// The listed conversations, most recently active first.
+    pub fn sessions(&self) -> &[PastSession] {
+        &self.sessions
+    }
+
+    /// Whether a chat here runs a turn in the conversation `id`.
+    pub fn is_running(&self, id: &str) -> bool {
+        self.running.contains(id)
+    }
+
+    /// What a list says in place of rows: an error, or that there are
+    /// none yet.
+    pub fn note(&self) -> Option<String> {
+        if let Some(error) = &self.error {
+            return Some(error.clone());
+        }
+        (self.loaded && self.sessions.is_empty())
+            .then(|| "No sessions in this folder yet.".to_owned())
     }
 
     /// Whether the conversation `id` is open in another process; `None`
@@ -93,75 +90,11 @@ impl SessionList {
         cx.emit(SessionListEvent::Loaded);
         cx.notify();
     }
-
-    fn row(&self, session: &PastSession, now: SystemTime, cx: &Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let current = self.current.as_deref() == Some(session.id.as_str());
-        let running = self.running.contains(&session.id);
-        let hover = theme.secondary.opacity(0.5);
-        let id = session.id.clone();
-        let open_elsewhere = session.open_elsewhere;
-        h_flex()
-            .id(SharedString::from(format!("session-{}", session.id)))
-            .test_support()
-            .aria_label(SharedString::from(session.title.clone()))
-            .gap_2()
-            .px_2()
-            .py_1p5()
-            .rounded(theme.radius)
-            .when(current, |this| {
-                this.bg(theme.secondary)
-                    .text_color(theme.foreground)
-                    .font_weight(FontWeight::MEDIUM)
-            })
-            .when(!current, |this| {
-                this.hover(move |style| style.bg(hover))
-                    .on_click(cx.listener(move |_, _, _, cx| {
-                        cx.emit(SessionListEvent::Open {
-                            id: id.clone(),
-                            open_elsewhere,
-                        });
-                    }))
-            })
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .child(session.title.clone()),
-            )
-            .child(stamp(session, running, now, cx))
-    }
-
-    /// The rows under a heading per day group, newest first.
-    fn grouped(&self, cx: &Context<Self>) -> Vec<AnyElement> {
-        let now = SystemTime::now();
-        let today = jiff::Zoned::now().date();
-        let mut shown = Vec::new();
-        let mut last_group = None;
-        for session in &self.sessions {
-            let group = day_group(session.updated_at, today);
-            if last_group != Some(group) {
-                last_group = Some(group);
-                shown.push(heading(group, cx).into_any_element());
-            }
-            shown.push(self.row(session, now, cx).into_any_element());
-        }
-        shown
-    }
-
-    fn note(&self) -> Option<String> {
-        if let Some(error) = &self.error {
-            return Some(error.clone());
-        }
-        (self.loaded && self.sessions.is_empty())
-            .then(|| "No sessions in this folder yet.".to_owned())
-    }
 }
 
 /// When the conversation was last active, whether a chat here is working on
 /// it, and whether another window has it open.
-fn stamp(
+pub fn stamp(
     session: &PastSession,
     running: bool,
     now: SystemTime,
@@ -204,7 +137,7 @@ fn stamp(
         .child(ago(session.updated_at, now))
 }
 
-fn heading(text: &'static str, cx: &App) -> impl IntoElement + use<> {
+pub fn heading(text: &'static str, cx: &App) -> impl IntoElement + use<> {
     div()
         .px_2()
         .pt_3()
@@ -246,58 +179,6 @@ pub fn ago(then: SystemTime, now: SystemTime) -> String {
         || "now".to_owned(),
         |(unit, name)| format!("{}{name}", seconds / unit),
     )
-}
-
-impl Render for SessionList {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let rows = self.grouped(cx);
-        v_flex()
-            .id("session-list")
-            .test_support()
-            .size_full()
-            .p_2()
-            .gap_0p5()
-            .text_sm()
-            .bg(theme.sidebar)
-            .text_color(theme.sidebar_foreground)
-            .child(
-                Button::new("session-new")
-                    .outline()
-                    .small()
-                    .w_full()
-                    .icon(Icon::new(IconName::Plus))
-                    .label("New session")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(SessionListEvent::New))),
-            )
-            .children(self.note().map(|note| {
-                div()
-                    .id("session-note")
-                    .test_support()
-                    .aria_label(SharedString::from(note.clone()))
-                    .px_2()
-                    .pt_3()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(note)
-            }))
-            .child(
-                v_flex()
-                    .id("session-rows")
-                    .flex_1()
-                    .min_h_0()
-                    .gap_0p5()
-                    .overflow_y_scroll()
-                    .children(rows),
-            )
-            .children(self.footer.clone().map(|footer| {
-                h_flex()
-                    .pt_1()
-                    .border_t_1()
-                    .border_color(theme.border)
-                    .child(footer)
-            }))
-    }
 }
 
 #[cfg(test)]

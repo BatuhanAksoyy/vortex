@@ -10,8 +10,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     BackgroundExecutor, Context, Entity, FocusHandle, Focusable, Subscription, Task, Window,
     component::{
-        ActiveTheme, Icon, IconName, Selectable as _, Sizable as _, TitleBar, WindowExt,
-        button::{Button, ButtonVariants as _},
+        ActiveTheme, TitleBar, WindowExt,
         dock::{DockArea, DockEvent},
         notification::Notification,
         resizable::{ResizablePanelGroup, h_resizable, resizable_panel},
@@ -43,7 +42,6 @@ type Scan = (Arc<[PathBuf]>, bool);
 
 const MAX_PROJECT_ENTRIES: usize = 100_000;
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(150);
-const SIDEBAR_WIDTH_REMS: f32 = 18.0;
 const EDITOR_WIDTH_REMS: f32 = 40.0;
 
 pub struct Workspace {
@@ -51,19 +49,22 @@ pub struct Workspace {
     /// Starts the agent behind the chat; injected so tests run no real CLI.
     backend: Rc<dyn AgentBackend>,
     accounts: Entity<Accounts>,
+    /// The project's stored conversations, which each chat's conversations
+    /// page lists.
     sessions: Entity<SessionList>,
+    /// What every agent's processes use, in the status bar.
+    process_meter: Entity<ProcessMeter>,
     editor_pane: Entity<EditorPane>,
     /// The chats, as tabs in groups the user can split.
     dock: Entity<DockArea>,
     chats: Vec<chats::ChatTab>,
-    /// The chat the user last worked in; the sidebar follows it.
+    /// The chat the user last worked in.
     active_chat: Option<Entity<ChatPanel>>,
     /// Where each project's chat layout is kept; `None` keeps none.
     layouts: Option<LayoutFile>,
     /// The kept layout, until the session list has loaded.
     pending_layout: Option<Pane>,
     files: Arc<[PathBuf]>,
-    sidebar_visible: bool,
     editor_visible: bool,
     /// The last reading of the agents' processes, which chats show.
     processes: Entity<Processes>,
@@ -94,7 +95,7 @@ impl Workspace {
         cx.on_release(|_, cx| cx.quit()).detach();
         let processes = Processes::shared(cx);
         let meter = cx.new(|cx| ProcessMeter::all(processes.clone(), cx));
-        let sessions = cx.new(|_| SessionList::with_footer(meter.clone()));
+        let sessions = cx.new(|_| SessionList::default());
         let editor_pane = cx.new(EditorPane::new);
         let dock = chats::new_dock(window, cx);
         let subscriptions = vec![
@@ -122,6 +123,7 @@ impl Workspace {
             backend,
             accounts,
             sessions,
+            process_meter: meter,
             editor_pane,
             dock,
             chats: Vec::new(),
@@ -129,7 +131,6 @@ impl Workspace {
             layouts: None,
             pending_layout: None,
             files: Arc::from([]),
-            sidebar_visible: true,
             editor_visible: false,
             processes,
             _process_watch: Self::watch_processes(cx),
@@ -260,13 +261,6 @@ impl Workspace {
         // With no file open the pane would only take room from the chat.
         let editor_shown = self.editor_visible && !self.editor_pane.read(cx).is_empty();
         h_resizable("workspace-panels")
-            .when(self.sidebar_visible, |this| {
-                this.child(
-                    resizable_panel()
-                        .size(rem * SIDEBAR_WIDTH_REMS)
-                        .child(self.sessions.clone()),
-                )
-            })
             .child(resizable_panel().child(self.dock.clone()))
             .when(editor_shown, |this| {
                 this.child(
@@ -299,19 +293,6 @@ fn project_name(root: &Path) -> String {
     )
 }
 
-impl Workspace {
-    /// The button that shows and hides the session list.
-    fn sidebar_toggle(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("toggle-sidebar")
-            .ghost()
-            .xsmall()
-            .icon(Icon::new(IconName::PanelLeft))
-            .selected(self.sidebar_visible)
-            .tooltip("Toggle Sidebar")
-            .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx)))
-    }
-}
-
 impl Focusable for Workspace {
     fn focus_handle(&self, _: &gpui_kit::App) -> FocusHandle {
         self.focus_handle.clone()
@@ -342,9 +323,9 @@ impl Render for Workspace {
             .children(self.render_processes(window, cx))
             .child(
                 StatusBar::new()
+                    .left(self.process_meter.clone())
                     .left(self.root.display().to_string())
-                    .child(active_file.unwrap_or_default())
-                    .right(self.sidebar_toggle(cx)),
+                    .child(active_file.unwrap_or_default()),
             )
     }
 }

@@ -3,7 +3,8 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString, Subscription, Window,
+    App, Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString, Subscription,
+    TestSupportExt as _, Window,
     component::{
         ActiveTheme, Icon, Sizable as _,
         button::{Button, ButtonVariants as _},
@@ -12,14 +13,20 @@ use gpui_kit::{
     },
     div,
 };
-use kiln_chat::{ChatView, Status};
+use kiln_chat::{ChatEvent, ChatView, Status};
+
+use crate::{
+    conversation_picker::{ConversationPicker, ConversationPickerEvent},
+    session_list::SessionList,
+};
 
 /// Tab titles past this many characters are cut, so a few tabs fit.
 const TITLE_CHARS: usize = 28;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChatPanelEvent {
-    /// The tab was shown or focused; the sidebar follows it.
+    /// The user clicked in the tab or focused it: a new chat goes beside
+    /// it.
     Activated,
     /// The tab's "New session" button: another chat in the same group.
     NewTab,
@@ -27,10 +34,16 @@ pub enum ChatPanelEvent {
     SplitRight,
     /// The tab was closed; its process ends with it.
     Removed,
+    /// A conversation picked on the chat's conversations page, to show in
+    /// this chat.
+    Open { id: String, open_elsewhere: bool },
 }
 
 pub struct ChatPanel {
     chat: Entity<ChatView>,
+    sessions: Entity<SessionList>,
+    /// The conversations page over the chat, while open.
+    picker: Option<(Entity<ConversationPicker>, Subscription)>,
     /// The dock tracks the active panel's handle on the group around it, so
     /// it must not be the chat's own, which the composer tracks too: one
     /// focus reported by two elements panics GPUI's accessibility tree.
@@ -39,11 +52,21 @@ pub struct ChatPanel {
 }
 
 impl ChatPanel {
-    pub fn new(chat: Entity<ChatView>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        chat: Entity<ChatView>,
+        sessions: Entity<SessionList>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let focus = cx.focus_handle();
         let subscriptions = vec![
             // The tab title and its running mark come from the chat.
             cx.observe(&chat, |_, _, cx| cx.notify()),
+            cx.subscribe_in(&chat, window, |this, _, event: &ChatEvent, window, cx| {
+                if *event == ChatEvent::PickConversation {
+                    this.open_picker(window, cx);
+                }
+            }),
             cx.on_focus_in(&focus, window, |_, _, cx| {
                 cx.emit(ChatPanelEvent::Activated);
             }),
@@ -54,6 +77,8 @@ impl ChatPanel {
         ];
         Self {
             chat,
+            sessions,
+            picker: None,
             focus,
             _subscriptions: subscriptions,
         }
@@ -61,6 +86,31 @@ impl ChatPanel {
 
     pub fn chat(&self) -> &Entity<ChatView> {
         &self.chat
+    }
+
+    fn open_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let current = self.chat.read(cx).session_id().map(str::to_owned);
+        let sessions = self.sessions.clone();
+        let picker = cx.new(|cx| ConversationPicker::new(sessions, current, window, cx));
+        let subscription = cx.subscribe_in(&picker, window, |this, _, event, window, cx| {
+            this.close_picker(window, cx);
+            if let ConversationPickerEvent::Pick { id, open_elsewhere } = event {
+                cx.emit(ChatPanelEvent::Open {
+                    id: id.clone(),
+                    open_elsewhere: *open_elsewhere,
+                });
+            }
+        });
+        ConversationPicker::focus(&picker, window, cx);
+        self.picker = Some((picker, subscription));
+        cx.notify();
+    }
+
+    fn close_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.picker.take().is_some() {
+            self.chat.read(cx).focus_handle(cx).focus(window, cx);
+            cx.notify();
+        }
     }
 }
 
@@ -70,12 +120,6 @@ impl EventEmitter<ChatPanelEvent> for ChatPanel {}
 impl BasePanel for ChatPanel {
     fn panel_name(&self) -> &'static str {
         "ChatPanel"
-    }
-
-    fn set_active(&mut self, active: bool, _: &mut Window, cx: &mut Context<Self>) {
-        if active {
-            cx.emit(ChatPanelEvent::Activated);
-        }
     }
 
     fn on_removed(&mut self, _: &mut Window, cx: &mut Context<Self>) {
@@ -150,8 +194,29 @@ impl Focusable for ChatPanel {
 }
 
 impl Render for ChatPanel {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().child(self.chat.clone())
+    /// A click anywhere in the chat makes it the one a new chat goes
+    /// beside, also on text or buttons that take no focus. The dock also
+    /// shows each group's tab when it lays them out, which says nothing of
+    /// where the user works, so being shown does not.
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The backdrop keeps clicks from reaching the chat under it.
+        let picker = self.picker.as_ref().map(|(picker, _)| {
+            div()
+                .id("conversations-overlay")
+                .test_support()
+                .absolute()
+                .inset_0()
+                .p_3()
+                .occlude()
+                .bg(cx.theme().overlay)
+                .child(picker.clone())
+        });
+        div()
+            .relative()
+            .size_full()
+            .capture_any_mouse_down(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::Activated)))
+            .child(self.chat.clone())
+            .children(picker)
     }
 }
 

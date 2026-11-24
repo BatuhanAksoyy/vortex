@@ -67,7 +67,7 @@ kiln/
 │   ├── kiln-settings/      JSONC katmanlı ayarlar, hot-reload
 │   ├── kiln-keymap/        VSCode keybindings.json formatı
 │   ├── kiln-project/       dosya listeleme (gitignore), dil tespiti, bulanık arama
-│   ├── kiln-workspace/     GPUI: pencere yerleşimi, oturum listesi, editör, paletler
+│   ├── kiln-workspace/     GPUI: pencere yerleşimi, konuşmalar sayfası, editör, paletler
 │   ├── kiln-agent/         AgentBackend trait'i, oturum aktörü, izin motoru
 │   ├── kiln-agent-claude/  stream-json + control protokolü
 │   ├── kiln-agent-codex/   app-server JSON-RPC (şemadan üretilmiş tipler)
@@ -204,10 +204,10 @@ pub struct SessionHandle {
   - Çalışma alanı süreç tablosunu (`kiln-services`, `sysinfo`) 2 sn'de bir, arka plan iş parçacığında okur. Çalışan ajan yokken okumaz. Okuma birkaç ms sürer; boştaki Kiln %0–0,1 CPU'da kalır.
   - Okumalar `kiln-chat`'teki paylaşılan `Processes` modeline yazılır. Bu model iki yerde gösterilir:
     - her sohbetin başlığında o sohbetin CLI süreci ve altındaki ağaç;
-    - oturum listesinin sol altında tüm ajanların toplamı.
+    - durum çubuğunun solunda, proje yolunun önünde tüm ajanların toplamı.
   - CPU bir çekirdeğin yüzdesidir, bellek RSS'tir.
   - Ölçere tıklamak süreçler sayfasını açar:
-    - sohbetinki subagent görünümü gibi o sohbetin üzerinde, sol alttaki tüm pencerede, başlık çubuğunun altında açılır;
+    - sohbetinki subagent görünümü gibi o sohbetin üzerinde, durum çubuğundaki tüm pencerede, başlık çubuğunun altında açılır;
     - her satırda komut satırı, PID, CPU ve bellek vardır;
     - tümünü gösteren sayfada satırlar sohbetlerinin başlığı altında ağaç sırasıyla durur. Başlıkta sohbetin toplamı yazar;
     - arama komut satırında, PID'de ve sohbet adında arar. Sayfa açılınca odak aramaya değil sayfaya gider, böylece Escape hemen çalışır;
@@ -265,21 +265,20 @@ pub struct SessionHandle {
 ```
 - Sohbet merkezde. Tool kartında bir dosyaya tıklamak onu sağda açar.
 - "Focus chat" ve "Focus code" komutları yan panelleri gizler.
-- Durum çubuğunun sağındaki düğme oturum listesini açıp kapatır ("Toggle Sidebar", `cmd+b`). Düğme, liste açıkken seçili görünür.
-- Pencere `h_resizable` ile üçe bölünür: oturum listesi, sohbetler, editör. Editör paneli yalnızca açık dosya varken görünür.
+- Kenar çubuğu yok. Pencere `h_resizable` ile ikiye bölünür: sohbetler ve editör. Editör paneli yalnızca açık dosya varken görünür.
 - Sohbetler gpui-kit dock'unun orta alanındadır: her sohbet bir sekme ve kendi CLI süreci; sekmeler gruplar arasında sürüklenir, gruplar yan yana ya da alt alta bölünür. Gösterilmeyen sekmenin süreci çalışmaya devam eder (uyku modu M2'de).
   - Sekme çubuğunda "New session" (aynı grupta yeni sekme) ve "Split right" (yanda yeni grup) düğmeleri var. Dock bir alanın son sekmesini kapattırmaz, pencerede hep bir sohbet kalır.
-  - Soldaki listeden bir oturum açılınca: başka bir sekmede açıksa o sekmeye geçilir; odaktaki sohbet boşsa onda açılır; değilse odaktaki grupta yeni sekmede açılır. "New session" de boş sohbeti yeniden kullanır.
-  - Liste odaktaki sohbeti seçili, turu süren sohbetleri işaretli gösterir.
+  - Yeni sekme ve bölme, kullanıcının en son tıkladığı (metin ya da odak almayan düğmeler dahil) ya da klavyeyle odakladığı sohbetin yanına açılır. Dock'un düzeni kurarken her grubun sekmesini göstermesi bunu değiştirmez; açılışta geri yüklenen düzende bu sohbet ilk gruptakidir.
+  - Sohbet başlığındaki konuşma adına tıklanınca, subagent ve işlemler sayfaları gibi sohbetin üstünde bir "Conversations" sayfası açılır: projede saklanan konuşmalar en yeniden eskiye, gün başlıkları altında, ada göre aranabilir; turu süren ve başka pencerede açık olanlar işaretlidir. Bir konuşmaya tıklamak onu bu sohbette açar, sohbetin önceki konuşması yerini ona bırakır. Konuşma başka bir sekmede açıksa o sekmeye geçilir, böylece bir konuşmayı iki süreç sürdürmez. Sohbette tur sürüyorsa konuşması korunur, seçilen yanında yeni sekmede açılır. Gösterilen konuşmaya tıklamak, Escape ya da kapatma düğmesi sayfayı kapatır. Sayfa açılınca arama kutusuna değil sayfaya odaklanır.
   - Sohbet yerleşimi proje başına `<data>/layouts.json`'da tutulur: gruplar, bölmelerin yönü ve boyu, her gruptaki konuşmalar, her sekmenin hesabı, izin modu ve eforu, gösterilen sekme. Kaldırılmış bir hesabın sekmesi ilk eklenen hesapla açılır. İzin modu ya da eforu kaydedilmemiş bir sekme kullanıcının kendi ayarındakiyle açılır. Dock her değiştiğinde, bir sohbetin konuşması, hesabı, modu ya da eforu değiştiğinde yazılır. Boş sekmeler tutulmaz, sürecek konuşmaları yoktur.
-  - Açılışta yerleşim oturum listesi yüklenince kurulur: artık saklanmayan konuşmalar atlanır, başka bir süreçte açık olan kopya olarak sürer. Her sekme kendi sürecini başlatır. Hiçbir konuşma kalmazsa tek boş sohbetle başlanır.
+  - Açılışta yerleşim saklanan konuşmaların listesi yüklenince kurulur: artık saklanmayan konuşmalar atlanır, başka bir süreçte açık olan kopya olarak sürer. Her sekme kendi sürecini başlatır. Hiçbir konuşma kalmazsa tek boş sohbetle başlanır.
 
 ## 14. Ayarlar, tuş atamaları, tema
 
 - **Ayarlar:** JSONC (Zed tarzı iç içe snake_case anahtarlar), katmanlı (gömülü varsayılanlar → kullanıcı → proje → `.kiln/local.json` [gitignore]). Hot-reload ve şema doğrulaması var; hatalı alan uyarı verir, uygulama çökmez.
   Örnek anahtarlar (nokta iç içe nesneyi gösterir): `ui.font_size`, `ui.font_family`, `editor.font_size`, `editor.font_family`, `editor.tab_size`, `theme`, `agents.claude.binary`, `agents.codex.binary`, `git.commit.trigger`, `git.commit.review`, `git.commit.strip_patterns`, `git.push`, `permissions.rules`, `sessions.hibernate_after`.
 - **Tuş atamaları:** VSCode `keybindings.json` formatı birebir (`key`, `command`, `when`, `-command` ile kaldırma).
-  - Komut id'leri karşılığı olan yerlerde VSCode isimlerini kullanır (`workbench.action.quickOpen`, `workbench.action.showCommands`, `workbench.action.toggleSidebarVisibility` …). Kiln'e özgü komutlar `kiln.*` altındadır.
+  - Komut id'leri karşılığı olan yerlerde VSCode isimlerini kullanır (`workbench.action.quickOpen`, `workbench.action.showCommands`, `workbench.action.toggleAuxiliaryBar` …). Kiln'e özgü komutlar `kiln.*` altındadır.
   - Varsayılanlar VSCode'un varsayılanlarıdır (macOS'ta Cmd). VSCode kullanıcı dosyası tek tıkla içe aktarılır.
 - **Tema:** gpui-kit'in tema JSON formatı (`ThemeSet`) doğrudan kullanılır; ayrı bir format ve dönüştürücü yazılmaz. UI renkleri ve sözdizimi renkleri (tree-sitter capture'ları) aynı dosyadadır. gpui-kit'in Zed'den uyarlanmış hazır temaları da aynı formatta olduğu için ileride içe aktarılabilir.
   - Görünüm: Zed'in boşluk ve tipografisi + VSCode Dark/Light Modern paleti.

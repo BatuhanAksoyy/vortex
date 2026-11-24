@@ -158,13 +158,13 @@ mod workspace {
         let dir = project();
         let (window, _) = open_workspace(cx, dir.path().to_path_buf());
         let window = window.into();
-        assert!(has(cx, window, "session-list"));
+        assert!(!has(cx, window, "quick-open"));
 
         press(cx, window, &primary("shift-p"));
-        type_text(cx, window, "Toggle Sidebar");
+        type_text(cx, window, "Go to File");
         press(cx, window, "enter");
 
-        assert!(!has(cx, window, "session-list"));
+        assert!(has(cx, window, "quick-open"));
     }
 
     #[gpui_kit::test]

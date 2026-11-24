@@ -4,7 +4,6 @@
   { "key": "ctrl+p", "mac": "cmd+p", "command": "workbench.action.quickOpen" },
   { "key": "ctrl+shift+p", "mac": "cmd+shift+p", "command": "workbench.action.showCommands" },
   { "key": "f1", "command": "workbench.action.showCommands" },
-  { "key": "ctrl+b", "mac": "cmd+b", "command": "workbench.action.toggleSidebarVisibility" },
   { "key": "ctrl+alt+b", "mac": "cmd+alt+b", "command": "workbench.action.toggleAuxiliaryBar" },
   { "key": "ctrl+,", "mac": "cmd+,", "command": "workbench.action.openSettingsJson" },
   { "key": "ctrl+k ctrl+s", "mac": "cmd+k cmd+s", "command": "workbench.action.openGlobalKeybindingsFile" },

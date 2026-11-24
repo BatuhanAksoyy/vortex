@@ -36,11 +36,6 @@ impl Workspace {
         view.update(cx, |view, cx| view.focus(window, cx));
     }
 
-    pub fn toggle_sidebar(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        self.sidebar_visible = !self.sidebar_visible;
-        cx.notify();
-    }
-
     pub fn toggle_editor_pane(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         self.editor_visible = !self.editor_visible;
         cx.notify();

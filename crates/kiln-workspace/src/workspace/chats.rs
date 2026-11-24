@@ -1,5 +1,5 @@
-//! The chats in the dock: where a new or reopened conversation goes, and
-//! which chat the sidebar follows.
+//! The chats in the dock: where a new chat goes, and switching a chat to
+//! another conversation.
 
 use std::collections::HashSet;
 
@@ -51,10 +51,11 @@ impl Workspace {
             self.root.clone(),
         );
         let chat = cx.new(|cx| ChatView::new(backend, accounts, root, window, cx));
-        let panel = cx.new(|cx| ChatPanel::new(chat.clone(), window, cx));
+        let sessions = self.sessions.clone();
+        let panel = cx.new(|cx| ChatPanel::new(chat.clone(), sessions, window, cx));
         let subscriptions = [
             cx.subscribe_in(&panel, window, |this, panel, event, window, cx| {
-                this.on_chat_panel(panel, *event, window, cx);
+                this.on_chat_panel(panel, event, window, cx);
             }),
             cx.subscribe(&chat, |this, _, event: &ChatEvent, cx| {
                 this.on_chat(*event, cx);
@@ -106,7 +107,7 @@ impl Workspace {
             dock.move_panel(id, target, window, cx);
         });
         self.active_chat = Some(panel);
-        self.sync_sidebar(cx);
+        self.sync_running(cx);
         chat
     }
 
@@ -126,17 +127,6 @@ impl Workspace {
             .read(cx)
             .layout(DockPlacement::Center)?
             .find_panel_node(id)
-    }
-
-    /// The focused chat while nothing was said in it, otherwise a new tab.
-    fn blank_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<ChatView> {
-        if let Some(panel) = &self.active_chat {
-            let chat = panel.read(cx).chat().clone();
-            if chat.read(cx).is_blank() {
-                return chat;
-            }
-        }
-        self.add_chat(Place::Tab, window, cx)
     }
 
     /// The conversation the chat in dock panel `id` shows, and its account.
@@ -181,43 +171,58 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let (id, open_elsewhere) = match event {
-            SessionListEvent::New => {
-                let chat = self.blank_chat(window, cx);
-                focus(&chat, window, cx);
-                return;
-            }
-            SessionListEvent::Loaded => {
-                self.restore_layout(window, cx);
-                return;
-            }
-            SessionListEvent::Open { id, open_elsewhere } => (id, *open_elsewhere),
+        match event {
+            SessionListEvent::Loaded => self.restore_layout(window, cx),
+        }
+    }
+
+    /// Switches the active chat to the conversation `id`, or shows the tab
+    /// that shows it already, so no two processes run one conversation. A
+    /// chat in the middle of a turn keeps its conversation; `id` opens in
+    /// a new tab beside it.
+    fn switch_conversation(
+        &mut self,
+        id: &str,
+        open_elsewhere: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(panel) = self.active_chat.clone() else {
+            return;
         };
-        if let Some(panel) = self.chat_showing(id, cx) {
-            let panel_id = PanelId::from(panel.entity_id());
+        if let Some(shown) = self.chat_showing(id, cx) {
+            let panel_id = PanelId::from(shown.entity_id());
             self.dock
                 .update(cx, |dock, cx| dock.select_panel(panel_id, window, cx));
-            let chat = panel.read(cx).chat().clone();
+            let chat = shown.read(cx).chat().clone();
             focus(&chat, window, cx);
             return;
         }
-        let chat = self.blank_chat(window, cx);
+        let mut chat = panel.read(cx).chat().clone();
+        if chat.read(cx).status() == Status::Running {
+            chat = self.add_chat(Place::Tab, window, cx);
+        }
         chat.update(cx, |chat, cx| {
             chat.open_session(id, open_elsewhere, window, cx);
         });
+        focus(&chat, window, cx);
     }
 
     fn on_chat_panel(
         &mut self,
         panel: &Entity<ChatPanel>,
-        event: ChatPanelEvent,
+        event: &ChatPanelEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let place = match event {
+            ChatPanelEvent::Open { id, open_elsewhere } => {
+                self.active_chat = Some(panel.clone());
+                self.switch_conversation(id, *open_elsewhere, window, cx);
+                return;
+            }
             ChatPanelEvent::Activated => {
                 self.active_chat = Some(panel.clone());
-                self.sync_sidebar(cx);
                 return;
             }
             ChatPanelEvent::Removed => {
@@ -242,30 +247,24 @@ impl Workspace {
         if self.active_chat.as_ref() == Some(panel) {
             self.active_chat = self.chats.last().map(|tab| tab.panel.clone());
         }
-        self.sync_sidebar(cx);
+        self.sync_running(cx);
     }
 
     fn on_chat(&mut self, event: ChatEvent, cx: &mut Context<Self>) {
-        self.sync_sidebar(cx);
+        self.sync_running(cx);
         match event {
             ChatEvent::SessionChanged => {
                 self.reload_sessions(cx);
                 self.save_layout(cx);
             }
             ChatEvent::AccountChanged | ChatEvent::ChoicesChanged => self.save_layout(cx),
-            ChatEvent::TurnStarted => {}
+            ChatEvent::TurnStarted | ChatEvent::PickConversation => {}
         }
     }
 
-    pub(super) fn sync_sidebar(&mut self, cx: &mut Context<Self>) {
-        let current = self.active_chat.as_ref().and_then(|panel| {
-            panel
-                .read(cx)
-                .chat()
-                .read(cx)
-                .session_id()
-                .map(str::to_owned)
-        });
+    /// Tells the conversations pages which conversations have a turn
+    /// running.
+    pub(super) fn sync_running(&mut self, cx: &mut Context<Self>) {
         let running: HashSet<String> = self
             .chats
             .iter()
@@ -273,9 +272,8 @@ impl Workspace {
             .filter(|chat| chat.status() == Status::Running)
             .filter_map(|chat| chat.session_id().map(str::to_owned))
             .collect();
-        self.sessions.update(cx, |sessions, cx| {
-            sessions.set_current(current, running, cx);
-        });
+        self.sessions
+            .update(cx, |sessions, cx| sessions.set_running(running, cx));
     }
 }
 

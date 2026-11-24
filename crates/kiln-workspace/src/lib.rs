@@ -5,6 +5,7 @@ mod appearance;
 mod chat_panel;
 mod commands;
 mod config;
+mod conversation_picker;
 mod editor_pane;
 mod pickers;
 mod saved_layout;

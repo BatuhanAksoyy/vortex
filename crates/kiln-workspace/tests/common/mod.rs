@@ -153,3 +153,32 @@ pub fn chats(
     })
     .expect("window")
 }
+
+/// Opens `id` from the conversations page of the chat whose name is
+/// rightmost, the one split off last.
+pub fn pick(cx: &mut TestAppContext, window: AnyWindowHandle, id: &str) {
+    let title = cx
+        .update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            let titles = window.find_all("chat-title");
+            let rightmost = titles
+                .iter()
+                .max_by(|a, b| {
+                    f32::from(a.bounds().origin.x).total_cmp(&f32::from(b.bounds().origin.x))
+                })
+                .expect("a chat");
+            rightmost.bounds().center()
+        })
+        .expect("window");
+    cx.update_window(window, |_, window, cx| window.drag(title, title, cx))
+        .expect("window");
+    cx.run_until_parked();
+    cx.update_window(window, |_, window, cx| {
+        window.click(
+            gpui_kit::ElementId::Name(format!("conversation-{id}").into()),
+            cx,
+        );
+    })
+    .expect("window");
+    cx.run_until_parked();
+}

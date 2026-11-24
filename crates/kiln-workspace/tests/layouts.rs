@@ -13,7 +13,7 @@ mod layouts {
     use kiln_accounts::{Account, Accounts};
     use kiln_agent::PermissionMode;
 
-    use super::common::{Stored, chats, click, labels, no_accounts, open_keeping, spawned};
+    use super::common::{Stored, chats, click, labels, no_accounts, open_keeping, pick, spawned};
 
     fn resumed(backend: &Stored) -> Vec<String> {
         let specs = backend.0.borrow();
@@ -28,9 +28,9 @@ mod layouts {
         let dir = tempfile::tempdir().expect("temp dir");
         let layouts = dir.path().join("layouts.json");
         let before = open_keeping(cx, Stored::default(), Some(layouts.clone()), no_accounts());
-        click(cx, before, "session-s-new");
+        pick(cx, before, "s-new");
         click(cx, before, "chat-split-right");
-        click(cx, before, "session-s-old");
+        pick(cx, before, "s-old");
 
         let backend = Stored::default();
         let after = open_keeping(cx, backend.clone(), Some(layouts), no_accounts());
@@ -39,8 +39,8 @@ mod layouts {
         assert!(shown[0].origin.x < shown[1].origin.x, "side by side");
         assert_eq!(resumed(&backend), ["s-new", "s-old"]);
         assert_eq!(spawned(&backend), 2, "no extra blank chat");
-        assert_eq!(labels(cx, after, "Fix the build"), 2, "listed and shown");
-        assert_eq!(labels(cx, after, "Plan the release"), 2, "listed and shown");
+        assert!(labels(cx, after, "Fix the build") > 0, "shown");
+        assert!(labels(cx, after, "Plan the release") > 0, "shown");
     }
 
     #[gpui_kit::test]
@@ -59,7 +59,7 @@ mod layouts {
         let backend = Stored::default();
         let window = open_keeping(cx, backend.clone(), Some(layouts), no_accounts());
         assert_eq!(resumed(&backend), ["s-old"]);
-        assert_eq!(labels(cx, window, "Plan the release"), 2, "shown");
+        assert!(labels(cx, window, "Plan the release") > 0, "shown");
     }
 
     /// Two added accounts kept in `dir`, and their ids.
@@ -91,11 +91,11 @@ mod layouts {
         let (first, second) = two_accounts(dir.path());
         let accounts = || Accounts::load(dir.path().to_owned()).expect("list");
         let before = open_keeping(cx, Stored::default(), Some(layouts.clone()), accounts());
-        click(cx, before, "session-s-new");
+        pick(cx, before, "s-new");
         click(cx, before, "chat-account");
         click_in(cx, before, format!("chat-account-{second}"));
         click(cx, before, "chat-split-right");
-        click(cx, before, "session-s-old");
+        pick(cx, before, "s-old");
 
         let backend = Stored::default();
         open_keeping(cx, backend.clone(), Some(layouts), accounts());
@@ -117,11 +117,11 @@ mod layouts {
         let dir = tempfile::tempdir().expect("temp dir");
         let layouts = dir.path().join("layouts.json");
         let before = open_keeping(cx, Stored::default(), Some(layouts.clone()), no_accounts());
-        click(cx, before, "session-s-new");
+        pick(cx, before, "s-new");
         click(cx, before, "chat-mode");
         click(cx, before, "chat-mode-Auto");
         click(cx, before, "chat-split-right");
-        click(cx, before, "session-s-old");
+        pick(cx, before, "s-old");
 
         let backend = Stored::default();
         open_keeping(cx, backend.clone(), Some(layouts), no_accounts());

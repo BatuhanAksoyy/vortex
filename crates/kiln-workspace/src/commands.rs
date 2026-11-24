@@ -14,7 +14,6 @@ actions!(
     [
         QuickOpen,
         ShowCommands,
-        ToggleSidebar,
         ToggleEditorPane,
         OpenSettings,
         OpenDefaultSettings,
@@ -52,11 +51,6 @@ pub const COMMANDS: &[CommandSpec] = &[
     spec("workbench.action.showCommands", "Show All Commands", || {
         Box::new(ShowCommands)
     }),
-    spec(
-        "workbench.action.toggleSidebarVisibility",
-        "Toggle Sidebar",
-        || Box::new(ToggleSidebar),
-    ),
     spec(
         "workbench.action.toggleAuxiliaryBar",
         "Toggle Editor Pane",
@@ -130,7 +124,6 @@ type Handler = fn(&mut Workspace, &mut Window, &mut Context<Workspace>);
 pub fn register(cx: &mut App) {
     on::<QuickOpen>(cx, Workspace::quick_open);
     on::<ShowCommands>(cx, Workspace::show_commands);
-    on::<ToggleSidebar>(cx, Workspace::toggle_sidebar);
     on::<ToggleEditorPane>(cx, Workspace::toggle_editor_pane);
     on::<OpenSettings>(cx, Workspace::open_user_settings);
     on::<OpenDefaultSettings>(cx, Workspace::open_default_settings);

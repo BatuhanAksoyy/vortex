@@ -45,7 +45,7 @@ impl Workspace {
         self.dock
             .update(cx, |dock, cx| dock.set_center(layout, window, cx));
         self.active_chat = Some(shown);
-        self.sync_sidebar(cx);
+        self.sync_running(cx);
     }
 
     /// The dock layout for `pane` with a chat resuming each conversation

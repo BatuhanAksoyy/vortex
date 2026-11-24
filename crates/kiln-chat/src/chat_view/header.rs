@@ -35,7 +35,32 @@ impl ChatView {
             .py_2()
             .border_b_1()
             .border_color(theme.border)
-            .child(div().flex_1().min_w_0().truncate().child(title))
+            .child(
+                div().flex_1().min_w_0().child(
+                    h_flex()
+                        .id("chat-title")
+                        .test_support()
+                        .max_w_full()
+                        .gap_1()
+                        .px_1()
+                        .rounded(theme.radius)
+                        .cursor_pointer()
+                        .hover(|style| style.bg(gpui_kit::black().opacity(0.08)))
+                        .tooltip(|window, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new("Switch conversation")
+                                .build(window, cx)
+                        })
+                        .on_click(cx.listener(|_, _, _, cx| {
+                            cx.emit(super::ChatEvent::PickConversation);
+                        }))
+                        .child(div().min_w_0().truncate().child(title))
+                        .child(
+                            Icon::new(gpui_kit::assets::IconName::ChevronDown)
+                                .xsmall()
+                                .text_color(theme.muted_foreground),
+                        ),
+                ),
+            )
             .children(self.process_meter.clone())
             .child(self.account_button(cx))
             .child(usage_meter(
