@@ -4,8 +4,8 @@
 use std::ops::Range;
 
 use gpui_kit::{
-    App, Bounds, ClipboardItem, Context, EntityInputHandler, Focusable, KeyBinding, KeyDownEvent,
-    KeyUpEvent, Keystroke, NoAction, Pixels, Point, UTF16Selection, Window,
+    App, Bounds, ClipboardEntry, ClipboardItem, Context, EntityInputHandler, Focusable, KeyBinding,
+    KeyDownEvent, KeyUpEvent, Keystroke, NoAction, Pixels, Point, UTF16Selection, Window,
 };
 use kiln_browser::Key;
 
@@ -54,14 +54,14 @@ impl Browser {
             "]" => self.go_forward(),
             "c" => self.copy(false, cx),
             "x" => self.copy(true, cx),
-            "v" => self.paste_text(cx),
+            "v" => self.paste_clipboard(cx),
             _ => return false,
         }
         true
     }
 
     /// Pages have no clipboard of their own without a window.
-    fn copy(&self, cut: bool, cx: &mut Context<Self>) {
+    pub(super) fn copy(&self, cut: bool, cx: &mut Context<Self>) {
         let Some(page) = self.page().cloned() else {
             return;
         };
@@ -87,10 +87,20 @@ impl Browser {
         .detach();
     }
 
-    fn paste_text(&self, cx: &Context<Self>) {
-        let text = cx.read_from_clipboard().and_then(|item| item.text());
-        if let (Some(page), Some(text)) = (self.page(), text) {
+    pub(super) fn paste_clipboard(&self, cx: &Context<Self>) {
+        let (Some(page), Some(item)) = (self.page(), cx.read_from_clipboard()) else {
+            return;
+        };
+        if let Some(text) = item.text() {
             page.insert(&text);
+            return;
+        }
+        let image = item.entries().iter().find_map(|entry| match entry {
+            ClipboardEntry::Image(image) => Some(image),
+            ClipboardEntry::String(_) | ClipboardEntry::ExternalPaths(_) => None,
+        });
+        if let Some(image) = image {
+            page.paste_image(image.format().mime_type(), image.bytes());
         }
     }
 }

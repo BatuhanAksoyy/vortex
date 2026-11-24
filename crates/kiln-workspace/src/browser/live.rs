@@ -1,7 +1,8 @@
 //! Opening a page, following it, and letting go of it.
 
-use std::{sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
+use async_channel::Receiver;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AsyncWindowContext, BackgroundExecutor, Context, Image, ImageFormat, Task, WeakEntity, Window,
@@ -62,24 +63,16 @@ impl Browser {
             self.fail("There is no folder to keep the browser's data in.", cx);
             return;
         };
-        let chrome = match host::chrome(&profile, self.scale, cx) {
-            Ok(chrome) => chrome,
-            Err(error) => {
-                self.fail(&format!("{error:#}"), cx);
-                return;
-            }
-        };
         self.state = State::Opening;
-        let viewport = self.viewport;
         self.follow = cx.spawn_in(window, async move |this, cx| {
-            let opened = chrome.open_page(viewport).await;
-            let Ok((page, events)) = opened else {
-                let _ = this.update(cx, |this, cx| this.fail(CLOSED, cx));
-                return;
+            let (open, events) = match connect(&this, &profile, cx).await {
+                Ok(connected) => connected,
+                Err(error) => {
+                    let _ = this.update(cx, |this, cx| this.fail(&format!("{error:#}"), cx));
+                    return;
+                }
             };
-            let shown = this.update(cx, |this, cx| {
-                this.opened(Open { chrome, page }, url, cx);
-            });
+            let shown = this.update_in(cx, |this, window, cx| this.opened(open, url, window, cx));
             if shown.is_err() {
                 return;
             }
@@ -91,7 +84,10 @@ impl Browser {
         cx.notify();
     }
 
-    fn opened(&mut self, open: Open, url: String, cx: &mut Context<Self>) {
+    fn opened(&mut self, open: Open, url: String, window: &mut Window, cx: &mut Context<Self>) {
+        if host::note_profile(cx) {
+            window.push_notification(Notification::info(OTHER_PROFILE), cx);
+        }
         // The panel may have been sized meanwhile.
         open.page.resize(self.viewport);
         self.navigation = cx.background_spawn(navigate(open.page.clone(), url));
@@ -102,6 +98,8 @@ impl Browser {
     fn fail(&mut self, message: &str, cx: &mut Context<Self>) {
         self.state = State::Failed(message.to_owned());
         self.loading = false;
+        self.menu = None;
+        self.dialog = None;
         self.unpainted.clear();
         self.ahead = false;
         cx.notify();
@@ -148,6 +146,8 @@ impl Browser {
         self.follow = Task::ready(());
         self.navigation = Task::ready(());
         self.state = State::PutAway;
+        self.menu = None;
+        self.dialog = None;
         if let Some((old, _)) = self.picture.take() {
             cx.drop_image(old, Some(window));
         }
@@ -156,6 +156,7 @@ impl Browser {
     fn on_event(&mut self, event: PageEvent, window: &mut Window, cx: &mut Context<Self>) {
         match event {
             PageEvent::Opened => {
+                self.menu = None;
                 if self.shown {
                     self.show(cx);
                 }
@@ -167,20 +168,8 @@ impl Browser {
                 cx.notify();
             }
             PageEvent::Popup(url) => self.go_to(url, window, cx),
-            PageEvent::Dialog { message, leaving } => self.answer(&message, leaving, window, cx),
             PageEvent::Crashed => self.fail("The page crashed.", cx),
-            PageEvent::Frame(_) => {}
-        }
-    }
-
-    /// There is no dialog to answer in yet, and the page waits for one.
-    fn answer(&self, message: &str, leaving: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(page) = self.page() {
-            page.answer_dialog(leaving);
-        }
-        if !leaving {
-            let note = format!("The page says: {message}");
-            window.push_notification(Notification::info(note), cx);
+            request => self.on_request(request, window, cx),
         }
     }
 
@@ -227,7 +216,28 @@ impl Browser {
     }
 }
 
-const CLOSED: &str = "The browser ended. Another Kiln may be using its profile.";
+const CLOSED: &str = "The browser ended. Enter an address to start it again.";
+const OTHER_PROFILE: &str = "Another Kiln is open, so this one's browser keeps its own sign-ins.";
+/// The last browser may still be closing, with the profile in use.
+const CONNECT_ATTEMPTS: usize = 8;
+const CONNECT_AGAIN: Duration = Duration::from_millis(500);
+
+async fn connect(
+    this: &WeakEntity<Browser>,
+    profile: &Path,
+    cx: &mut AsyncWindowContext,
+) -> anyhow::Result<(Open, Receiver<PageEvent>)> {
+    for _ in 0..CONNECT_ATTEMPTS {
+        let (scale, viewport) = this.read_with(cx, |this, _| (this.scale, this.viewport))?;
+        let chrome = cx.update(|_, cx| host::chrome(profile, scale, cx))??;
+        match chrome.open_page(viewport).await {
+            Ok((page, events)) => return Ok((Open { chrome, page }, events)),
+            Err(error) if !chrome.ended() => return Err(error),
+            Err(_) => cx.background_executor().timer(CONNECT_AGAIN).await,
+        }
+    }
+    anyhow::bail!(CLOSED)
+}
 
 async fn show(page: Page, executor: BackgroundExecutor) {
     for _ in 0..SHOW_ATTEMPTS {

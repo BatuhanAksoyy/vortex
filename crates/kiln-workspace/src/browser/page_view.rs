@@ -108,6 +108,7 @@ impl Browser {
         self.focus.focus(window, cx);
         let button = button(event.button);
         self.pressed = Some(button);
+        self.last_press = event.position;
         let (x, y) = self.at(event.position);
         self.send_mouse(MouseInput {
             kind: MouseKind::Pressed,
@@ -177,12 +178,13 @@ fn paint(
     window: &mut Window,
     cx: &mut gpui_kit::App,
 ) {
-    let focus = browser.update(cx, |this, _| {
+    let (focus, cursor) = browser.update(cx, |this, _| {
         this.paint_picture(bounds, window);
-        this.focus.clone()
+        (this.focus.clone(), this.cursor)
     });
     let input = ElementInputHandler::new(bounds, browser.clone());
     window.handle_input(&focus, input, cx);
+    window.set_cursor_style(cursor, &hitbox);
     // On the window, not the element: a drag goes on outside the page.
     let moved = browser.clone();
     window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {

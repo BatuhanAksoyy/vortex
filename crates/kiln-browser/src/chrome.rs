@@ -1,7 +1,7 @@
 //! The running browser.
 
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Arc,
     time::Duration,
@@ -15,6 +15,7 @@ use crate::{
     event::PageEvent,
     find::Installed,
     page::{Page, Viewport},
+    profile::Profile,
     transport::Transport,
 };
 
@@ -41,16 +42,16 @@ const CLOSE_TIME: Duration = Duration::from_secs(3);
 pub struct Chrome {
     child: Option<Child>,
     transport: Arc<Transport>,
+    /// Where downloads arrive.
+    received: Arc<Path>,
     /// Device pixels per page pixel in the frames.
     scale: f32,
 }
 
 impl Chrome {
-    /// Starts `browser` with the profile in `profile`, which no other
-    /// running browser may use.
-    pub fn launch(browser: &Installed, profile: &Path, scale: f32) -> anyhow::Result<Self> {
-        std::fs::create_dir_all(profile)
-            .with_context(|| format!("cannot create {}", profile.display()))?;
+    /// Starts `browser` with `profile`.
+    pub fn launch(browser: &Installed, profile: &Profile, scale: f32) -> anyhow::Result<Self> {
+        let profile = profile.path();
         let mut data = std::ffi::OsString::from("--user-data-dir=");
         data.push(profile);
         let mut child = Command::new("/bin/sh")
@@ -74,15 +75,18 @@ impl Chrome {
             &json!({"discover": true}),
             None,
         );
-        // Nothing asks where to save yet.
-        transport.send(
-            "Browser.setDownloadBehavior",
-            &json!({"behavior": "deny"}),
-            None,
-        );
+        let received = empty_folder(&profile.join("kiln-downloads"))?;
+        // Under names of the browser's making, until they are complete.
+        let downloads = json!({
+            "behavior": "allowAndName",
+            "downloadPath": received,
+            "eventsEnabled": true,
+        });
+        transport.send("Browser.setDownloadBehavior", &downloads, None);
         Ok(Self {
             child: Some(child),
             transport,
+            received: received.into(),
             scale,
         })
     }
@@ -102,7 +106,7 @@ impl Chrome {
         &self,
         viewport: Viewport,
     ) -> anyhow::Result<(Page, Receiver<PageEvent>)> {
-        Page::open(self.transport.clone(), viewport).await
+        Page::open(self.transport.clone(), self.received.clone(), viewport).await
     }
 }
 
@@ -120,6 +124,16 @@ impl Drop for Chrome {
             }
         });
     }
+}
+
+/// What an earlier run left in it is of no use.
+fn empty_folder(path: &Path) -> anyhow::Result<PathBuf> {
+    if path.exists() {
+        std::fs::remove_dir_all(path)
+            .with_context(|| format!("cannot empty {}", path.display()))?;
+    }
+    std::fs::create_dir(path).with_context(|| format!("cannot create {}", path.display()))?;
+    Ok(path.to_path_buf())
 }
 
 /// Whether the process ends by itself in the time it has.

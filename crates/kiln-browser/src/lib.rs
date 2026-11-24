@@ -5,17 +5,26 @@
 
 mod address;
 mod chrome;
+mod dialog;
+mod download;
 mod event;
 mod find;
+mod guest;
 mod input;
 mod keys;
 mod page;
+mod page_requests;
+mod profile;
 mod transport;
 
 pub use address::normalize;
 pub use chrome::Chrome;
+pub use dialog::{Dialog, DialogKind};
+pub use download::{DownloadProgress, DownloadState, downloads_dir};
 pub use event::{Frame, PageEvent};
 pub use find::{Installed, find};
+pub use guest::{Choice, MenuTarget, Select};
 pub use input::{Button, Modifiers, MouseInput, MouseKind, Wheel};
 pub use keys::Key;
 pub use page::{History, Page, Viewport};
+pub use profile::Profile;

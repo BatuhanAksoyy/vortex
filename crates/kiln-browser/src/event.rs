@@ -3,6 +3,12 @@
 use base64::Engine as _;
 use serde_json::Value;
 
+use crate::{
+    dialog::{self, Dialog},
+    download::{self, DownloadProgress},
+    guest::{self, MenuTarget, Select},
+};
+
 /// A picture of the page.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Frame {
@@ -11,7 +17,7 @@ pub struct Frame {
     pub(crate) ack: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PageEvent {
     Frame(Frame),
     /// Another document is shown. Frames must be asked for again.
@@ -21,11 +27,24 @@ pub enum PageEvent {
     Loading(bool),
     /// The page wants a window of its own, for this URL.
     Popup(String),
-    /// The page waits for an answer to `alert`, `confirm` or the like.
-    Dialog {
-        message: String,
-        leaving: bool,
+    /// The page waits for an answer.
+    Dialog(Dialog),
+    /// It waits no longer.
+    DialogClosed,
+    /// The CSS name of the cursor to show.
+    Cursor(String),
+    Select(Select),
+    ContextMenu(MenuTarget),
+    /// The file field at `node` was opened.
+    ChooseFiles {
+        node: i64,
+        multiple: bool,
     },
+    DownloadStarted {
+        id: String,
+        name: String,
+    },
+    Download(DownloadProgress),
     Crashed,
 }
 
@@ -44,11 +63,26 @@ pub(crate) fn parse(method: &str, params: &Value, main: &str) -> Option<PageEven
         "Page.frameStartedLoading" => of_main().then_some(PageEvent::Loading(true)),
         "Page.frameStoppedLoading" => of_main().then_some(PageEvent::Loading(false)),
         "Page.windowOpen" => Some(PageEvent::Popup(text("url"))),
-        "Page.javascriptDialogOpening" => Some(PageEvent::Dialog {
-            message: text("message"),
-            leaving: params["type"] == "beforeunload",
-        }),
         "Inspector.targetCrashed" => Some(PageEvent::Crashed),
+        _ => request(method, params),
+    }
+}
+
+/// What the page asks for or hands over.
+fn request(method: &str, params: &Value) -> Option<PageEvent> {
+    match method {
+        "Runtime.bindingCalled" => guest::parse(params),
+        "Page.javascriptDialogOpening" => Some(PageEvent::Dialog(dialog::parse(params))),
+        "Page.javascriptDialogClosed" => Some(PageEvent::DialogClosed),
+        "Page.fileChooserOpened" => Some(PageEvent::ChooseFiles {
+            node: params["backendNodeId"].as_i64()?,
+            multiple: params["mode"] == "selectMultiple",
+        }),
+        "Page.downloadWillBegin" => Some(PageEvent::DownloadStarted {
+            id: params["guid"].as_str()?.to_owned(),
+            name: params["suggestedFilename"].as_str()?.to_owned(),
+        }),
+        "Page.downloadProgress" => download::progress(params).map(PageEvent::Download),
         _ => None,
     }
 }

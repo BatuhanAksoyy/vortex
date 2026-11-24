@@ -1,17 +1,21 @@
 //! The browser beside the chats: one page per session, drawn by the browser
 //! installed on this machine.
 
+mod dialog;
+mod downloads;
 mod host;
 mod keyboard;
 mod live;
+mod menus;
 mod page_view;
+mod requests;
 
 use std::{path::PathBuf, sync::Arc};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Bounds, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels, RenderImage,
-    SharedString, Subscription, Task, TestSupportExt, Window,
+    AnyElement, Bounds, Context, CursorStyle, Entity, EventEmitter, FocusHandle, Focusable, Pixels,
+    Point, RenderImage, SharedString, Subscription, Task, TestSupportExt, Window,
     assets::IconName as Lucide,
     base::Selectable as _,
     component::{
@@ -65,6 +69,12 @@ pub struct Browser {
     scale: f32,
     focus: FocusHandle,
     pressed: Option<kiln_browser::Button>,
+    /// Where the mouse was last pressed, in the window.
+    last_press: Point<Pixels>,
+    cursor: CursorStyle,
+    menu: Option<menus::OpenMenu>,
+    dialog: Option<dialog::OpenDialog>,
+    downloads: Vec<downloads::Download>,
     /// The length of the text an input method is composing.
     marked: usize,
     /// Opens the page and follows it; dropping it lets go of both.
@@ -113,6 +123,11 @@ impl Browser {
             scale: window.scale_factor(),
             focus: cx.focus_handle(),
             pressed: None,
+            last_press: Point::default(),
+            cursor: CursorStyle::Arrow,
+            menu: None,
+            dialog: None,
+            downloads: Vec::new(),
             marked: 0,
             follow: Task::ready(()),
             navigation: Task::ready(()),
@@ -218,6 +233,15 @@ impl Browser {
             .child(self.device_button(Device::Desktop, cx))
             .child(self.device_button(Device::Phone, cx))
             .child(
+                button(
+                    "browser-outside",
+                    Lucide::ExternalLink.into(),
+                    "Open in Your Browser",
+                )
+                .disabled(!self.url.starts_with("http"))
+                .on_click(cx.listener(|this, _, _, cx| this.open_outside(cx))),
+            )
+            .child(
                 Button::new("browser-close")
                     .ghost()
                     .small()
@@ -301,11 +325,15 @@ impl Render for Browser {
             .child(self.toolbar(cx))
             .child(
                 v_flex()
+                    .relative()
                     .flex_1()
                     .min_h_0()
                     .items_center()
                     .when(phone, |this| this.p_3().bg(theme.muted))
-                    .child(self.content(cx)),
+                    .child(self.content(cx))
+                    .children(self.render_dialog(cx))
+                    .children(self.render_menu()),
             )
+            .children(self.render_downloads(cx))
     }
 }

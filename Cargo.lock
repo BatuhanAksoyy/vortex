@@ -4101,8 +4101,10 @@ dependencies = [
  "anyhow",
  "async-channel",
  "base64 0.22.1",
+ "directories",
  "futures",
  "log",
+ "serde",
  "serde_json",
  "tempfile",
 ]

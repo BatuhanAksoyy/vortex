@@ -1,6 +1,6 @@
 //! One page in the running browser.
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Context as _, bail};
 use async_channel::Receiver;
@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use crate::{
     event::{Frame, PageEvent},
+    guest,
     input::{MouseInput, Wheel},
     keys::Key,
     transport::Transport,
@@ -78,9 +79,11 @@ impl History {
 
 #[derive(Clone)]
 pub struct Page {
-    transport: Arc<Transport>,
+    pub(crate) transport: Arc<Transport>,
     target: String,
     session: String,
+    /// Where downloads arrive.
+    pub(crate) received: Arc<Path>,
     /// What the page is told the browser is.
     agent: String,
 }
@@ -88,6 +91,7 @@ pub struct Page {
 impl Page {
     pub(crate) async fn open(
         transport: Arc<Transport>,
+        received: Arc<Path>,
         viewport: Viewport,
     ) -> anyhow::Result<(Self, Receiver<PageEvent>)> {
         // In a window of its own: a tab behind another one is not drawn.
@@ -109,16 +113,22 @@ impl Page {
             transport,
             target,
             session,
+            received,
             agent,
         };
         page.send("Page.enable", &json!({}));
         page.send("Inspector.enable", &json!({}));
+        page.send("Runtime.enable", &json!({}));
+        let binding = json!({"name": guest::BINDING, "executionContextName": guest::WORLD});
+        page.send("Runtime.addBinding", &binding);
+        let script = json!({"source": guest::SOURCE, "worldName": guest::WORLD});
+        page.send("Page.addScriptToEvaluateOnNewDocument", &script);
         // A window without focus draws no caret and hides menus on hover.
         page.send(
             "Emulation.setFocusEmulationEnabled",
             &json!({"enabled": true}),
         );
-        // Nothing shows the system's file dialog yet; it would never close.
+        // The browser's own file dialog would not show without a window.
         page.send(
             "Page.setInterceptFileChooserDialog",
             &json!({"enabled": true}),
@@ -245,18 +255,13 @@ impl Page {
         text(&reply["result"], "value")
     }
 
-    pub fn answer_dialog(&self, accept: bool) {
-        let answer = json!({"accept": accept});
-        self.send("Page.handleJavaScriptDialog", &answer);
-    }
-
     pub fn close(&self) {
         self.transport.forget(&self.session);
         let close = json!({"targetId": self.target});
         self.transport.send("Target.closeTarget", &close, None);
     }
 
-    fn send(&self, method: &str, params: &Value) {
+    pub(crate) fn send(&self, method: &str, params: &Value) {
         self.transport.send(method, params, Some(&self.session));
     }
 
