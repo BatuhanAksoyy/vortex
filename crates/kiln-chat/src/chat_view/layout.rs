@@ -100,6 +100,7 @@ impl Render for ChatView {
             .id("chat")
             .test_support()
             .on_key_down(cx.listener(Self::on_chat_key))
+            .relative()
             .size_full()
             .bg(cx.theme().background)
             .child(self.render_header(cx))
@@ -111,5 +112,6 @@ impl Render for ChatView {
                     .children(self.render_limit_notice(cx))
                     .child(bottom),
             )
+            .children(self.render_agents(cx))
     }
 }

@@ -187,3 +187,87 @@ fn a_message_with_a_reply_is_not_taken_back() {
         Some((_, Entry::Notice { .. }))
     ));
 }
+
+fn subagent(change: kiln_agent::SubagentChange) -> AgentEvent {
+    AgentEvent::Subagent(kiln_agent::SubagentEvent {
+        call: "agent".into(),
+        change,
+    })
+}
+
+fn step(id: &str, name: &str) -> AgentEvent {
+    AgentEvent::ToolCall(ToolCall {
+        id: id.into(),
+        parent: Some("agent".into()),
+        name: name.into(),
+        input: json!({}),
+    })
+}
+
+#[test]
+fn a_subagent_gathers_its_steps_and_report_in_its_card() {
+    use kiln_agent::{SubagentChange, SubagentEnd};
+    let mut transcript = Transcript::default();
+    transcript.push_user("go".into());
+    transcript.apply(AgentEvent::ToolCall(ToolCall {
+        id: "agent".into(),
+        parent: None,
+        name: "Agent".into(),
+        input: json!({}),
+    }));
+    transcript.apply(subagent(SubagentChange::Started {
+        description: "Read the note".into(),
+        kind: Some("general-purpose".into()),
+    }));
+    let launched = ToolResult {
+        output: "Async agent launched".into(),
+        is_error: false,
+    };
+    transcript.apply(AgentEvent::ToolResult {
+        id: "agent".into(),
+        output: launched.output.clone(),
+        is_error: false,
+    });
+    assert_eq!(transcript.apply(step("read", "Read")).updated, Some(1));
+    transcript.apply(AgentEvent::ToolResult {
+        id: "read".into(),
+        output: "lantern".into(),
+        is_error: false,
+    });
+    transcript.apply(subagent(SubagentChange::Model("haiku".into())));
+    transcript.apply(subagent(SubagentChange::Text("lantern".into())));
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Completed));
+    transcript.apply(subagent(SubagentChange::Finished {
+        end: SubagentEnd::Completed,
+        summary: "lantern".into(),
+        usage: None,
+    }));
+    assert_eq!(transcript.len(), 2, "the steps stay in the card");
+    let Some((_, Entry::Subagent { result, agent, .. })) = transcript.entry(1) else {
+        panic!("expected the card");
+    };
+    assert_eq!(result.as_ref(), Some(&launched));
+    assert_eq!(agent.model.as_deref(), Some("haiku"));
+    assert_eq!(agent.end, Some(SubagentEnd::Completed));
+    assert_eq!(agent.summary.as_deref(), Some("lantern"));
+    let [Step::Tool { call, result }, Step::Text(text)] = agent.steps.as_slice() else {
+        panic!("{:?}", agent.steps);
+    };
+    assert_eq!((call.name.as_str(), text.as_str()), ("Read", "lantern"));
+    assert_eq!(result.as_ref().map(|r| r.output.as_str()), Some("lantern"));
+
+    transcript.apply(AgentEvent::PromptTokens(kiln_agent::PromptTokens::default()));
+    assert_eq!(
+        transcript.status(),
+        Status::Running,
+        "the report starts a turn of its own"
+    );
+}
+
+#[test]
+fn steps_without_a_card_stay_on_the_timeline() {
+    let mut transcript = Transcript::default();
+    transcript.apply(call("agent"));
+    transcript.apply(step("read", "Read"));
+    assert_eq!(transcript.len(), 2);
+}

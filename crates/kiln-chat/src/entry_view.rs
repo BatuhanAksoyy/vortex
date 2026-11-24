@@ -15,6 +15,7 @@ use crate::{
     chat_view::ChatView,
     code_block::{self, CodeLine, LineKind},
     literal::literal_markdown,
+    subagent_view,
     tool_format::{self, EditDiff},
     transcript::{Entry, EntryId, ToolResult},
 };
@@ -40,7 +41,7 @@ pub struct EntryContext<'a> {
 pub fn on_timeline(entry: &Entry) -> bool {
     matches!(
         entry,
-        Entry::Text { .. } | Entry::Thinking { .. } | Entry::Tool { .. }
+        Entry::Text { .. } | Entry::Thinking { .. } | Entry::Tool { .. } | Entry::Subagent { .. }
     )
 }
 
@@ -56,6 +57,7 @@ pub fn render(entry: &Entry, context: &EntryContext, cx: &App) -> AnyElement {
         }
         Entry::Thinking { text, .. } => thinking(text, context, cx),
         Entry::Tool { call, result } => tool(call, result.as_ref(), context, cx),
+        Entry::Subagent { agent, .. } => subagent_view::render(agent, context, cx),
     }
 }
 
@@ -254,7 +256,7 @@ fn diff_lines(diff: &EditDiff) -> Vec<CodeLine> {
 }
 
 /// The `└ Read 256 lines` line under a tool header.
-fn sub_line(text: &str, is_error: bool, cx: &App) -> AnyElement {
+pub fn sub_line(text: &str, is_error: bool, cx: &App) -> AnyElement {
     let color = if is_error {
         cx.theme().danger
     } else {
@@ -270,7 +272,7 @@ fn sub_line(text: &str, is_error: bool, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn toggle(
+pub fn toggle(
     context: &EntryContext,
 ) -> impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut App) + 'static {
     let view = context.view.clone();

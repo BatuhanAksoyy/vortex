@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{
     ask,
     control::{self, Asked},
-    hooks, outgoing, skills, stream, usage,
+    hooks, outgoing, skills, stream, subagent, system, usage,
     wire::{self, Line},
 };
 
@@ -152,7 +152,7 @@ impl Translator {
 
     fn on_decoded(&mut self, line: Line) -> Vec<AgentEvent> {
         match line {
-            Line::System(system) => system_events(system),
+            Line::System(system) => system::events(system),
             Line::StreamEvent(event) => stream::event(event).into_iter().collect(),
             Line::Assistant(message) => assistant_events(message),
             Line::User(message) => tool_results(message),
@@ -238,26 +238,6 @@ impl Translator {
     }
 }
 
-fn system_events(system: wire::System) -> Vec<AgentEvent> {
-    match system {
-        wire::System::Init { session_id, model } => {
-            vec![AgentEvent::Started { session_id, model }]
-        }
-        wire::System::Status { permission_mode } => permission_mode
-            .as_deref()
-            .and_then(control::parse_mode)
-            .map(AgentEvent::ModeChanged)
-            .into_iter()
-            .collect(),
-        wire::System::CommandsChanged { commands } => {
-            vec![AgentEvent::CommandsChanged(control::slash_commands(
-                commands,
-            ))]
-        }
-        wire::System::Other => Vec::new(),
-    }
-}
-
 /// Only `/clear` is known to empty the conversation. Another trigger keeps
 /// the transcript: wrongly keeping history is harmless, wrongly wiping what
 /// the user can see is not.
@@ -272,10 +252,13 @@ fn conversation_reset(trigger: &str) -> Vec<AgentEvent> {
 
 fn assistant_events(message: wire::Assistant) -> Vec<AgentEvent> {
     if message.local_command_run.is_some() {
-        command_output(message)
-    } else {
-        tool_calls(message)
+        return command_output(message);
     }
+    let written = message
+        .parent_tool_use_id
+        .as_deref()
+        .map_or_default(|call| subagent::message(call, &message.message));
+    written.into_iter().chain(tool_calls(message)).collect()
 }
 
 fn tool_calls(message: wire::Assistant) -> Vec<AgentEvent> {

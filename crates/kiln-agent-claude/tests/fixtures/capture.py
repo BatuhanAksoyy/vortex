@@ -3,7 +3,8 @@
 
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
-        | questions | skills | hooks | effort | resume | login | history | running
+        | questions | skills | hooks | effort | subagent | resume | login | history
+        | running
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -32,6 +33,11 @@ lists them again. "note" records hold each edit and what the command answered.
 "effort" sends no prompt, so it spends no usage: it reads the session's
 settings, sets the effort to max and then to low through the flag settings
 layer, and reads the settings after each change.
+"subagent" runs one turn whose model hands a small task to a subagent with
+the Agent tool, with subagent text forwarded, to record the task events and
+the subagent's own messages. Every tool call is allowed. The subagent runs
+in the background, so recording goes on past the first turn until the
+subagent has reported and the turn its report starts has ended.
 "resume" runs two tiny turns: one in a first process, which saves its
 session, then one in a second process started with `--resume`, which is the
 one recorded. A "note" record holds the first session's id, to compare with
@@ -65,10 +71,14 @@ PROMPTS = {
     "questions": "Call the AskUserQuestion tool once with two questions. First: 'Which fruits do you like?' with header 'Fruits', multiSelect true, options Apple, Banana, Cherry. Second: 'Which city do you prefer?' with header 'City', multiSelect false, options Paris, Rome. After I answer, reply with only my answers, separated by a semicolon.",
     "ask": "Use the AskUserQuestion tool to ask me which color I prefer, with exactly two options: Red and Blue. After I answer, reply with only the color I chose.",
     "resume": "What word did I ask you to remember? Reply with that word only.",
+    "subagent": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
 case, out_path = sys.argv[1], sys.argv[2]
+if case == "subagent":
+    with open("note.txt", "w") as note:
+        note.write("lantern\n")
 if case == "skills":
     for name in ("kiln-fixture", "kiln-hidden"):
         os.makedirs(f".claude/skills/{name}", exist_ok=True)
@@ -189,10 +199,12 @@ resumed = first_session() if case == "resume" else None
 proc = subprocess.Popen(
     BASE + ["--no-session-persistence"]
     + (["--permission-mode", "plan"] if case == "plan" else [])
+    + (["--forward-subagent-text"] if case == "subagent" else [])
     + (["--resume", resumed] if resumed else []),
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     env=env, text=True, bufsize=1,
 )
+notified = False
 log = open(out_path, "w")
 lock = threading.Lock()
 if resumed:
@@ -269,7 +281,7 @@ for line in proc.stdout:
     kind = msg.get("type")
     if kind == "control_request" and msg["request"].get("subtype") == "can_use_tool":
         req = msg["request"]
-        if case in ("allow", "plan"):
+        if case in ("allow", "plan", "subagent"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
         elif case == "questions":
             answers = {}
@@ -352,6 +364,12 @@ for line in proc.stdout:
         interrupted = True
         send({"type": "user", "message": {"role": "user", "content": "/clear"},
               "parent_tool_use_id": None, "session_id": ""})
+        continue
+    # The subagent runs in the background: the turn that started it may end
+    # first, and its report starts another turn once it finishes.
+    if kind == "system" and msg.get("subtype") == "task_notification":
+        notified = True
+    if kind == "result" and case == "subagent" and not notified:
         continue
     if kind == "result" and case == "usage":
         send({"type": "control_request", "request_id": "kiln-usage-1",

@@ -6,11 +6,13 @@ mod effort;
 mod hooks;
 mod past;
 mod permission;
+mod subagent;
 
 pub use effort::{Effort, PromptTokens};
 pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
 pub use past::{PastMessage, PastSession};
 pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Remember, RuleScope};
+pub use subagent::{SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage};
 
 use std::{
     future::Future,
@@ -308,6 +310,9 @@ pub enum AgentEvent {
         text: String,
     },
     ToolCall(ToolCall),
+    /// A subagent's own tool calls and results come as `ToolCall` and
+    /// `ToolResult`, with the subagent's call as their parent.
+    Subagent(SubagentEvent),
     ToolResult {
         id: String,
         output: String,

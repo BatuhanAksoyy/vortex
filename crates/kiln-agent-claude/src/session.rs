@@ -26,6 +26,8 @@ pub(crate) const ARGS: &[&str] = &[
     "stream-json",
     "--verbose",
     "--include-partial-messages",
+    // Subagents' text is shown under the call that started them.
+    "--forward-subagent-text",
     "--permission-prompt-tool",
     "stdio",
 ];

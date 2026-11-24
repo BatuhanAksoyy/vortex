@@ -14,6 +14,7 @@ mod question_prompt;
 mod skill_menu;
 mod slash;
 mod spinner;
+mod subagent_view;
 mod tool_format;
 mod transcript;
 

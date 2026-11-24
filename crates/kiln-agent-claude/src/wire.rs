@@ -44,8 +44,40 @@ pub enum System {
     CommandsChanged {
         commands: Vec<WireCommand>,
     },
+    /// A background task started: a subagent, but also e.g. a backgrounded
+    /// shell command.
+    TaskStarted {
+        tool_use_id: Option<String>,
+        #[serde(default)]
+        description: String,
+        subagent_type: Option<String>,
+        task_type: Option<String>,
+    },
+    TaskProgress {
+        tool_use_id: Option<String>,
+        #[serde(default)]
+        description: String,
+        usage: TaskUsage,
+    },
+    TaskNotification {
+        tool_use_id: Option<String>,
+        status: String,
+        #[serde(default)]
+        summary: String,
+        usage: Option<TaskUsage>,
+    },
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TaskUsage {
+    #[serde(default)]
+    pub total_tokens: u64,
+    #[serde(default)]
+    pub tool_uses: u64,
+    #[serde(default)]
+    pub duration_ms: u64,
 }
 
 /// A slash command as the CLI lists it, in the initialize reply and in
@@ -133,7 +165,11 @@ pub struct Assistant {
 pub struct AssistantMessage {
     #[serde(default)]
     pub id: String,
+    #[serde(default)]
+    pub model: String,
     pub content: Vec<AssistantBlock>,
+    #[serde(default)]
+    pub usage: Option<PromptUsage>,
 }
 
 #[derive(Debug, Deserialize)]

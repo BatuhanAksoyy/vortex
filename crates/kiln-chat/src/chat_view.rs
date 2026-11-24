@@ -3,6 +3,8 @@
 
 mod accounts;
 mod accounts_panel;
+mod agents_dialog;
+mod agents_panel;
 mod cache_panel;
 mod composer;
 mod context_panel;
@@ -110,6 +112,8 @@ pub struct ChatView {
     /// Reads the skills again until a saved state shows up.
     skill_check: Option<Task<()>>,
     hooks: HooksPanel,
+    /// The subagents view, open over this chat only.
+    agents: Option<Entity<agents_dialog::AgentsDialog>>,
     spinner_frame: usize,
     spinner: Option<Task<()>>,
     /// Lifts a usage limit when its reset time comes.
@@ -177,6 +181,7 @@ impl ChatView {
             skill_menu: SkillMenu::default(),
             skill_check: None,
             hooks: HooksPanel::new(window, cx),
+            agents: None,
             spinner_frame: 0,
             spinner: None,
             limit_timer: None,

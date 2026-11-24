@@ -194,11 +194,9 @@ fn result(id: &str, output: &str) -> AgentEvent {
     }
 }
 
-fn script(prompt: bool) -> Vec<AgentEvent> {
-    let file = format!("{ROOT}/src/utils/localization.ts");
-    let test = format!("{ROOT}/src/test/localization.test.ts");
-    let read_output = "line\n".repeat(256);
-    let mut events = vec![
+/// The turn starting, its first request mostly read from the prompt cache.
+fn opening() -> Vec<AgentEvent> {
+    vec![
         AgentEvent::Started {
             session_id: "preview".into(),
             model: "claude-opus-5-5".into(),
@@ -209,6 +207,15 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
             uncached: 2,
             kept_for: Some(std::time::Duration::from_hours(1)),
         }),
+    ]
+}
+
+fn script(prompt: bool) -> Vec<AgentEvent> {
+    let file = format!("{ROOT}/src/utils/localization.ts");
+    let test = format!("{ROOT}/src/test/localization.test.ts");
+    let read_output = "line\n".repeat(256);
+    let mut events = opening();
+    events.extend([
         AgentEvent::ThinkingDelta {
             block: block(0),
             text: "The user wants tests for the localization helpers.".into(),
@@ -219,6 +226,9 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
         },
         tool("t1", "Read", json!({ "file_path": file })),
         result("t1", &read_output),
+    ]);
+    events.extend(data::subagent(ROOT));
+    events.extend([
         tool(
             "t2",
             "Write",
@@ -243,7 +253,7 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
             "Edit",
             json!({ "file_path": file, "old_string": "  return date.toLocaleDateString();", "new_string": "  return date.toLocaleDateString(locale, {\n    timeZone: 'UTC',\n  });" }),
         ),
-    ];
+    ]);
     if prompt {
         events.push(AgentEvent::PermissionRequest(PermissionRequest {
             id: "p1".into(),

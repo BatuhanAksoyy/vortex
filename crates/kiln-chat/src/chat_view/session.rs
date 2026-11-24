@@ -225,6 +225,17 @@ impl ChatView {
         }
     }
 
+    /// A turn the agent starts by itself, such as one taking a subagent's
+    /// report, is announced like one the user started.
+    fn fold_into_transcript(&mut self, event: AgentEvent, cx: &mut Context<Self>) {
+        let was_running = self.status() == crate::transcript::Status::Running;
+        let change = self.transcript.apply(event);
+        self.apply_change(change, cx);
+        if !was_running && self.status() == crate::transcript::Status::Running {
+            cx.emit(super::ChatEvent::TurnStarted);
+        }
+    }
+
     fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
         for command in AgentState::refreshes_after(&event) {
             if *command != SessionCommand::RefreshUsage || self.asks_usage() {
@@ -249,8 +260,7 @@ impl ChatView {
             self.scroller
                 .update(cx, |scroller, cx| scroller.reset(1, cx));
         }
-        let change = self.transcript.apply(event);
-        self.apply_change(change, cx);
+        self.fold_into_transcript(event, cx);
         if exited {
             self.session = None;
         }

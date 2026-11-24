@@ -3,6 +3,10 @@
 
 use std::collections::HashMap;
 
+mod subagent;
+
+pub use subagent::{Card, Step, Subagent};
+
 use kiln_agent::{AgentEvent, BlockKey, PastMessage, PermissionRequest, ToolCall, TurnOutcome};
 
 /// Stable identity of an entry, used for element ids and expansion state.
@@ -22,6 +26,12 @@ pub enum Entry {
     Tool {
         call: ToolCall,
         result: Option<ToolResult>,
+    },
+    /// The call that started a subagent, once the agent reports it running.
+    Subagent {
+        call: ToolCall,
+        result: Option<ToolResult>,
+        agent: Box<Subagent>,
     },
     Notice {
         text: String,
@@ -56,6 +66,7 @@ pub struct Change {
 pub struct Transcript {
     entries: Vec<(EntryId, Entry)>,
     next_id: EntryId,
+    /// The row each tool call shows in; a subagent's calls show in its card.
     tools: HashMap<String, usize>,
     /// Permission requests awaiting an answer, oldest first. They are shown
     /// above the composer, not as transcript rows.
@@ -174,14 +185,11 @@ impl Transcript {
 
     pub fn apply(&mut self, event: AgentEvent) -> Change {
         match event {
-            AgentEvent::TextDelta { block, text } => self.append_text(block, text, false),
-            AgentEvent::ThinkingDelta { block, text } => self.append_text(block, text, true),
-            AgentEvent::ToolCall(call) => self.push_tool(call),
-            AgentEvent::ToolResult {
-                id,
-                output,
-                is_error,
-            } => self.finish_tool(&id, ToolResult { output, is_error }),
+            AgentEvent::TextDelta { .. }
+            | AgentEvent::ThinkingDelta { .. }
+            | AgentEvent::ToolCall(_)
+            | AgentEvent::ToolResult { .. }
+            | AgentEvent::Subagent(_) => self.apply_step(event),
             AgentEvent::PermissionRequest(request) => {
                 self.pending.push(request);
                 Change::default()
@@ -194,22 +202,32 @@ impl Transcript {
                 self.clear();
                 Change::default()
             }
+            // The agent went on by itself, e.g. to take a subagent's report
+            // after the turn that started it ended. Only the main
+            // conversation's requests are reported.
+            AgentEvent::PromptTokens(_) if self.status == Status::Idle => {
+                self.status = Status::Running;
+                Change::default()
+            }
             AgentEvent::TurnEnded(outcome) => self.end_turn(outcome),
             AgentEvent::Exited { error } => self.exit(error),
-            AgentEvent::Started { .. }
-            | AgentEvent::Ready(_)
-            | AgentEvent::ModelChanged(_)
-            | AgentEvent::ModeChanged(_)
-            | AgentEvent::EffortChanged(_)
-            | AgentEvent::PromptTokens(_)
-            | AgentEvent::PastPromptTokens { .. }
-            | AgentEvent::ContextUsage(_)
-            | AgentEvent::Usage(_)
-            | AgentEvent::CommandsChanged(_)
-            | AgentEvent::Skills(_)
-            | AgentEvent::SkillStateFailed { .. }
-            | AgentEvent::Hooks(_)
-            | AgentEvent::HookEdited { .. } => Change::default(),
+            _ => Change::default(),
+        }
+    }
+
+    /// What the agent writes and does.
+    fn apply_step(&mut self, event: AgentEvent) -> Change {
+        match event {
+            AgentEvent::TextDelta { block, text } => self.append_text(block, text, false),
+            AgentEvent::ThinkingDelta { block, text } => self.append_text(block, text, true),
+            AgentEvent::ToolCall(call) => self.push_tool(call),
+            AgentEvent::ToolResult {
+                id,
+                output,
+                is_error,
+            } => self.finish_tool(&id, ToolResult { output, is_error }),
+            AgentEvent::Subagent(event) => self.apply_subagent(event),
+            _ => Change::default(),
         }
     }
 
@@ -250,6 +268,11 @@ impl Transcript {
     }
 
     fn push_tool(&mut self, call: ToolCall) -> Change {
+        if call.parent.is_some()
+            && let Some(change) = self.push_step(call.clone())
+        {
+            return change;
+        }
         self.tools.insert(call.id.clone(), self.entries.len());
         self.push(Entry::Tool { call, result: None })
     }
@@ -258,11 +281,16 @@ impl Transcript {
         let Some(&index) = self.tools.get(id) else {
             return Change::default();
         };
-        if let Entry::Tool { result: slot, .. } = &mut self.entries[index].1 {
-            *slot = Some(result);
-        }
+        let entry = &mut self.entries[index].1;
+        let changed = match entry {
+            Entry::Tool { call, result: slot } if call.id == id => {
+                *slot = Some(result);
+                true
+            }
+            _ => Self::finish_step(entry, id, result),
+        };
         Change {
-            updated: Some(index),
+            updated: changed.then_some(index),
             appended: 0,
         }
     }

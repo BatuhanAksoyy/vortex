@@ -1,11 +1,14 @@
 //! The canned agent state the preview shows: context, commands, hooks and
 //! skills.
 
+use std::time::Duration;
+
 use kiln_agent::{
     AgentEvent, ContextCategory, ContextKind, ContextUsage, Effort, Hook, HookEdit, HookEvent,
-    HookScope, Hooks, SessionCommand, Skill, SkillLock, SkillState, SlashCommand, StoredHook,
+    HookScope, Hooks, PromptTokens, SessionCommand, Skill, SkillLock, SkillState, SlashCommand,
+    StoredHook, SubagentChange, SubagentEvent, SubagentUsage, ToolCall,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// The skills, hooks and effort the preview's panels list and change.
 pub struct Settings {
@@ -235,4 +238,74 @@ fn set_skill_state(skills: &mut [Skill], name: &str, state: SkillState) {
         skill.state = state;
         skill.advertised = state != SkillState::Off;
     }
+}
+
+fn change(change: SubagentChange) -> AgentEvent {
+    AgentEvent::Subagent(SubagentEvent {
+        call: "agent".into(),
+        change,
+    })
+}
+
+fn call(id: &str, parent: Option<&str>, name: &str, input: Value) -> AgentEvent {
+    AgentEvent::ToolCall(ToolCall {
+        id: id.into(),
+        parent: parent.map(str::to_owned),
+        name: name.into(),
+        input,
+    })
+}
+
+/// A subagent that looked through the tests and is still at work.
+pub fn subagent(root: &str) -> Vec<AgentEvent> {
+    vec![
+        call(
+            "agent",
+            None,
+            "Agent",
+            json!({
+                "description": "Find existing tests",
+                "prompt": "Find the existing test files under src/ and say which helpers in utils/localization.ts they cover.",
+            }),
+        ),
+        change(SubagentChange::Started {
+            description: "Find existing tests".into(),
+            kind: Some("Explore".into()),
+        }),
+        change(SubagentChange::Model("claude-haiku-5-5".into())),
+        change(SubagentChange::Request(PromptTokens {
+            cached: 14_374,
+            written: 2_948,
+            uncached: 2,
+            kept_for: Some(Duration::from_mins(5)),
+        })),
+        call(
+            "a1",
+            Some("agent"),
+            "Glob",
+            json!({ "pattern": "src/**/*.test.ts" }),
+        ),
+        AgentEvent::ToolResult {
+            id: "a1".into(),
+            output: format!("{root}/src/test/date.test.ts\n{root}/src/test/i18n.test.ts"),
+            is_error: false,
+        },
+        call(
+            "a2",
+            Some("agent"),
+            "Read",
+            json!({ "file_path": format!("{root}/src/test/i18n.test.ts") }),
+        ),
+        change(SubagentChange::Text(
+            "Two test files exist; neither covers formatDate.".into(),
+        )),
+        change(SubagentChange::Progress {
+            activity: "Reading i18n.test.ts".into(),
+            usage: SubagentUsage {
+                tokens: 18_420,
+                tool_uses: 2,
+                duration: Duration::from_millis(4_300),
+            },
+        }),
+    ]
 }

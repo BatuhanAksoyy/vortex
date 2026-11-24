@@ -46,6 +46,7 @@ impl ChatView {
             .child(self.skills_button(cx))
             .child(self.hooks_button(cx))
             .child(div().flex_1())
+            .children(self.agents_button(cx))
             .child(self.cache_button(cx))
             .children(self.context_meter(cx))
             .child(self.action_button(cx));

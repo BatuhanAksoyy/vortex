@@ -14,6 +14,8 @@ mod session;
 mod sign_in;
 mod skills;
 mod stream;
+mod subagent;
+mod system;
 mod translate;
 mod usage;
 mod wire;
