@@ -32,6 +32,9 @@ pub(super) struct Conversation {
     /// It is open in another client: the next process continues a copy,
     /// which then reports an id of its own.
     pub fork: bool,
+    /// The name the conversations page lists it under, which the CLI keeps
+    /// up to date, so the chat shows the same name.
+    pub title: Option<String>,
 }
 
 impl ChatView {
@@ -48,10 +51,25 @@ impl ChatView {
         self.session.as_ref()?.pid
     }
 
-    /// The conversation's name, once something was said.
+    /// The conversation's name: the one it is stored under, or before it
+    /// is stored, its first message.
     #[must_use]
     pub fn title(&self) -> Option<&str> {
-        self.transcript.title()
+        self.conversation
+            .as_ref()
+            .and_then(|stored| stored.title.as_deref())
+            .or_else(|| self.transcript.title())
+    }
+
+    /// Names the conversation shown after the stored conversation list.
+    pub fn set_stored_title(&mut self, title: Option<&str>, cx: &mut Context<Self>) {
+        let Some(stored) = &mut self.conversation else {
+            return;
+        };
+        if stored.title.as_deref() != title {
+            stored.title = title.map(str::to_owned);
+            cx.notify();
+        }
     }
 
     /// Shows stored conversation `id` and continues it, as a copy when it
@@ -71,6 +89,7 @@ impl ChatView {
         self.conversation = Some(Conversation {
             id: id.to_owned(),
             fork: open_elsewhere,
+            title: None,
         });
         self.transcript = Transcript::default();
         self.toggled.clear();
@@ -112,6 +131,7 @@ impl ChatView {
         let rows = self.transcript.len() + 1;
         self.scroller
             .update(cx, |scroller, cx| scroller.reset(rows, cx));
+        self.refresh_find(false, cx);
         self.sync_prompt(window, cx);
         cx.notify();
     }

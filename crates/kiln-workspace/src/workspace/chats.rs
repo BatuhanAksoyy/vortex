@@ -172,7 +172,25 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         match event {
-            SessionListEvent::Loaded => self.restore_layout(window, cx),
+            SessionListEvent::Loaded => {
+                self.restore_layout(window, cx);
+                self.sync_titles(cx);
+            }
+        }
+    }
+
+    /// Names each chat after its conversation in the stored list, as the
+    /// conversations page shows it.
+    fn sync_titles(&self, cx: &mut Context<Self>) {
+        let sessions = self.sessions.read(cx).sessions().to_vec();
+        for tab in &self.chats {
+            let chat = tab.panel.read(cx).chat().clone();
+            chat.update(cx, |chat, cx| {
+                let listed = chat
+                    .session_id()
+                    .and_then(|id| sessions.iter().find(|session| session.id == id));
+                chat.set_stored_title(listed.map(|session| session.title.as_str()), cx);
+            });
         }
     }
 
@@ -205,6 +223,7 @@ impl Workspace {
         chat.update(cx, |chat, cx| {
             chat.open_session(id, open_elsewhere, window, cx);
         });
+        self.sync_titles(cx);
         focus(&chat, window, cx);
     }
 

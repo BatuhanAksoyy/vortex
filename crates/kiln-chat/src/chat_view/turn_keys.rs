@@ -78,6 +78,12 @@ impl ChatView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let keystroke = &event.keystroke;
+        if keystroke.key == "f" && keystroke.modifiers.secondary(cx) {
+            self.open_find(window, cx);
+            cx.stop_propagation();
+            return;
+        }
         let in_box = self.composer.read(cx).focus_handle(cx).is_focused(window);
         let panel_open = self.open_panel.is_some();
         if event.keystroke.key == "escape" && !in_box && !panel_open && self.stop_turn(window, cx) {

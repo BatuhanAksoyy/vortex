@@ -60,6 +60,27 @@ mod conversations {
     }
 
     #[gpui_kit::test]
+    fn a_picked_conversation_keeps_its_listed_name(cx: &mut TestAppContext) {
+        let backend = Stored::default();
+        let window = open(cx, backend);
+        pick(cx, window, "s-new");
+        pick(cx, window, "s-named");
+        assert!(
+            labels(cx, window, "Conversation: Ship v2") > 0,
+            "named as listed, not after its first message"
+        );
+        assert_eq!(
+            labels(
+                cx,
+                window,
+                "Conversation: Start the work on the next version"
+            ),
+            0,
+            "not its first message"
+        );
+    }
+
+    #[gpui_kit::test]
     fn escape_or_the_shown_conversation_closes_the_page(cx: &mut TestAppContext) {
         let backend = Stored::default();
         let window = open(cx, backend.clone());

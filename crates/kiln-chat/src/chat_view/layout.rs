@@ -7,6 +7,7 @@ use gpui_kit::{
     AnyElement, Context, ExternalPaths, StyleRefinement, TestSupportExt, Window, canvas,
     component::{
         ActiveTheme,
+        input::Search,
         message_scroller::{MessageScroller, MessageScrollerState},
         v_flex,
     },
@@ -114,6 +115,7 @@ impl ChatView {
                 width_changes: self.transcript_width.get().1,
                 line_above,
                 line_below: false,
+                found_text: None,
             };
             return spinner::render(self.spinner_frame, self.transcript.turns(), &context, cx);
         };
@@ -125,8 +127,22 @@ impl ChatView {
             width_changes: self.transcript_width.get().1,
             line_above: line_above && entry_view::on_timeline(entry),
             line_below: line_below && entry_view::on_timeline(entry),
+            found_text: self.found_text(id),
         };
-        entry_view::render(entry, &context, cx)
+        let row = entry_view::render(entry, &context, cx);
+        let Some(mark) = self.row_mark(id, cx) else {
+            return row;
+        };
+        div()
+            .id(("found-row", id))
+            .test_support()
+            .aria_label("Search match")
+            .rounded(cx.theme().radius)
+            .border_l_2()
+            .border_color(mark)
+            .bg(mark.opacity(0.4))
+            .child(row)
+            .into_any_element()
     }
 }
 
@@ -140,6 +156,7 @@ impl Render for ChatView {
             .id("chat")
             .test_support()
             .on_key_down(cx.listener(Self::on_chat_key))
+            .on_action(cx.listener(|this, _: &Search, window, cx| this.open_find(window, cx)))
             .drag_over::<ExternalPaths>(|style, _, _, cx| style.bg(cx.theme().drop_target))
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
                 this.attach_paths(paths.paths().to_vec(), cx);
@@ -148,6 +165,7 @@ impl Render for ChatView {
             .size_full()
             .bg(cx.theme().background)
             .child(self.render_header(cx))
+            .children(self.render_find(cx))
             .child(self.render_transcript(cx))
             .child(
                 div()

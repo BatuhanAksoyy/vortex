@@ -201,9 +201,12 @@ impl ChatView {
     fn follow_session(&mut self, event: &AgentEvent, cx: &mut Context<Self>) {
         match event {
             AgentEvent::Started { session_id, .. } => {
+                // A copy of a conversation keeps its name until listed.
+                let title = self.conversation.take().and_then(|stored| stored.title);
                 self.conversation = Some(super::Conversation {
                     id: session_id.clone(),
                     fork: false,
+                    title,
                 });
             }
             AgentEvent::TurnEnded(_) => {}

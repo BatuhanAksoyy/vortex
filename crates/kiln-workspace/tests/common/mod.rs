@@ -42,6 +42,8 @@ impl AgentBackend for Stored {
             Ok(vec![
                 session("s-new", "Fix the build", now - Duration::from_mins(2)),
                 session("s-old", "Plan the release", now - Duration::from_hours(72)),
+                // Named by the CLI, not after its first message.
+                session("s-named", "Ship v2", now - Duration::from_hours(76)),
                 PastSession {
                     open_elsewhere: true,
                     ..session("s-busy", "Review the PR", now - Duration::from_hours(80))
@@ -54,6 +56,7 @@ impl AgentBackend for Stored {
         let title = match id {
             "s-new" => "Fix the build",
             "s-busy" => "Review the PR",
+            "s-named" => "Start the work on the next version",
             _ => "Plan the release",
         };
         Box::pin(async move { Ok(vec![PastMessage::User(title.into())]) })

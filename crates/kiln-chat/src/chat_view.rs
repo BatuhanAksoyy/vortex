@@ -9,6 +9,7 @@ mod attachments;
 mod cache_panel;
 mod composer;
 mod context_panel;
+mod find;
 mod header;
 mod history;
 mod hook_form;
@@ -111,6 +112,7 @@ pub struct ChatView {
     /// The transcript's width last frame, and how many times it changed.
     transcript_width: Rc<Cell<(Option<Pixels>, u32)>>,
     composer: Entity<TextareaState>,
+    find: Option<find::Find>,
     /// The sent message Up last put in the box, by its place from the
     /// newest, while the box still holds it unchanged.
     recalled: Option<(usize, String)>,
@@ -197,6 +199,7 @@ impl ChatView {
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             transcript_width: Rc::default(),
             composer,
+            find: None,
             recalled: None,
             slash: SlashMenu::default(),
             model_picker: None,
@@ -246,6 +249,7 @@ impl ChatView {
         self.history_load = None;
         self.transcript = Transcript::default();
         self.toggled.clear();
+        self.find = None;
         self.agent.reset_context();
         self.scroller
             .update(cx, |scroller, cx| scroller.reset(1, cx));
@@ -263,6 +267,7 @@ impl ChatView {
             self.toggled.insert(id);
         }
         self.scroller.update(cx, MessageScrollerState::remeasure);
+        self.refresh_find(false, cx);
     }
 
     fn answer(&mut self, answered: &Answered, window: &mut Window, cx: &mut Context<Self>) {
@@ -344,6 +349,7 @@ impl ChatView {
             }
         });
         self.sync_spinner(cx);
+        self.refresh_find(false, cx);
         cx.notify();
     }
 

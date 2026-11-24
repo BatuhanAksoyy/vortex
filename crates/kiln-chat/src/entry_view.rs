@@ -5,9 +5,13 @@ use std::path::Path;
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Div, FontWeight, Hsla, SharedString, TestSupportExt, WeakEntity,
-    component::{ActiveTheme, Icon, IconName, Sizable, h_flex, text::TextView, v_flex},
-    div, px,
+    AnyElement, App, Div, Entity, FontWeight, Hsla, SharedString, TestSupportExt, WeakEntity,
+    component::{
+        ActiveTheme, Icon, IconName, Sizable, h_flex,
+        text::{TextView, TextViewState},
+        v_flex,
+    },
+    div, px, relative,
 };
 use kiln_agent::{Message, ToolCall};
 
@@ -15,7 +19,7 @@ use crate::{
     chat_view::ChatView,
     code_block::{self, CodeLine, LineKind},
     literal::literal_markdown,
-    pictures, subagent_view,
+    pictures, spinner, subagent_view,
     tool_format::{self, EditDiff},
     transcript::{Entry, EntryId, ToolResult},
 };
@@ -37,6 +41,8 @@ pub struct EntryContext<'a> {
     /// Whether the timeline continues into the previous / next row.
     pub line_above: bool,
     pub line_below: bool,
+    /// The text, with the search's matches, while a search shows them.
+    pub found_text: Option<&'a Entity<TextViewState>>,
 }
 
 /// Rows that sit on the timeline; user messages and notices interrupt it.
@@ -52,7 +58,11 @@ pub fn render(entry: &Entry, context: &EntryContext, cx: &App) -> AnyElement {
         Entry::User(message) => user(message, context, cx),
         Entry::Notice { text, is_error } => notice(text, *is_error, context.id, cx),
         Entry::Text { text, .. } => {
-            let body = TextView::markdown(("text", context.id), text.clone()).selectable(true);
+            let body = context.found_text.map_or_else(
+                || TextView::markdown(("text", context.id), text.clone()),
+                TextView::new,
+            );
+            let body = body.selectable(true);
             timeline_row(cx.theme().muted_foreground, context, cx)
                 .child(body)
                 .into_any_element()
@@ -113,9 +123,26 @@ fn show_more(lines: usize, context: &EntryContext, cx: &App) -> impl IntoElement
 /// A long message, such as a pasted document, shows its first lines until
 /// expanded, so it cannot fill the panel.
 const USER_PREVIEW_LINES: usize = 8;
+/// The share of the transcript's width a message may take.
+const USER_MAX_WIDTH: f32 = 0.85;
+
+/// The markdown `entry` shows in full, which a search highlights its
+/// matches in; `toggled` as in [`EntryContext`].
+pub fn markdown_source(entry: &Entry, toggled: bool) -> Option<String> {
+    match entry {
+        Entry::Text { text, .. } => Some(text.clone()),
+        Entry::User(message) => {
+            let text = message.text.as_str();
+            let whole = toggled || text.lines().count() <= USER_PREVIEW_LINES;
+            (whole && !text.is_empty()).then(|| literal_markdown(text))
+        }
+        _ => None,
+    }
+}
 
 fn user(message: &Message, context: &EntryContext, cx: &App) -> AnyElement {
     let theme = cx.theme();
+    let accent = spinner::accent();
     let text = message.text.as_str();
     let lines = text.lines().count();
     let long = lines > USER_PREVIEW_LINES;
@@ -132,35 +159,36 @@ fn user(message: &Message, context: &EntryContext, cx: &App) -> AnyElement {
         .id(("user", context.id))
         .test_support()
         .aria_label(SharedString::from(text.to_owned()))
+        .justify_end()
         .pb_3()
         .child(
+            // On the right and tinted, so a message never reads as a
+            // tool's output box.
             v_flex()
                 .id(SharedString::from(format!("user-bubble-{}", context.id)))
                 .test_support()
-                .max_w_full()
+                .max_w(relative(USER_MAX_WIDTH))
                 .min_w_0()
                 .px_3()
                 .py_1p5()
                 .rounded(theme.radius * 1.5)
                 .border_1()
-                .border_color(theme.border)
-                .bg(theme.secondary)
+                .border_color(accent.opacity(0.35))
+                .bg(accent.opacity(0.1))
                 .gap_1()
                 .when(!message.pictures.is_empty(), |this| {
                     let id = format!("user-picture-{}", context.id);
                     this.child(pictures::gallery(id, &message.pictures, context.view, cx))
                 })
                 .when(!text.is_empty(), |this| {
-                    this.child(
-                        TextView::markdown(
-                            SharedString::from(format!(
-                                "user-text-{}-{}",
-                                context.id, context.width_changes
-                            )),
-                            literal_markdown(&shown),
-                        )
-                        .selectable(true),
-                    )
+                    let body = context.found_text.map_or_else(
+                        || {
+                            let id = format!("user-text-{}-{}", context.id, context.width_changes);
+                            TextView::markdown(SharedString::from(id), literal_markdown(&shown))
+                        },
+                        TextView::new,
+                    );
+                    this.child(body.selectable(true))
                 })
                 .children(more)
                 .children(message.files.iter().map(|path| attached_file(path, cx))),

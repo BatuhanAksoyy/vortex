@@ -24,11 +24,7 @@ const USAGE_PANEL_WIDTH: f32 = 260.;
 impl ChatView {
     pub(super) fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let title = self
-            .transcript
-            .title()
-            .unwrap_or("New conversation")
-            .to_owned();
+        let title = self.title().unwrap_or("New conversation").to_owned();
         h_flex()
             .gap_2()
             .px_3()
@@ -40,6 +36,9 @@ impl ChatView {
                     h_flex()
                         .id("chat-title")
                         .test_support()
+                        .aria_label(gpui_kit::SharedString::from(format!(
+                            "Conversation: {title}"
+                        )))
                         .max_w_full()
                         .gap_1()
                         .px_1()
