@@ -5,16 +5,17 @@ use std::{path::Path, time::Duration};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, FontWeight, Hsla, SharedString, TestSupportExt,
+    AnyElement, App, FontWeight, Hsla, SharedString, TestSupportExt, WeakEntity,
     component::{ActiveTheme, h_flex, text::TextView, v_flex},
     div,
 };
 use kiln_agent::{SubagentEnd, SubagentUsage};
 
 use crate::{
+    ChatView,
     agent_state::tokens,
     entry_view::{EntryContext, sub_line, timeline_row, toggle},
-    spinner, tool_format,
+    pictures, spinner, tool_format,
     transcript::{Step, Subagent},
 };
 
@@ -123,7 +124,7 @@ fn details(agent: &Subagent, context: &EntryContext, cx: &App) -> impl IntoEleme
     let theme = cx.theme();
     let steps = agent.steps.iter().enumerate().map(|(index, step)| {
         let id = SharedString::from(format!("subagent-step-{}-{index}", context.id));
-        step_row(step, id, context.root, cx)
+        step_row(step, id, context.root, context.view, cx)
     });
     let report = agent
         .summary
@@ -152,7 +153,13 @@ fn details(agent: &Subagent, context: &EntryContext, cx: &App) -> impl IntoEleme
 }
 
 /// One thing the subagent did: its text, or a tool call and its outcome.
-pub fn step_row(step: &Step, id: SharedString, root: &Path, cx: &App) -> AnyElement {
+pub fn step_row(
+    step: &Step,
+    id: SharedString,
+    root: &Path,
+    chat: &WeakEntity<ChatView>,
+    cx: &App,
+) -> AnyElement {
     let theme = cx.theme();
     match step {
         Step::Text(text) => div()
@@ -167,6 +174,12 @@ pub fn step_row(step: &Step, id: SharedString, root: &Path, cx: &App) -> AnyElem
                     cx,
                 )
             });
+            let pictures = result
+                .as_ref()
+                .filter(|result| !result.pictures.is_empty())
+                .map(|result| {
+                    pictures::gallery(format!("{id}-picture"), &result.pictures, chat, cx)
+                });
             v_flex()
                 .id(id)
                 .test_support()
@@ -189,6 +202,7 @@ pub fn step_row(step: &Step, id: SharedString, root: &Path, cx: &App) -> AnyElem
                         ),
                 )
                 .children(summary)
+                .children(pictures)
                 .into_any_element()
         }
     }

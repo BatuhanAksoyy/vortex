@@ -53,6 +53,7 @@ fn tool_result_updates_its_call_even_after_other_entries() {
     let result = AgentEvent::ToolResult {
         id: "t1".into(),
         output: "a\nb".into(),
+        pictures: Vec::new(),
         is_error: false,
     };
     assert_eq!(
@@ -118,6 +119,7 @@ fn a_stored_conversation_is_restored_idle() {
         PastMessage::Agent(AgentEvent::ToolResult {
             id: "t1".into(),
             output: "ok".into(),
+            pictures: Vec::new(),
             is_error: false,
         }),
         PastMessage::Agent(text(0, "hello")),
@@ -169,7 +171,7 @@ fn a_message_taken_back_before_any_reply_leaves_no_trace() {
     transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Completed));
     transcript.push_user("second".into());
     assert_eq!(transcript.sent().collect::<Vec<_>>(), ["second", "first"]);
-    assert_eq!(transcript.withdraw(), Some((2, "second".to_owned())));
+    assert_eq!(transcript.withdraw(), Some((2, "second".into())));
     transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
     assert_eq!(transcript.len(), 2, "no interrupted line");
     assert_eq!(transcript.status(), Status::Idle);
@@ -221,17 +223,20 @@ fn a_subagent_gathers_its_steps_and_report_in_its_card() {
     }));
     let launched = ToolResult {
         output: "Async agent launched".into(),
+        pictures: Vec::new(),
         is_error: false,
     };
     transcript.apply(AgentEvent::ToolResult {
         id: "agent".into(),
         output: launched.output.clone(),
+        pictures: Vec::new(),
         is_error: false,
     });
     assert_eq!(transcript.apply(step("read", "Read")).updated, Some(1));
     transcript.apply(AgentEvent::ToolResult {
         id: "read".into(),
         output: "lantern".into(),
+        pictures: Vec::new(),
         is_error: false,
     });
     transcript.apply(subagent(SubagentChange::Model("haiku".into())));

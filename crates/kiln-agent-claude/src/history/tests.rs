@@ -12,9 +12,8 @@ fn texts(messages: &[PastMessage]) -> Vec<&str> {
     messages
         .iter()
         .filter_map(|message| match message {
-            PastMessage::User(text) | PastMessage::Agent(AgentEvent::TextDelta { text, .. }) => {
-                Some(text.as_str())
-            }
+            PastMessage::User(message) => Some(message.text.as_str()),
+            PastMessage::Agent(AgentEvent::TextDelta { text, .. }) => Some(text.as_str()),
             PastMessage::Agent(_) => None,
         })
         .collect()
@@ -213,4 +212,26 @@ fn the_last_request_tells_how_the_prompt_cache_was_left() {
         last_prompt_tokens(&[dir.path().to_owned()], "missing"),
         None
     );
+}
+
+#[test]
+fn pictures_sent_with_a_message_and_read_by_a_tool_come_back() {
+    let red = include_str!("../../tests/fixtures/attach.jsonl")
+        .lines()
+        .find(|line| line.contains("\"dir\": \"in\"") && line.contains("\"image\""))
+        .and_then(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .map_or_default(|record| record["msg"].clone());
+    let stored = serde_json::json!({
+        "type": "user",
+        "uuid": "u1",
+        "message": red["message"],
+    });
+    let messages = messages(&stored.to_string());
+    let [PastMessage::User(message)] = messages.as_slice() else {
+        panic!("{messages:?}");
+    };
+    assert!(message.text.starts_with("Name the colour"));
+    assert_eq!(message.pictures.len(), 1);
+    assert_eq!(message.pictures[0].media_type, "image/png");
+    assert!(message.pictures[0].data.starts_with(b"\x89PNG"));
 }

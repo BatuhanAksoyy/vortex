@@ -7,14 +7,16 @@ mod subagent;
 
 pub use subagent::{Card, Step, Subagent};
 
-use kiln_agent::{AgentEvent, BlockKey, PastMessage, PermissionRequest, ToolCall, TurnOutcome};
+use kiln_agent::{
+    AgentEvent, BlockKey, Message, PastMessage, PermissionRequest, Picture, ToolCall, TurnOutcome,
+};
 
 /// Stable identity of an entry, used for element ids and expansion state.
 pub type EntryId = u64;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Entry {
-    User(String),
+    User(Message),
     Text {
         block: BlockKey,
         text: String,
@@ -42,6 +44,7 @@ pub enum Entry {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolResult {
     pub output: String,
+    pub pictures: Vec<Picture>,
     pub is_error: bool,
 }
 
@@ -94,7 +97,11 @@ impl Transcript {
     /// document does not fill the title bar.
     pub fn title(&self) -> Option<&str> {
         self.entries.iter().find_map(|(_, entry)| match entry {
-            Entry::User(text) => text.lines().map(str::trim).find(|line| !line.is_empty()),
+            Entry::User(message) => message
+                .text
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty()),
             _ => None,
         })
     }
@@ -105,23 +112,23 @@ impl Transcript {
             .iter()
             .rev()
             .filter_map(|(_, entry)| match entry {
-                Entry::User(text) => Some(text.as_str()),
+                Entry::User(message) => Some(message.text.as_str()),
                 _ => None,
             })
     }
 
     /// Takes the last message back while nothing has come in reply; returns
     /// it, and the row it was in.
-    pub fn withdraw(&mut self) -> Option<(usize, String)> {
+    pub fn withdraw(&mut self) -> Option<(usize, Message)> {
         let Some((_, Entry::User(_))) = self.entries.last() else {
             return None;
         };
         let (_, entry) = self.entries.pop()?;
-        let Entry::User(text) = entry else {
+        let Entry::User(message) = entry else {
             return None;
         };
         self.withdrawn = true;
-        Some((self.entries.len(), text))
+        Some((self.entries.len(), message))
     }
 
     /// Messages the user has sent; numbers the turns.
@@ -152,8 +159,8 @@ impl Transcript {
         self.clear();
         for message in messages {
             match message {
-                PastMessage::User(text) => {
-                    self.push(Entry::User(text));
+                PastMessage::User(message) => {
+                    self.push(Entry::User(message));
                 }
                 PastMessage::Agent(event) => {
                     self.apply(event);
@@ -163,9 +170,9 @@ impl Transcript {
         self.status = Status::Idle;
     }
 
-    pub fn push_user(&mut self, text: String) -> Change {
+    pub fn push_user(&mut self, message: Message) -> Change {
         self.status = Status::Running;
-        self.push(Entry::User(text))
+        self.push(Entry::User(message))
     }
 
     /// The permission request the user should answer next.
@@ -224,8 +231,16 @@ impl Transcript {
             AgentEvent::ToolResult {
                 id,
                 output,
+                pictures,
                 is_error,
-            } => self.finish_tool(&id, ToolResult { output, is_error }),
+            } => self.finish_tool(
+                &id,
+                ToolResult {
+                    output,
+                    pictures,
+                    is_error,
+                },
+            ),
             AgentEvent::Subagent(event) => self.apply_subagent(event),
             _ => Change::default(),
         }

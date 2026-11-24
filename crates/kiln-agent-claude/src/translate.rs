@@ -52,7 +52,7 @@ impl Translator {
     /// (e.g. answering a permission request twice).
     pub fn on_command(&mut self, command: SessionCommand) -> Option<Value> {
         match command {
-            SessionCommand::Send(text) => Some(outgoing::user_message(&text)),
+            SessionCommand::Send(message) => Some(outgoing::user_message(&message)),
             SessionCommand::Interrupt => Some(outgoing::interrupt(&self.request_id("interrupt"))),
             SessionCommand::SetModel(_)
             | SessionCommand::SetMode(_)
@@ -313,11 +313,15 @@ fn tool_results(message: wire::User) -> Vec<AgentEvent> {
                 tool_use_id,
                 content,
                 is_error,
-            } => Some(AgentEvent::ToolResult {
-                id: tool_use_id,
-                output: content.into_text(),
-                is_error,
-            }),
+            } => {
+                let (output, pictures) = content.into_parts();
+                Some(AgentEvent::ToolResult {
+                    id: tool_use_id,
+                    output,
+                    pictures,
+                    is_error,
+                })
+            }
             wire::UserBlock::Other => None,
         })
         .collect()

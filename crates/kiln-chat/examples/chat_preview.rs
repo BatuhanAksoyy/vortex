@@ -190,6 +190,7 @@ fn result(id: &str, output: &str) -> AgentEvent {
     AgentEvent::ToolResult {
         id: id.into(),
         output: output.into(),
+        pictures: Vec::new(),
         is_error: false,
     }
 }

@@ -4,7 +4,7 @@
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
-        | running
+        | running | attach
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -49,11 +49,16 @@ a plain terminal, not from inside Claude Code.
 "history" runs two tiny turns in a process that saves its session, the first
 reading a file with the Read tool, then copies the session file the CLI
 wrote. Its lines are the stored conversation, not stream-json records.
+"attach" runs one turn whose message holds a picture (a red square) next to
+its text, which also mentions a file as `@note.txt`. The model reads a second
+picture with the Read tool. It records how a picture goes in, whether the
+CLI expands a mention, and how a tool's picture comes back. Every tool call
+is allowed.
 "running" sends no prompt, so it spends no usage: it starts a process and
 copies the record the CLI keeps of it under `<config>/sessions/` while it
 runs, which tells other clients the conversation is open.
 """
-import json, os, subprocess, sys, threading, time
+import base64, json, os, struct, subprocess, sys, threading, time, zlib
 
 STRIP = {
     "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID",
@@ -75,7 +80,25 @@ PROMPTS = {
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
+
+
+def square_png(rgb, size=16):
+    """A plain square of colour `rgb`, as PNG bytes."""
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+    rows = b"".join(b"\x00" + bytes(rgb) * size for _ in range(size))
+    header = struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
 case, out_path = sys.argv[1], sys.argv[2]
+if case == "attach":
+    with open("note.txt", "w") as note:
+        note.write("lantern\n")
+    with open("picture.png", "wb") as picture:
+        picture.write(square_png((0, 0, 255)))
 if case == "subagent":
     with open("note.txt", "w") as note:
         note.write("lantern\n")
@@ -260,6 +283,14 @@ elif case == "login":
 elif case == "fallback":
     send({"type": "control_request", "request_id": "kiln-model-1",
           "request": {"subtype": "set_model", "model": "fable"}})
+elif case == "attach":
+    image = {"type": "image", "source": {"type": "base64", "media_type": "image/png",
+             "data": base64.b64encode(square_png((255, 0, 0))).decode()}}
+    text = {"type": "text", "text": "Name the colour of the attached image in one word. "
+            "Then read picture.png with the Read tool. Then reply on one line with: the "
+            "attached image's colour, picture.png's colour, and the first word of @note.txt."}
+    send({"type": "user", "message": {"role": "user", "content": [image, text]},
+          "parent_tool_use_id": None, "session_id": ""})
 else:
     send({"type": "user", "message": {"role": "user", "content": PROMPTS[case]},
           "parent_tool_use_id": None, "session_id": ""})
@@ -281,7 +312,7 @@ for line in proc.stdout:
     kind = msg.get("type")
     if kind == "control_request" and msg["request"].get("subtype") == "can_use_tool":
         req = msg["request"]
-        if case in ("allow", "plan", "subagent"):
+        if case in ("allow", "plan", "subagent", "attach"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
         elif case == "questions":
             answers = {}

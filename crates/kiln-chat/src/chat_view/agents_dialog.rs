@@ -119,7 +119,7 @@ impl Render for AgentsDialog {
             .iter()
             .map(|card| list_row(card, selected.map(|card| card.id), cx))
             .collect();
-        let detail = selected.map(|card| detail(card, &chat.cwd, cx));
+        let detail = selected.map(|card| detail(card, &chat.cwd, &self.chat, cx));
         body.child(list(rows, cards.len(), cx)).children(detail)
     }
 }
@@ -195,7 +195,12 @@ fn dot(end: Option<SubagentEnd>, cx: &App) -> impl IntoElement {
 }
 
 /// The picked subagent: its facts, then its chat.
-fn detail(card: Card, root: &Path, cx: &Context<AgentsDialog>) -> AnyElement {
+fn detail(
+    card: Card,
+    root: &Path,
+    chat: &WeakEntity<ChatView>,
+    cx: &Context<AgentsDialog>,
+) -> AnyElement {
     let agent = card.agent;
     let id = card.id;
     let header = h_flex()
@@ -234,7 +239,7 @@ fn detail(card: Card, root: &Path, cx: &Context<AgentsDialog>) -> AnyElement {
         .children(prompt(card, cx))
         .children(agent.steps.iter().enumerate().map(|(index, step)| {
             let step_id = SharedString::from(format!("chat-agent-step-{id}-{index}"));
-            subagent_view::step_row(step, step_id, root, cx)
+            subagent_view::step_row(step, step_id, root, chat, cx)
         }))
         .children(report(card, cx))
         .into_any_element()

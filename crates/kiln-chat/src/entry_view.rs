@@ -6,16 +6,16 @@ use std::path::Path;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Div, FontWeight, Hsla, SharedString, TestSupportExt, WeakEntity,
-    component::{ActiveTheme, h_flex, text::TextView, v_flex},
+    component::{ActiveTheme, Icon, IconName, Sizable, h_flex, text::TextView, v_flex},
     div, px,
 };
-use kiln_agent::ToolCall;
+use kiln_agent::{Message, ToolCall};
 
 use crate::{
     chat_view::ChatView,
     code_block::{self, CodeLine, LineKind},
     literal::literal_markdown,
-    subagent_view,
+    pictures, subagent_view,
     tool_format::{self, EditDiff},
     transcript::{Entry, EntryId, ToolResult},
 };
@@ -32,6 +32,8 @@ pub struct EntryContext<'a> {
     pub toggled: bool,
     pub view: &'a WeakEntity<ChatView>,
     pub root: &'a Path,
+    /// How many times the transcript's width changed; see `width_watch`.
+    pub width_changes: u32,
     /// Whether the timeline continues into the previous / next row.
     pub line_above: bool,
     pub line_below: bool,
@@ -47,7 +49,7 @@ pub fn on_timeline(entry: &Entry) -> bool {
 
 pub fn render(entry: &Entry, context: &EntryContext, cx: &App) -> AnyElement {
     match entry {
-        Entry::User(text) => user(text, context, cx),
+        Entry::User(message) => user(message, context, cx),
         Entry::Notice { text, is_error } => notice(text, *is_error, context.id, cx),
         Entry::Text { text, .. } => {
             let body = TextView::markdown(("text", context.id), text.clone()).selectable(true);
@@ -90,12 +92,31 @@ pub fn timeline_row(dot: Hsla, context: &EntryContext, cx: &App) -> Div {
         )
 }
 
+fn show_more(lines: usize, context: &EntryContext, cx: &App) -> impl IntoElement + use<> {
+    let label = if context.toggled {
+        "Show less".to_owned()
+    } else {
+        format!("Show all {lines} lines")
+    };
+    div()
+        .id(("user-more", context.id))
+        .test_support()
+        .aria_label(SharedString::from(label.clone()))
+        .pt_1()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .cursor_pointer()
+        .child(label)
+        .on_click(toggle(context))
+}
+
 /// A long message, such as a pasted document, shows its first lines until
 /// expanded, so it cannot fill the panel.
 const USER_PREVIEW_LINES: usize = 8;
 
-fn user(text: &str, context: &EntryContext, cx: &App) -> AnyElement {
+fn user(message: &Message, context: &EntryContext, cx: &App) -> AnyElement {
     let theme = cx.theme();
+    let text = message.text.as_str();
     let lines = text.lines().count();
     let long = lines > USER_PREVIEW_LINES;
     let shown = if long && !context.toggled {
@@ -106,23 +127,7 @@ fn user(text: &str, context: &EntryContext, cx: &App) -> AnyElement {
     } else {
         text.to_owned()
     };
-    let more = long.then(|| {
-        let label = if context.toggled {
-            "Show less".to_owned()
-        } else {
-            format!("Show all {lines} lines")
-        };
-        div()
-            .id(("user-more", context.id))
-            .test_support()
-            .aria_label(SharedString::from(label.clone()))
-            .pt_1()
-            .text_xs()
-            .text_color(theme.muted_foreground)
-            .cursor_pointer()
-            .child(label)
-            .on_click(toggle(context))
-    });
+    let more = long.then(|| show_more(lines, context, cx));
     h_flex()
         .id(("user", context.id))
         .test_support()
@@ -130,6 +135,8 @@ fn user(text: &str, context: &EntryContext, cx: &App) -> AnyElement {
         .pb_3()
         .child(
             v_flex()
+                .id(SharedString::from(format!("user-bubble-{}", context.id)))
+                .test_support()
                 .max_w_full()
                 .min_w_0()
                 .px_3()
@@ -138,11 +145,25 @@ fn user(text: &str, context: &EntryContext, cx: &App) -> AnyElement {
                 .border_1()
                 .border_color(theme.border)
                 .bg(theme.secondary)
-                .child(
-                    TextView::markdown(("user-text", context.id), literal_markdown(&shown))
+                .gap_1()
+                .when(!message.pictures.is_empty(), |this| {
+                    let id = format!("user-picture-{}", context.id);
+                    this.child(pictures::gallery(id, &message.pictures, context.view, cx))
+                })
+                .when(!text.is_empty(), |this| {
+                    this.child(
+                        TextView::markdown(
+                            SharedString::from(format!(
+                                "user-text-{}-{}",
+                                context.id, context.width_changes
+                            )),
+                            literal_markdown(&shown),
+                        )
                         .selectable(true),
-                )
-                .children(more),
+                    )
+                })
+                .children(more)
+                .children(message.files.iter().map(|path| attached_file(path, cx))),
         )
         .into_any_element()
 }
@@ -203,9 +224,20 @@ fn tool(
                 .text_sm()
                 .child(tool_format::detail(&call.input, context.root)),
         );
+    let pictures = result
+        .filter(|result| !result.pictures.is_empty())
+        .map(|result| {
+            pictures::gallery(
+                format!("tool-picture-{}", context.id),
+                &result.pictures,
+                context.view,
+                cx,
+            )
+        });
     timeline_row(dot, context, cx)
         .child(header)
         .children(tool_body(call, result, context, cx))
+        .children(pictures)
         .into_any_element()
 }
 
@@ -253,6 +285,20 @@ fn diff_lines(diff: &EditDiff) -> Vec<CodeLine> {
         .iter()
         .map(|line| CodeLine::new(line.as_str(), LineKind::Added));
     removed.chain(added).collect()
+}
+
+/// A file sent with a message, named for the agent to read.
+fn attached_file(path: &Path, cx: &App) -> impl IntoElement + use<> {
+    let name = path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    h_flex()
+        .gap_1()
+        .text_sm()
+        .text_color(cx.theme().muted_foreground)
+        .child(Icon::new(IconName::File).small())
+        .child(name)
 }
 
 /// The `└ Read 256 lines` line under a tool header.

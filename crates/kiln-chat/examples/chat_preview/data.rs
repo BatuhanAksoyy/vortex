@@ -288,6 +288,7 @@ pub fn subagent(root: &str) -> Vec<AgentEvent> {
         AgentEvent::ToolResult {
             id: "a1".into(),
             output: format!("{root}/src/test/date.test.ts\n{root}/src/test/i18n.test.ts"),
+            pictures: Vec::new(),
             is_error: false,
         },
         call(

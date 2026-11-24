@@ -220,8 +220,9 @@ pub struct SessionHandle {
 - **Sohbet içi arama** (Ctrl+F): metin, tool girdileri ve isteğe bağlı tool çıktıları; önceki/sonraki ve vurgulama.
 - **Composer:**
   - Çok satırlı yazma alanı.
-  - Görsel yapıştırma (Claude image block, Codex local image).
-  - Dosya/klasör sürükle-bırak → `@path` referansı.
+  - Ekler: görsel ya da Finder'dan kopyalanan dosya yapıştırma, sohbetin üstüne dosya/klasör sürükle-bırak, şeritteki ataç düğmesiyle dosya seçme. Ekler mesaj kutusunun üstünde kart olarak durur, ✕ ile çıkarılır; metinsiz de gönderilebilir.
+  - Görseller (png, jpg, gif, webp; 5 MB'a kadar) mesaja içerikleriyle girer: Claude'a metinden önce base64 `image` bloğu olarak gider (Codex: local image). Diğer dosyalar, klasörler ve büyük görseller adlarıyla gider: Claude'da metnin sonuna `@path` referansı eklenir, CLI `-p` modunda da bunu kendisi okuyup modele verir (boşluklu yol `@"…"`).
+  - Gönderilen görseller ve dosyalar akıştaki mesajda görünür; kayıttan açılan sohbette mesajın görselleri de geri gelir. Bir tool'un döndürdüğü görsel (ör. Read ile okunan görsel dosyası) tool satırının ve alt ajan adımının altında görünür. Akıştaki, alt ajan görünümündeki ya da ek kartındaki bir görsele tıklamak onu tüm pencereyi kaplayarak açar (pencere tam ekrana geçmez); Escape, görselin köşesindeki ✕ ya da görselin dışına tıklamak kapatır.
   - Slash komutları (`initialize` cevabındaki liste).
   - Model, izin modu ve efor seçici, Stop (interrupt).
   - Efor menüsü yalnızca seçili modelin desteklediği seviyeleri sunar (`initialize` cevabındaki `supportedEffortLevels`). Seçim `apply_flag_settings` ile oturumun bayrak katmanına yazılır; ayar dosyalarına dokunulmaz. Gösterilen efor `get_settings` cevabındaki `applied.effort`'tur (CLI'ın modele göre çözdüğü değer). Hazır olunca, model değişince ve her tur sonunda yeniden sorulur, çünkü kullanıcı `/effort` ya da `/model` yazmış olabilir.

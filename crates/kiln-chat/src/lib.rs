@@ -8,6 +8,7 @@ mod entry_view;
 mod hook_list;
 mod literal;
 mod permission_prompt;
+mod pictures;
 mod prompt_cache;
 mod question_form;
 mod question_prompt;

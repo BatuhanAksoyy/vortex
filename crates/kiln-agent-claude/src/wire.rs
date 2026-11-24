@@ -2,8 +2,11 @@
 //! line types and subtypes decode to `Other` so new CLI versions degrade
 //! gracefully instead of failing.
 
+use kiln_agent::Picture;
 use serde::Deserialize;
 use serde_json::Value;
+
+use crate::picture;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -232,18 +235,22 @@ impl Default for ToolOutput {
 }
 
 impl ToolOutput {
-    pub fn into_text(self) -> String {
-        match self {
-            Self::Text(text) => text,
-            Self::Parts(parts) => parts
-                .into_iter()
-                .filter_map(|part| match part {
-                    OutputPart::Text { text } => Some(text),
-                    OutputPart::Other => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n"),
+    /// Its text, and the pictures among its parts.
+    pub fn into_parts(self) -> (String, Vec<Picture>) {
+        let parts = match self {
+            Self::Text(text) => return (text, Vec::new()),
+            Self::Parts(parts) => parts,
+        };
+        let mut texts = Vec::new();
+        let mut pictures = Vec::new();
+        for part in parts {
+            match part {
+                OutputPart::Text { text } => texts.push(text),
+                OutputPart::Image { source } => pictures.extend(picture::decode(&source)),
+                OutputPart::Other => {}
+            }
         }
+        (texts.join("\n"), pictures)
     }
 }
 
@@ -253,8 +260,22 @@ pub enum OutputPart {
     Text {
         text: String,
     },
+    Image {
+        source: ImageSource,
+    },
     #[serde(other)]
     Other,
+}
+
+/// A picture's bytes as the API carries them; only `base64` sources hold
+/// them.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ImageSource {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub media_type: String,
+    pub data: String,
 }
 
 #[derive(Debug, Deserialize)]

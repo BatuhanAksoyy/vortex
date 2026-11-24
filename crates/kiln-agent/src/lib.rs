@@ -4,12 +4,14 @@
 
 mod effort;
 mod hooks;
+mod message;
 mod past;
 mod permission;
 mod subagent;
 
 pub use effort::{Effort, PromptTokens};
 pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
+pub use message::{Message, Picture};
 pub use past::{PastMessage, PastSession};
 pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Remember, RuleScope};
 pub use subagent::{SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage};
@@ -80,7 +82,7 @@ pub struct Session {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionCommand {
-    Send(String),
+    Send(Message),
     Permission {
         request_id: String,
         decision: Decision,
@@ -316,6 +318,8 @@ pub enum AgentEvent {
     ToolResult {
         id: String,
         output: String,
+        /// Pictures the tool returned, such as an image file it read.
+        pictures: Vec<Picture>,
         is_error: bool,
     },
     PermissionRequest(PermissionRequest),

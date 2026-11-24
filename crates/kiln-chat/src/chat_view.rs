@@ -5,6 +5,7 @@ mod accounts;
 mod accounts_panel;
 mod agents_dialog;
 mod agents_panel;
+mod attachments;
 mod cache_panel;
 mod composer;
 mod context_panel;
@@ -16,6 +17,7 @@ mod hooks_panel;
 mod layout;
 mod menu_keys;
 mod native;
+mod picture_viewer;
 mod session;
 mod skills;
 mod skills_panel;
@@ -24,11 +26,12 @@ mod turn_keys;
 
 use hooks::HooksPanel;
 
-use std::{collections::HashSet, path::PathBuf, rc::Rc};
+use std::{cell::Cell, collections::HashSet, path::PathBuf, rc::Rc};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyView, Context, Entity, EventEmitter, FocusHandle, Focusable, Subscription, Task, Window,
+    AnyView, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels, Subscription, Task,
+    Window,
     component::{
         input::{InputEvent, TextareaState},
         message_scroller::MessageScrollerState,
@@ -42,7 +45,7 @@ use crate::{
     permission_prompt::{Answered, PermissionPrompt},
     question_prompt::QuestionPrompt,
     skill_menu::SkillMenu,
-    slash, spinner,
+    spinner,
     transcript::{Change, Status, Transcript},
 };
 use accounts::AccountsPanel;
@@ -100,6 +103,8 @@ pub struct ChatView {
     agent: AgentState,
     /// Transcript rows plus one trailing row for the spinner.
     scroller: Entity<MessageScrollerState>,
+    /// The transcript's width last frame, and how many times it changed.
+    transcript_width: Rc<Cell<(Option<Pixels>, u32)>>,
     composer: Entity<TextareaState>,
     /// The sent message Up last put in the box, by its place from the
     /// newest, while the box still holds it unchanged.
@@ -112,6 +117,10 @@ pub struct ChatView {
     /// Reads the skills again until a saved state shows up.
     skill_check: Option<Task<()>>,
     hooks: HooksPanel,
+    /// A picture shown at full size over the chat.
+    viewer: picture_viewer::PictureViewer,
+    /// Pictures and files to send with the next message.
+    attachments: Vec<attachments::Attachment>,
     /// The subagents view, open over this chat only.
     agents: Option<Entity<agents_dialog::AgentsDialog>>,
     spinner_frame: usize,
@@ -125,6 +134,25 @@ pub struct ChatView {
 }
 
 impl ChatView {
+    fn follow_composer(
+        composer: &Entity<TextareaState>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Subscription {
+        cx.subscribe_in(composer, window, |this, _, event, window, cx| match event {
+            InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
+            InputEvent::Change => {
+                // Typing a message puts the picker away; the text box
+                // emptying as a command runs leaves it open.
+                if !this.composer.read(cx).value().is_empty() {
+                    this.close_model_picker(cx);
+                }
+                this.sync_slash_menu(cx);
+            }
+            _ => {}
+        })
+    }
+
     pub fn new(
         backend: Rc<dyn AgentBackend>,
         accounts: Entity<Accounts>,
@@ -133,23 +161,7 @@ impl ChatView {
         cx: &mut Context<Self>,
     ) -> Self {
         let composer = new_composer(window, cx);
-        let subscription =
-            cx.subscribe_in(
-                &composer,
-                window,
-                |this, _, event, window, cx| match event {
-                    InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
-                    InputEvent::Change => {
-                        // Typing a message puts the picker away; the text box
-                        // emptying as a command runs leaves it open.
-                        if !this.composer.read(cx).value().is_empty() {
-                            this.close_model_picker(cx);
-                        }
-                        this.sync_slash_menu(cx);
-                    }
-                    _ => {}
-                },
-            );
+        let subscription = Self::follow_composer(&composer, window, cx);
         let accounts_changed = cx.observe_in(&accounts, window, |this, _, window, cx| {
             this.adopt_added_account(window, cx);
             cx.notify();
@@ -172,6 +184,7 @@ impl ChatView {
             history_load: None,
             agent: AgentState::default(),
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
+            transcript_width: Rc::default(),
             composer,
             recalled: None,
             slash: SlashMenu::default(),
@@ -182,6 +195,8 @@ impl ChatView {
             skill_check: None,
             hooks: HooksPanel::new(window, cx),
             agents: None,
+            attachments: Vec::new(),
+            viewer: picture_viewer::PictureViewer::new(cx),
             spinner_frame: 0,
             spinner: None,
             limit_timer: None,
@@ -203,38 +218,6 @@ impl ChatView {
     #[must_use]
     pub fn status(&self) -> Status {
         self.transcript.status()
-    }
-
-    /// Sends the composer's text, or runs it when it is a command Kiln
-    /// answers itself.
-    pub fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.composer.read(cx).value().trim().to_owned();
-        if let Some(command) = slash::native(&text) {
-            self.composer
-                .update(cx, |composer, cx| composer.clean(window, cx));
-            self.run_native(command, window, cx);
-            return;
-        }
-        if self.submit(text, window, cx) {
-            self.composer
-                .update(cx, |composer, cx| composer.clean(window, cx));
-        }
-    }
-
-    /// Sends `text` as the next message; `false` if it cannot be sent now
-    /// (empty, a turn is running, a usage limit is reached, or the agent
-    /// failed to start).
-    pub fn submit(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if text.is_empty() || self.status() == Status::Running || self.is_limited() {
-            return false;
-        }
-        let Some(commands) = self.ensure_session(window, cx) else {
-            return false;
-        };
-        let change = self.transcript.push_user(text.clone());
-        self.apply_change(change, cx);
-        cx.emit(ChatEvent::TurnStarted);
-        commands.try_send(SessionCommand::Send(text)).is_ok()
     }
 
     pub fn interrupt(&mut self, _: &mut Window, cx: &mut Context<Self>) {

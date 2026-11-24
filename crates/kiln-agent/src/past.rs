@@ -3,7 +3,7 @@
 
 use std::time::SystemTime;
 
-use crate::AgentEvent;
+use crate::{AgentEvent, Message};
 
 /// A stored conversation, as the history list shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -21,6 +21,6 @@ pub struct PastSession {
 /// events a live turn would have sent.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PastMessage {
-    User(String),
+    User(Message),
     Agent(AgentEvent),
 }

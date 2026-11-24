@@ -1,8 +1,10 @@
 //! Messages Kiln writes to the CLI's stdin.
 
-use kiln_agent::{Decision, RuleScope};
+use std::path::Path;
 
-use crate::ask;
+use kiln_agent::{Decision, Message, RuleScope};
+
+use crate::{ask, picture};
 use serde_json::{Value, json};
 
 pub const INITIALIZE_ID: &str = "initialize";
@@ -78,13 +80,50 @@ pub fn interrupt(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "interrupt" }))
 }
 
-pub fn user_message(text: &str) -> Value {
+pub fn user_message(message: &Message) -> Value {
     json!({
         "type": "user",
-        "message": { "role": "user", "content": text },
+        "message": { "role": "user", "content": user_content(message) },
         "parent_tool_use_id": null,
         "session_id": "",
     })
+}
+
+/// Plain text unless a picture is attached; pictures go before the text,
+/// as Claude Code sends them.
+fn user_content(message: &Message) -> Value {
+    let text = with_mentions(message);
+    if message.pictures.is_empty() {
+        return Value::String(text);
+    }
+    let mut blocks: Vec<Value> = message.pictures.iter().map(picture::block).collect();
+    if !text.is_empty() {
+        blocks.push(json!({ "type": "text", "text": text }));
+    }
+    Value::Array(blocks)
+}
+
+/// The text with each attached file named as an `@` mention, which the
+/// CLI reads in before the model sees the message.
+fn with_mentions(message: &Message) -> String {
+    let mentions: Vec<String> = message.files.iter().map(|path| mention(path)).collect();
+    if mentions.is_empty() {
+        return message.text.clone();
+    }
+    let mentions = mentions.join(" ");
+    if message.text.trim().is_empty() {
+        return mentions;
+    }
+    format!("{}\n\n{mentions}", message.text)
+}
+
+fn mention(path: &Path) -> String {
+    let path = path.display().to_string();
+    if path.contains(char::is_whitespace) {
+        format!("@\"{path}\"")
+    } else {
+        format!("@{path}")
+    }
 }
 
 /// `input` is echoed back on allow: the CLI requires `updatedInput` and runs

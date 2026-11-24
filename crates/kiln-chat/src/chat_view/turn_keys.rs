@@ -62,7 +62,8 @@ impl ChatView {
         if let Some((row, message)) = self.transcript.withdraw() {
             self.scroller
                 .update(cx, |scroller, cx| scroller.splice(row..row + 1, 0, cx));
-            self.show_in_composer(&message, window, cx);
+            self.show_in_composer(&message.text, window, cx);
+            self.restore_attachments(message, cx);
             cx.notify();
         }
         true

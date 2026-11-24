@@ -10,6 +10,7 @@ mod control;
 mod history;
 mod hooks;
 mod outgoing;
+mod picture;
 mod session;
 mod sign_in;
 mod skills;

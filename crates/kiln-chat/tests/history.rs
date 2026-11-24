@@ -155,7 +155,7 @@ mod history {
         let harness = Harness::new(cx);
         let lines: Vec<String> = (1..=60).map(|n| format!("line {n}")).collect();
         let text = lines.join("\n");
-        let stored = vec![PastMessage::User(text.clone())];
+        let stored = vec![PastMessage::User(text.clone().into())];
         harness.script.borrow_mut().stored = vec![("s-long".into(), stored)];
         open(&harness, cx, "s-long");
         assert!(
@@ -183,7 +183,7 @@ mod history {
     fn a_long_conversation_leaves_the_composer_in_the_panel(cx: &mut TestAppContext) {
         let harness = Harness::new(cx);
         let stored = (1..=80)
-            .map(|n| PastMessage::User(format!("message {n}")))
+            .map(|n| PastMessage::User(format!("message {n}").into()))
             .collect();
         harness.script.borrow_mut().stored = vec![("s-long".into(), stored)];
         open(&harness, cx, "s-long");
@@ -197,5 +197,45 @@ mod history {
             composer.bottom() <= panel.bottom(),
             "{composer:?} outside {panel:?}"
         );
+    }
+
+    fn id_number(id: &gpui_kit::ElementId) -> u64 {
+        match id {
+            gpui_kit::ElementId::NamedInteger(_, number) => *number,
+            other => panic!("not a numbered id: {other:?}"),
+        }
+    }
+
+    #[gpui_kit::test]
+    fn a_message_widens_again_with_its_panel(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        let text = "a message long enough to wrap when the panel is narrowed ".repeat(4);
+        let stored = vec![PastMessage::User(text.trim_end().to_owned().into())];
+        harness.script.borrow_mut().stored = vec![("s-wide".into(), stored)];
+        open(&harness, cx, "s-wide");
+        let width = |cx: &mut TestAppContext| {
+            harness.with_window(cx, |window, _| {
+                let row = window.find_by_label(text.trim_end());
+                let id = row.path().last().cloned().expect("an id");
+                let bubble = format!("user-bubble-{}", id_number(&id));
+                window
+                    .find(gpui_kit::ElementId::Name(bubble.into()))
+                    .bounds()
+                    .size
+                    .width
+            })
+        };
+        let wide = width(cx);
+        let size = cx.update(|cx| {
+            harness
+                .window
+                .update(cx, |_, window, _| window.viewport_size())
+                .expect("window")
+        });
+        cx.simulate_window_resize(harness.window, gpui_kit::size(size.width / 3., size.height));
+        assert!(width(cx) < wide, "narrowed");
+        cx.simulate_window_resize(harness.window, size);
+        width(cx);
+        assert_eq!(width(cx), wide, "as wide as before");
     }
 }

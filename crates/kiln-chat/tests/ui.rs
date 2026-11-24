@@ -87,6 +87,7 @@ mod chat {
             AgentEvent::ToolResult {
                 id: "tool-1".into(),
                 output: String::new(),
+                pictures: Vec::new(),
                 is_error: false,
             },
         );

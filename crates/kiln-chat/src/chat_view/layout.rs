@@ -4,8 +4,12 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Context, StyleRefinement, TestSupportExt, Window,
-    component::{ActiveTheme, message_scroller::MessageScroller, v_flex},
+    AnyElement, Context, ExternalPaths, StyleRefinement, TestSupportExt, Window, canvas,
+    component::{
+        ActiveTheme,
+        message_scroller::{MessageScroller, MessageScrollerState},
+        v_flex,
+    },
     div, px,
 };
 
@@ -32,7 +36,7 @@ impl ChatView {
                 .into_any_element();
         }
         let view = cx.entity().downgrade();
-        MessageScroller::new(
+        let list = MessageScroller::new(
             "chat-transcript",
             self.scroller.clone(),
             move |index, _, cx| {
@@ -43,9 +47,43 @@ impl ChatView {
             },
         )
         .with_row_style(StyleRefinement::default().pb(px(0.)))
-        .flex_1()
-        .px_4()
-        .into_any_element()
+        .size_full()
+        .px_4();
+        div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .child(self.width_watch())
+            .child(list)
+            .into_any_element()
+    }
+
+    /// Remeasures every row when the transcript's width changes, and counts
+    /// the change: a message bubble fits its text, whose layout keeps the
+    /// width it wrapped at, so after the panel grows back the bubble stayed
+    /// narrow until scrolled out of view and back. Its text is rebuilt for
+    /// each width, keyed by the count.
+    fn width_watch(&self) -> impl IntoElement + use<> {
+        let scroller = self.scroller.clone();
+        let last = self.transcript_width.clone();
+        canvas(
+            move |bounds, _, cx| {
+                let (width, changes) = last.get();
+                if width == Some(bounds.size.width) {
+                    return;
+                }
+                last.set((
+                    Some(bounds.size.width),
+                    changes + u32::from(width.is_some()),
+                ));
+                if width.is_some() {
+                    scroller.update(cx, MessageScrollerState::remeasure);
+                }
+            },
+            |_, (), _, _| {},
+        )
+        .absolute()
+        .size_full()
     }
 
     /// Transcript row `index`, or the spinner row after the last entry.
@@ -73,6 +111,7 @@ impl ChatView {
                 toggled: false,
                 view,
                 root: &self.cwd,
+                width_changes: self.transcript_width.get().1,
                 line_above,
                 line_below: false,
             };
@@ -83,6 +122,7 @@ impl ChatView {
             toggled: self.toggled.contains(&id),
             view,
             root: &self.cwd,
+            width_changes: self.transcript_width.get().1,
             line_above: line_above && entry_view::on_timeline(entry),
             line_below: line_below && entry_view::on_timeline(entry),
         };
@@ -100,6 +140,10 @@ impl Render for ChatView {
             .id("chat")
             .test_support()
             .on_key_down(cx.listener(Self::on_chat_key))
+            .drag_over::<ExternalPaths>(|style, _, _, cx| style.bg(cx.theme().drop_target))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
+                this.attach_paths(paths.paths().to_vec(), cx);
+            }))
             .relative()
             .size_full()
             .bg(cx.theme().background)
@@ -113,5 +157,6 @@ impl Render for ChatView {
                     .child(bottom),
             )
             .children(self.render_agents(cx))
+            .children(self.render_picture_viewer(window, cx))
     }
 }

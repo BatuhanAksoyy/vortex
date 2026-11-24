@@ -6,11 +6,14 @@
 
 use std::collections::{HashMap, HashSet};
 
-use kiln_agent::{AgentEvent, BlockKey, PastMessage, ToolCall, TurnOutcome};
+use kiln_agent::{AgentEvent, BlockKey, Message, PastMessage, Picture, ToolCall, TurnOutcome};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::wire::ToolOutput;
+use crate::{
+    picture,
+    wire::{ImageSource, ToolOutput},
+};
 
 /// What the CLI writes as the user's message when a turn is interrupted.
 const INTERRUPTED: &str = "[Request interrupted by user";
@@ -51,6 +54,9 @@ enum UserContent {
 enum UserBlock {
     Text {
         text: String,
+    },
+    Image {
+        source: ImageSource,
     },
     ToolResult {
         tool_use_id: String,
@@ -117,7 +123,7 @@ pub fn user_prompt(line: &Value) -> Option<String> {
         })?,
     };
     match typed(&text)? {
-        PastMessage::User(text) => Some(text),
+        PastMessage::User(message) => Some(message.text),
         PastMessage::Agent(_) => None,
     }
 }
@@ -167,22 +173,48 @@ fn user_messages(content: UserContent) -> Vec<PastMessage> {
         UserContent::Text(text) => return typed(&text).into_iter().collect(),
         UserContent::Blocks(blocks) => blocks,
     };
-    blocks
-        .into_iter()
-        .filter_map(|block| match block {
-            UserBlock::Text { text } => typed(&text),
+    let mut pictures: Vec<Picture> = Vec::new();
+    let mut messages: Vec<PastMessage> = Vec::new();
+    for block in blocks {
+        match block {
+            UserBlock::Text { text } => messages.extend(typed(&text)),
+            UserBlock::Image { source } => pictures.extend(picture::decode(&source)),
             UserBlock::ToolResult {
                 tool_use_id,
                 content,
                 is_error,
-            } => Some(PastMessage::Agent(AgentEvent::ToolResult {
-                id: tool_use_id,
-                output: content.into_text(),
-                is_error,
-            })),
-            UserBlock::Other => None,
-        })
-        .collect()
+            } => {
+                let (output, pictures) = content.into_parts();
+                messages.push(PastMessage::Agent(AgentEvent::ToolResult {
+                    id: tool_use_id,
+                    output,
+                    pictures,
+                    is_error,
+                }));
+            }
+            UserBlock::Other => {}
+        }
+    }
+    attach(&mut messages, pictures);
+    messages
+}
+
+/// Pictures sent with a message belong to its text; sent alone, they are
+/// a message of their own.
+fn attach(messages: &mut Vec<PastMessage>, pictures: Vec<Picture>) {
+    if pictures.is_empty() {
+        return;
+    }
+    match messages.iter_mut().find_map(|message| match message {
+        PastMessage::User(message) => Some(message),
+        PastMessage::Agent(_) => None,
+    }) {
+        Some(message) => message.pictures = pictures,
+        None => messages.push(PastMessage::User(Message {
+            pictures,
+            ..Message::default()
+        })),
+    }
 }
 
 /// What a line of the user's text stands for: a message, a slash command
@@ -200,12 +232,12 @@ fn typed(text: &str) -> Option<PastMessage> {
             Some(args) => format!("{name} {args}"),
             None => name.to_owned(),
         };
-        return Some(PastMessage::User(command));
+        return Some(PastMessage::User(command.into()));
     }
     if text.is_empty() || text.starts_with("<local-command-") || text.starts_with("<system-") {
         return None;
     }
-    Some(PastMessage::User(text.to_owned()))
+    Some(PastMessage::User(text.into()))
 }
 
 /// Text pasted into Claude Code is stored wrapped in

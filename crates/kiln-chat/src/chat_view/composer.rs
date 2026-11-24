@@ -40,6 +40,7 @@ impl ChatView {
             .py_1()
             .border_t_1()
             .border_color(cx.theme().border)
+            .child(Self::attach_button(cx))
             .child(self.mode_menu(&view))
             .children(self.model_menu(&view))
             .children(self.effort_menu(&view))
@@ -50,6 +51,7 @@ impl ChatView {
             .child(self.cache_button(cx))
             .children(self.context_meter(cx))
             .child(self.action_button(cx));
+        let paste_view = view.clone();
         let menu = self
             .render_model_picker(cx)
             .or_else(|| self.render_slash_menu(cx));
@@ -71,13 +73,20 @@ impl ChatView {
             .capture_action(cx.listener(Self::on_menu_enter))
             .capture_action(cx.listener(Self::on_menu_escape))
             .children(menu)
+            .children(self.render_attachments(cx))
             .child(
                 div()
                     .id("chat-composer")
                     .test_support()
                     .px_1()
                     .pt_1()
-                    .child(Textarea::new(&self.composer).appearance(false)),
+                    .child(Textarea::new(&self.composer).appearance(false).on_paste(
+                        move |item, _, cx| {
+                            paste_view
+                                .update(cx, |view, cx| view.paste(item, cx))
+                                .unwrap_or(false)
+                        },
+                    )),
             )
             .child(strip)
             .into_any_element()
