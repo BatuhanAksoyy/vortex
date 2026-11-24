@@ -37,11 +37,15 @@ pub fn detail(input: &Value, root: &Path) -> String {
 /// The file name a file tool works on, for prompts like "Make this edit to
 /// `main.rs`?".
 pub fn file_name(input: &Value) -> Option<&str> {
-    let path = input
+    Path::new(file_path(input)?).file_name()?.to_str()
+}
+
+/// The file a file tool such as Read or Edit works on.
+pub fn file_path(input: &Value) -> Option<&str> {
+    input
         .get("file_path")
         .or_else(|| input.get("notebook_path"))?
-        .as_str()?;
-    Path::new(path).file_name()?.to_str()
+        .as_str()
 }
 
 /// The text after `└` under a finished tool row.

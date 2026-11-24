@@ -63,7 +63,7 @@ impl ChatPanel {
             // The tab title and its running mark come from the chat.
             cx.observe(&chat, |_, _, cx| cx.notify()),
             cx.subscribe_in(&chat, window, |this, _, event: &ChatEvent, window, cx| {
-                if *event == ChatEvent::PickConversation {
+                if matches!(event, ChatEvent::PickConversation) {
                     this.open_picker(window, cx);
                 }
             }),

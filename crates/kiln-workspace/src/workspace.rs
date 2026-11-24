@@ -12,8 +12,8 @@ use gpui_kit::{
     component::{
         ActiveTheme, TitleBar, WindowExt,
         dock::{DockArea, DockEvent},
+        h_flex,
         notification::Notification,
-        resizable::{ResizablePanelGroup, h_resizable, resizable_panel},
         status_bar::StatusBar,
         v_flex,
     },
@@ -21,28 +21,29 @@ use gpui_kit::{
 use kiln_accounts::Accounts;
 use kiln_agent::AgentBackend;
 use kiln_chat::{ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog};
-use kiln_project::ListOptions;
 
 use crate::{
     chat_panel::ChatPanel,
     commands::ActiveWorkspace,
     config,
-    editor_pane::EditorPane,
+    left_panel::LeftPanel,
     saved_layout::{LayoutFile, Pane},
     session_list::SessionList,
 };
 
 mod actions;
+mod activity_bar;
 mod chats;
 mod layout;
+mod pages;
 mod processes;
 
-/// The project's files, and whether the listing hit the entry limit.
-type Scan = (Arc<[PathBuf]>, bool);
+/// The project's files, as a list and as a tree, and whether the listing
+/// hit the entry limit.
+type Scan = (Arc<[PathBuf]>, Vec<kiln_project::TreeNode>, bool);
 
 const MAX_PROJECT_ENTRIES: usize = 100_000;
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(150);
-const EDITOR_WIDTH_REMS: f32 = 40.0;
 
 pub struct Workspace {
     root: PathBuf,
@@ -54,7 +55,13 @@ pub struct Workspace {
     sessions: Entity<SessionList>,
     /// What every agent's processes use, in the status bar.
     process_meter: Entity<ProcessMeter>,
-    editor_pane: Entity<EditorPane>,
+    /// What the activity bar shows over the whole window.
+    page: pages::Page,
+    left_panel: LeftPanel,
+    /// Where the left panel's size is kept.
+    left_panel_file: Option<PathBuf>,
+    left_panel_save: Option<Task<()>>,
+    pages: pages::ProjectPages,
     /// The chats, as tabs in groups the user can split.
     dock: Entity<DockArea>,
     chats: Vec<chats::ChatTab>,
@@ -65,7 +72,8 @@ pub struct Workspace {
     /// The kept layout, until the session list has loaded.
     pending_layout: Option<Pane>,
     files: Arc<[PathBuf]>,
-    editor_visible: bool,
+    /// Lists the project's files.
+    scan: Option<Task<()>>,
     /// The last reading of the agents' processes, which chats show.
     processes: Entity<Processes>,
     /// Reads the agents' processes while the window is open.
@@ -96,7 +104,7 @@ impl Workspace {
         let processes = Processes::shared(cx);
         let meter = cx.new(|cx| ProcessMeter::all(processes.clone(), cx));
         let sessions = cx.new(|_| SessionList::default());
-        let editor_pane = cx.new(EditorPane::new);
+        let pages = pages::ProjectPages::new(&root, window, cx);
         let dock = chats::new_dock(window, cx);
         let subscriptions = vec![
             cx.subscribe_in(&meter, window, |this, _, event, window, cx| match event {
@@ -106,6 +114,11 @@ impl Workspace {
             cx.subscribe(&dock, |this, _, event: &DockEvent, cx| {
                 if matches!(event, DockEvent::LayoutChanged) {
                     this.save_layout(cx);
+                }
+            }),
+            cx.observe_window_activation(window, |this, window, cx| {
+                if window.is_window_active() {
+                    this.refresh_project(window, cx);
                 }
             }),
             cx.observe_window_appearance(window, |_, window, cx| {
@@ -124,14 +137,18 @@ impl Workspace {
             accounts,
             sessions,
             process_meter: meter,
-            editor_pane,
+            page: pages::Page::default(),
+            left_panel: LeftPanel::default(),
+            left_panel_file: None,
+            left_panel_save: None,
+            pages,
             dock,
             chats: Vec::new(),
             active_chat: None,
             layouts: None,
             pending_layout: None,
             files: Arc::from([]),
-            editor_visible: false,
+            scan: None,
             processes,
             _process_watch: Self::watch_processes(cx),
             processes_page: None,
@@ -145,15 +162,19 @@ impl Workspace {
     /// on the next start.
     #[must_use]
     pub fn keeping_layouts_in(mut self, path: PathBuf) -> Self {
+        let left_panel = path.with_file_name("left-panel.json");
+        self.left_panel = LeftPanel::load(&left_panel);
+        self.left_panel_file = Some(left_panel);
         self.layouts = Some(LayoutFile::new(path));
         self
     }
 
     /// The file shown in the editor pane, if any.
     pub fn active_file(&self, cx: &gpui_kit::App) -> Option<PathBuf> {
-        self.editor_pane
+        self.pages
+            .editor
             .read(cx)
-            .active_path()
+            .active_path(cx)
             .map(Path::to_path_buf)
     }
 
@@ -165,6 +186,7 @@ impl Workspace {
         self.scan_files(window, cx);
         self.start_chats(window, cx);
         self.reload_sessions(cx);
+        self.refresh_project(window, cx);
     }
 
     fn reload_sessions(&mut self, cx: &mut Context<Self>) {
@@ -177,7 +199,8 @@ impl Workspace {
         for message in config::reload(&self.root, cx) {
             window.push_notification(Notification::warning(message), cx);
         }
-        self.editor_pane
+        self.pages
+            .editor
             .update(cx, |pane, cx| pane.apply_settings(window, cx));
         cx.notify();
     }
@@ -203,72 +226,6 @@ impl Workspace {
                 && this.update_in(cx, Self::reload_config).is_ok()
             {}
         })
-    }
-
-    fn scan_files(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let root = self.root.clone();
-        let options = ListOptions {
-            exclude: config::settings(cx).files.exclude.clone(),
-            limit: MAX_PROJECT_ENTRIES,
-        };
-        let scan = cx.background_spawn(async move {
-            kiln_project::list_files(&root, &options).map(|list| {
-                let files: Arc<[PathBuf]> = list.files().map(Path::to_path_buf).collect();
-                (files, list.truncated)
-            })
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            let result = scan.await;
-            let _ = this.update_in(cx, |this, window, cx| this.apply_scan(result, window, cx));
-        })
-        .detach();
-    }
-
-    fn open_relative(&mut self, relative: &Path, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_absolute(self.root.join(relative), window, cx);
-    }
-
-    fn open_absolute(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        self.editor_visible = true;
-        self.editor_pane
-            .update(cx, |pane, cx| pane.open_path(path, window, cx));
-        cx.notify();
-    }
-
-    fn apply_scan(
-        &mut self,
-        result: anyhow::Result<Scan>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match result {
-            Ok((files, truncated)) => {
-                self.files = files;
-                if truncated {
-                    let message = format!("Showing the first {MAX_PROJECT_ENTRIES} entries.");
-                    window.push_notification(Notification::info(message), cx);
-                }
-            }
-            Err(error) => {
-                let message = format!("Cannot list project files: {error:#}");
-                window.push_notification(Notification::error(message), cx);
-            }
-        }
-    }
-
-    fn render_body(&self, window: &Window, cx: &gpui_kit::App) -> ResizablePanelGroup {
-        let rem = window.rem_size();
-        // With no file open the pane would only take room from the chat.
-        let editor_shown = self.editor_visible && !self.editor_pane.read(cx).is_empty();
-        h_resizable("workspace-panels")
-            .child(resizable_panel().child(self.dock.clone()))
-            .when(editor_shown, |this| {
-                this.child(
-                    resizable_panel()
-                        .size(rem * EDITOR_WIDTH_REMS)
-                        .child(self.editor_pane.clone()),
-                )
-            })
     }
 }
 
@@ -301,7 +258,7 @@ impl Focusable for Workspace {
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let active_file = self.editor_pane.read(cx).active_path().map(|path| {
+        let active_file = self.pages.editor.read(cx).active_path(cx).map(|path| {
             path.strip_prefix(&self.root)
                 .unwrap_or(path)
                 .display()
@@ -313,12 +270,26 @@ impl Render for Workspace {
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .child(TitleBar::new().child(project_name(&self.root)))
             .child(
-                gpui_kit::div()
+                TitleBar::new().child(
+                    h_flex()
+                        .gap_2()
+                        .child(self.render_panel_toggle(cx))
+                        .child(project_name(&self.root)),
+                ),
+            )
+            .child(
+                h_flex()
                     .flex_1()
                     .min_h_0()
-                    .child(self.render_body(window, cx)),
+                    .children(self.render_activity_bar(window, cx))
+                    .child(
+                        gpui_kit::div()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .child(self.render_page()),
+                    ),
             )
             .children(self.render_processes(window, cx))
             .child(

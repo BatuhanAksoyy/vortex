@@ -14,7 +14,11 @@ actions!(
     [
         QuickOpen,
         ShowCommands,
-        ToggleEditorPane,
+        ShowChat,
+        ShowFiles,
+        ShowGit,
+        ToggleLeftPanel,
+        ToggleChanges,
         OpenSettings,
         OpenDefaultSettings,
         OpenKeybindings,
@@ -51,11 +55,21 @@ pub const COMMANDS: &[CommandSpec] = &[
     spec("workbench.action.showCommands", "Show All Commands", || {
         Box::new(ShowCommands)
     }),
+    spec("workbench.action.chat.open", "Show Chat", || {
+        Box::new(ShowChat)
+    }),
+    spec("workbench.view.explorer", "Show Files", || {
+        Box::new(ShowFiles)
+    }),
+    spec("workbench.view.scm", "Show Git", || Box::new(ShowGit)),
     spec(
-        "workbench.action.toggleAuxiliaryBar",
-        "Toggle Editor Pane",
-        || Box::new(ToggleEditorPane),
+        "workbench.action.toggleSidebarVisibility",
+        "Toggle Left Panel",
+        || Box::new(ToggleLeftPanel),
     ),
+    spec("git.openChange", "Show File Changes", || {
+        Box::new(ToggleChanges)
+    }),
     spec(
         "workbench.action.openSettingsJson",
         "Open User Settings (JSON)",
@@ -124,7 +138,11 @@ type Handler = fn(&mut Workspace, &mut Window, &mut Context<Workspace>);
 pub fn register(cx: &mut App) {
     on::<QuickOpen>(cx, Workspace::quick_open);
     on::<ShowCommands>(cx, Workspace::show_commands);
-    on::<ToggleEditorPane>(cx, Workspace::toggle_editor_pane);
+    on::<ShowChat>(cx, Workspace::show_chat);
+    on::<ShowFiles>(cx, Workspace::show_files);
+    on::<ShowGit>(cx, Workspace::show_git);
+    on::<ToggleLeftPanel>(cx, Workspace::toggle_left_panel);
+    on::<ToggleChanges>(cx, Workspace::toggle_changes);
     on::<OpenSettings>(cx, Workspace::open_user_settings);
     on::<OpenDefaultSettings>(cx, Workspace::open_default_settings);
     on::<OpenKeybindings>(cx, Workspace::open_user_keybindings);

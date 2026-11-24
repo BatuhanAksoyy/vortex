@@ -66,7 +66,7 @@ kiln/
 │   ├── kiln-core/          domain tipleri: id'ler, Project, Account, AgentEvent
 │   ├── kiln-settings/      JSONC katmanlı ayarlar, hot-reload
 │   ├── kiln-keymap/        VSCode keybindings.json formatı
-│   ├── kiln-project/       dosya listeleme (gitignore), dil tespiti, bulanık arama
+│   ├── kiln-project/       dosya listeleme (gitignore), dil tespiti, bulanık arama, dosya oluşturma/adlandırma/çöpe taşıma
 │   ├── kiln-workspace/     GPUI: pencere yerleşimi, konuşmalar sayfası, editör, paletler
 │   ├── kiln-agent/         AgentBackend trait'i, oturum aktörü, izin motoru
 │   ├── kiln-agent-claude/  stream-json + control protokolü
@@ -74,7 +74,8 @@ kiln/
 │   ├── kiln-accounts/      profiller, giriş akışı, kota anlık görüntüsü
 │   ├── kiln-bridge/        ajanlara açılan MCP araçları + IPC
 │   ├── kiln-services/      çalıştırma konfigleri, süreç denetleyici, süreç ağacı izleme
-│   ├── kiln-git/           git CLI sarmalayıcı, worktree, commit hattı, trailer temizleme
+│   ├── kiln-file-icons/    renkli dosya/klasör ikonları (Material Icon Theme, MIT) ve isimden ikona eşleme
+│   ├── kiln-git/           git CLI sarmalayıcı: status ve diff (ileride worktree, commit hattı, trailer temizleme)
 │   ├── kiln-forge/         gh / glab sarmalayıcıları
 │   └── kiln-sys/           unsafe gerektiren tek yer (process group, Job Object)
 ├── xtask/                  `cargo xtask check` ve kalite betikleri
@@ -255,17 +256,22 @@ pub struct SessionHandle {
 ## 13. Yerleşim
 
 ```
-┌ Title bar: project ▾ │ branch ▾ │ services ●● │ quota ▮▮▯ ──────────────────────┐
-├────┬──────────────────┬─────────────────────────────┬──────────────────────────┤
-│Act │ Sessions │ Files │  Chat (oturum sekmeleri)    │  Editor / Diff sekmeleri │
-│bar │ Git │ Context    │                             │  (isteğe bağlı açılır)   │
-├────┴──────────────────┴─────────────────────────────┴──────────────────────────┤
-│ Alt panel (aç/kapa): Services                                                  │
-└ Status bar ────────────────────────────────────────────────────────────────────┘
+┌ Title bar: project ──────────────────────────────────────────────────────────┐
+├────┬─────────────────────────────────────────────────────────────────────────┤
+│ 💬 │                                                                         │
+│ 🗂 │  Seçilen sayfa pencerenin tamamını kaplar:                               │
+│ ⎇  │  Chat (sohbet sekmeleri) · Files (ağaç + editör) · Git (değişiklikler)  │
+├────┴─────────────────────────────────────────────────────────────────────────┤
+└ Status bar: süreç ölçeri │ proje yolu │ açık dosya ─────────────────────────────┘
 ```
-- Sohbet merkezde. Tool kartında bir dosyaya tıklamak onu sağda açar.
-- "Focus chat" ve "Focus code" komutları yan panelleri gizler.
-- Kenar çubuğu yok. Pencere `h_resizable` ile ikiye bölünür: sohbetler ve editör. Editör paneli yalnızca açık dosya varken görünür.
+- Pencerenin solunda dar bir aktivite çubuğu var: Chat, Files, Git. Seçilen sayfa pencerenin geri kalanının tamamını kaplar; diğerleri gizlenir ama durumlarını korur (sohbet süreçleri çalışmaya devam eder, editör sekmeleri açık kalır). Komutlar: "Show Chat" (Ctrl+Alt+I, macOS'ta Ctrl+Cmd+I), "Show Files" (Ctrl+Shift+E, macOS'ta Cmd+Shift+E), "Show Git" (Ctrl+Shift+G); VSCode'daki karşılıklarının id'leriyle.
+- **Files:** solda projenin dosya ağacı (gitignore'a uyar, boş klasörler de gösterilir), sağda editör. Dosyaya tıklamak onu editörde açar; dosya yokken "Select a file to open it." yazar. Hızlı dosya açma, ayar dosyaları ve tool kartındaki dosya yolu dosyayı burada açar ve Files sayfasına geçer; ağaçta dosyanın klasörleri açılır ve dosya seçilir.
+- **Sol panel:** aktivite çubuğu varsayılan 48 px; kenarından 40–96 px arası genişler, düğme ve ikonlar onunla ölçeklenir, çift tık varsayılana döndürür. Ctrl+B / Cmd+B ya da başlık çubuğundaki düğme gizler. Açık sayfanın ikonuna tekrar basmak soldaki listeyi (dosya ağacı, değişiklikler) katlar. Genişlik ve gizlilik veri klasöründeki `left-panel.json`'da tutulur.
+- **Dosya ağacı:** üstte New File, New Folder, Refresh, Collapse All; sağ tık menüsünde ayrıca Reveal in Finder, Copy Path, Copy Relative Path, Rename, Delete (çöpe taşır). F2, Delete ve Enter kısayolları vardır. Editörde sekme değişince dosya ağaçta seçilir.
+- **Editör:** son commit'e (HEAD) göre değişen satırlar satır numarası yanında, kaydırma çubuğunda ve minimap'te işaretlenir; sekme çubuğundaki düğme dosyayı diff olarak gösterir. Minimap `editor_pane/minimap`'te çizilir (gpui-kit'te yok). Kaydedilmemiş olma, metnin diskteki haliyle karşılaştırılmasıdır; geri almak işareti kaldırır. Kaydedilmemiş sekme kapanırken Save / Don't Save / Cancel sorulur. Diskte değişen, kaydedilmemiş değişikliği olmayan dosyalar yeniden okunur.
+- **Git:** `kiln-git` üzerinden kullanıcının kendi `git`'iyle okunur. Solda branch, upstream farkı, toplam değişiklik ve katlanabilir bölümler: "Merge Conflicts", "Staged", "Not Staged", "Untracked". Her satırda durum harfi, dosya adı, klasörü ve satır sayıları (+/−) bulunur; bölüm başına en fazla 300 satır listelenir. Sağda seçilen dosyanın yolu, durumu ve diff'i (gpui-kit `Diff`, Unified/Split), önceki/sonraki değişiklik ve "Open in Files" düğmeleri vardır. Liste odaktayken yukarı/aşağı değişiklikler arasında gezer, Enter dosyayı Files'ta açar. Hem stage'li hem sonradan değişmiş bir dosya iki bölümde ayrı görünür. Sayfa salt okunur; stage ve commit, kuralları ve temizleme adımlarıyla birlikte commit hattında gelir (§8). Okuma `--no-optional-locks` ile yapılır, böylece aynı checkout'ta çalışan ajanın `git` komutları `index.lock` yüzünden başarısız olmaz. Proje reponun alt klasörü olabilir. Klasör bir repo değilse bunu söyler.
+- **Ortak durum:** Git okuması `RepoStatus`'ta tutulur. Files ağacı da bunu kullanır: değişen dosya renkli ve durum harfiyle, içinde değişiklik olan klasör noktayla görünür. Durum ve dosya listesi Files veya Git açıldığında, pencere öne geldiğinde ve bir tur bittiğinde yenilenir; editörde kaydetmek de durumu yeniler. Listeleme açık klasörleri korur.
+- Aynı checkout'ta çalışan iki oturumun değişiklikleri git açısından tek bir çalışma ağacıdır ve ayrılamaz; oturum başına diff, oturum başına worktree ile gelir (§7).
 - Sohbetler gpui-kit dock'unun orta alanındadır: her sohbet bir sekme ve kendi CLI süreci; sekmeler gruplar arasında sürüklenir, gruplar yan yana ya da alt alta bölünür. Gösterilmeyen sekmenin süreci çalışmaya devam eder (uyku modu M2'de).
   - Sekme çubuğunda "New session" (aynı grupta yeni sekme) ve "Split right" (yanda yeni grup) düğmeleri var. Dock bir alanın son sekmesini kapattırmaz, pencerede hep bir sohbet kalır.
   - Yeni sekme ve bölme, kullanıcının en son tıkladığı (metin ya da odak almayan düğmeler dahil) ya da klavyeyle odakladığı sohbetin yanına açılır. Dock'un düzeni kurarken her grubun sekmesini göstermesi bunu değiştirmez; açılışta geri yüklenen düzende bu sohbet ilk gruptakidir.

@@ -1,5 +1,5 @@
-//! Kiln's asset source: gpui-kit's default icons plus the few Kiln uses that
-//! the default set leaves out.
+//! Kiln's asset source: gpui-kit's default icons, the few Kiln uses that the
+//! default set leaves out, and the colored file icons.
 
 use std::borrow::Cow;
 
@@ -9,10 +9,17 @@ gpui_kit::assets::icon_assets!(
     ChatIcons,
     [
         Columns2,
+        CopyMinus,
+        FileDiff,
+        FilePlus,
         FishingHook,
+        FolderPlus,
+        FolderTree,
         Gauge,
+        GitBranch,
         Image,
         Lock,
+        MessagesSquare,
         Paperclip,
         Pencil,
         Puzzle,
@@ -24,6 +31,9 @@ pub struct Assets;
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
+        if let Some(svg) = kiln_file_icons::load(path) {
+            return Ok(Some(Cow::Borrowed(svg.as_bytes())));
+        }
         if let Some(bytes) = ChatIcons.load(path)? {
             return Ok(Some(bytes));
         }
@@ -44,7 +54,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chat_icons_and_default_icons_both_load() {
+    fn every_kind_of_icon_loads() {
         for path in [
             "icons/pencil.svg",
             "icons/columns-2.svg",
@@ -52,8 +62,14 @@ mod tests {
             "icons/lock.svg",
             "icons/fishing-hook.svg",
             "icons/trash.svg",
+            "icons/folder-tree.svg",
+            "icons/git-branch.svg",
+            "icons/messages-square.svg",
             "icons/arrow-up.svg",
             "icons/plus.svg",
+            "icons/copy-minus.svg",
+            "icons/file-diff.svg",
+            "file-icons/rust.svg",
         ] {
             assert!(Assets.load(path).unwrap().is_some(), "{path}");
         }

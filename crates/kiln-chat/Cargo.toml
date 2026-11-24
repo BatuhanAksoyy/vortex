@@ -11,6 +11,7 @@ anyhow.workspace = true
 async-channel.workspace = true
 jiff.workspace = true
 gpui-kit.workspace = true
+kiln-file-icons.workspace = true
 kiln-accounts.workspace = true
 kiln-agent.workspace = true
 kiln-services.workspace = true

@@ -12,7 +12,6 @@ use gpui_kit::{
 use super::Workspace;
 use crate::{
     config,
-    editor_pane::EditorPane,
     pickers::{self, CommandPalette, QuickOpen, QuickOpenEvent},
 };
 
@@ -34,11 +33,6 @@ impl Workspace {
         let view = cx.new(|cx| CommandPalette::new(window, cx));
         pickers::open_in_dialog(view.clone(), window, cx);
         view.update(cx, |view, cx| view.focus(window, cx));
-    }
-
-    pub fn toggle_editor_pane(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        self.editor_visible = !self.editor_visible;
-        cx.notify();
     }
 
     pub fn open_user_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -66,11 +60,10 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.editor_visible = true;
-        self.editor_pane.update(cx, |pane, cx| {
+        self.pages.editor.update(cx, |pane, cx| {
             pane.open_virtual_json(title, text, window, cx);
         });
-        cx.notify();
+        self.show_page(super::pages::Page::Files, window, cx);
     }
 
     /// Opens a user config file, creating it with `template` when missing.
@@ -113,28 +106,39 @@ impl Workspace {
 
     fn open_folder(&mut self, root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         self.root = root;
-        self.editor_pane = cx.new(EditorPane::new);
+        self.pages = super::pages::ProjectPages::new(&self.root, window, cx);
+        self.files = std::sync::Arc::from([]);
         self.load_project(window, cx);
         cx.notify();
     }
 
     pub fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.editor_pane
+        self.pages
+            .editor
             .update(cx, |pane, cx| pane.save_active(window, cx));
     }
 
+    pub fn toggle_changes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pages
+            .editor
+            .update(cx, |pane, cx| pane.toggle_changes(window, cx));
+    }
+
     pub fn close_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.editor_pane
+        self.pages
+            .editor
             .update(cx, |pane, cx| pane.close_active(window, cx));
     }
 
     pub fn next_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.editor_pane
+        self.pages
+            .editor
             .update(cx, |pane, cx| pane.activate_relative(1, window, cx));
     }
 
     pub fn previous_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.editor_pane
+        self.pages
+            .editor
             .update(cx, |pane, cx| pane.activate_relative(-1, window, cx));
     }
 

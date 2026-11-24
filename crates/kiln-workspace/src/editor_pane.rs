@@ -1,40 +1,41 @@
+//! The editor's tabs, each an open file.
+
+mod changes;
+mod closing;
+mod document;
+mod minimap;
+
 use std::path::{Path, PathBuf};
 
-use anyhow::Context as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, Entity, FocusHandle, Focusable, SharedString, Subscription, TestSupportExt, Window,
+    Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString, Subscription,
+    TestSupportExt, Window,
+    assets::IconName as Lucide,
+    base::Selectable as _,
     component::{
-        ActiveTheme, IconName, Sizable, WindowExt,
+        ActiveTheme, Disableable as _, IconName, Sizable, WindowExt,
         button::{Button, ButtonVariants},
-        input::{Editor, EditorState, InputEvent, TabSize},
+        h_flex,
         notification::Notification,
         tab::{Tab, TabBar},
         v_flex,
     },
+    div,
 };
-use kiln_settings::EditorSettings;
 
-use crate::config;
+use crate::file_icon;
+use document::{Contents, Document, file_title, read_text};
 
-const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
-const BINARY_SNIFF_BYTES: usize = 8 * 1024;
+/// A file was written.
+pub struct Saved;
+
+impl EventEmitter<Saved> for EditorPane {}
 
 struct EditorTab {
     id: u64,
-    title: SharedString,
-    /// `None` for read-only virtual documents such as the default settings.
-    path: Option<PathBuf>,
-    editor: Entity<EditorState>,
-    dirty: bool,
-    _subscription: Subscription,
-}
-
-struct Document {
-    title: SharedString,
-    path: Option<PathBuf>,
-    text: String,
-    language: &'static str,
+    document: Entity<Document>,
+    _subscriptions: [Subscription; 2],
 }
 
 pub struct EditorPane {
@@ -58,16 +59,23 @@ impl EditorPane {
         self.tabs.is_empty()
     }
 
-    pub fn active_path(&self) -> Option<&Path> {
-        self.active.and_then(|ix| self.tabs[ix].path.as_deref())
+    pub fn active_path<'a>(&self, cx: &'a gpui_kit::App) -> Option<&'a Path> {
+        self.active_document()?.read(cx).path()
+    }
+
+    fn active_document(&self) -> Option<&Entity<Document>> {
+        Some(&self.tabs.get(self.active?)?.document)
+    }
+
+    fn documents(&self) -> impl Iterator<Item = &Entity<Document>> {
+        self.tabs.iter().map(|tab| &tab.document)
     }
 
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(ix) = self
-            .tabs
-            .iter()
-            .position(|t| t.path.as_ref() == Some(&path))
-        {
+        let open = self
+            .documents()
+            .position(|document| document.read(cx).path() == Some(&path));
+        if let Some(ix) = open {
             self.activate(ix, window, cx);
             return;
         }
@@ -79,13 +87,13 @@ impl EditorPane {
             let result = read.await;
             let _ = this.update_in(cx, |this, window, cx| match result {
                 Ok(text) => {
-                    let document = Document {
+                    let contents = Contents {
                         title: file_title(&path),
                         language: kiln_project::language_for_path(&path).unwrap_or("text"),
                         path: Some(path),
                         text,
                     };
-                    this.add_tab(document, window, cx);
+                    this.add_tab(contents, window, cx);
                 }
                 Err(error) => {
                     let message = format!("Cannot open {}: {error:#}", path.display());
@@ -104,59 +112,45 @@ impl EditorPane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(ix) = self
-            .tabs
-            .iter()
-            .position(|t| t.path.is_none() && t.title == title)
-        {
+        let open = self.documents().position(|document| {
+            let document = document.read(cx);
+            document.path().is_none() && document.title() == title
+        });
+        if let Some(ix) = open {
             self.activate(ix, window, cx);
             return;
         }
-        let document = Document {
+        let contents = Contents {
             title: title.into(),
             path: None,
             text: text.to_owned(),
             language: "json",
         };
-        self.add_tab(document, window, cx);
+        self.add_tab(contents, window, cx);
     }
 
-    fn add_tab(&mut self, document: Document, window: &mut Window, cx: &mut Context<Self>) {
-        let settings = config::settings(cx).editor.clone();
-        let editor = cx.new(|cx| {
-            EditorState::new(window, cx)
-                .language(document.language)
-                .line_number(settings.line_numbers)
-                .indent_guides(settings.indent_guides)
-                .soft_wrap(settings.soft_wrap)
-                .tab_size(tab_size(&settings))
-                .default_value(document.text)
+    fn add_tab(&mut self, contents: Contents, window: &mut Window, cx: &mut Context<Self>) {
+        // Opened twice in a row, the second read ends after the first.
+        let open = contents.path.as_deref().and_then(|path| {
+            self.documents()
+                .position(|document| document.read(cx).path() == Some(path))
         });
-        let id = self.next_id;
-        self.next_id += 1;
-        let subscription = cx.subscribe(&editor, move |this, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                this.set_dirty(id, true, cx);
-            }
-        });
-        self.tabs.push(EditorTab {
-            id,
-            title: document.title,
-            path: document.path,
-            editor,
-            dirty: false,
-            _subscription: subscription,
-        });
-        self.activate(self.tabs.len() - 1, window, cx);
-    }
-
-    fn set_dirty(&mut self, id: u64, dirty: bool, cx: &mut Context<Self>) {
-        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id)
-            && tab.dirty != dirty
-        {
-            tab.dirty = dirty;
-            cx.notify();
+        if let Some(ix) = open {
+            self.activate(ix, window, cx);
+            return;
         }
+        let document = cx.new(|cx| Document::new(contents, window, cx));
+        let subscriptions = [
+            cx.observe(&document, |_, _, cx| cx.notify()),
+            cx.subscribe(&document, |_, _, _: &Saved, cx| cx.emit(Saved)),
+        ];
+        self.tabs.push(EditorTab {
+            id: self.next_id,
+            document,
+            _subscriptions: subscriptions,
+        });
+        self.next_id += 1;
+        self.activate(self.tabs.len() - 1, window, cx);
     }
 
     /// Ignores a stale index: a tab's close button also clicks the tab bar,
@@ -165,7 +159,8 @@ impl EditorPane {
         let Some(tab) = self.tabs.get(ix) else {
             return;
         };
-        tab.editor.update(cx, |editor, cx| editor.focus(window, cx));
+        tab.document
+            .update(cx, |document, cx| document.focus(window, cx));
         self.active = Some(ix);
         cx.notify();
     }
@@ -183,136 +178,121 @@ impl EditorPane {
     }
 
     pub fn save_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(tab) = self.active.map(|ix| &self.tabs[ix]) else {
-            return;
-        };
-        let Some(path) = tab.path.clone() else {
-            window.push_notification(Notification::warning("This document is read-only."), cx);
-            return;
-        };
-        let (id, text) = (tab.id, tab.editor.read(cx).value().to_string());
-        let write = cx.background_spawn(async move { std::fs::write(&path, text).map(|()| path) });
-        cx.spawn_in(window, async move |this, cx| {
-            let result = write.await;
-            let _ = this.update_in(cx, |this, window, cx| match result {
-                Ok(_) => this.set_dirty(id, false, cx),
-                Err(error) => {
-                    window.push_notification(
-                        Notification::error(format!("Save failed: {error}")),
-                        cx,
-                    );
-                }
-            });
-        })
-        .detach();
-    }
-
-    /// Closes the active tab, asking first when it has unsaved changes.
-    pub fn close_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(ix) = self.active else {
-            return;
-        };
-        if !self.tabs[ix].dirty {
-            self.remove_tab(self.tabs[ix].id, window, cx);
-            return;
-        }
-        let (id, title) = (self.tabs[ix].id, self.tabs[ix].title.clone());
-        let pane = cx.entity().downgrade();
-        window.open_alert_dialog(cx, move |alert, _, _| {
-            let pane = pane.clone();
-            alert
-                .title(format!("Discard changes to {title}?"))
-                .description("Your unsaved changes will be lost.")
-                .on_ok(move |_, window, cx| {
-                    let _ = pane.update(cx, |pane, cx| pane.remove_tab(id, window, cx));
-                    true
-                })
-        });
-    }
-
-    fn close_tab(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(ix) = self.tabs.iter().position(|t| t.id == id) {
-            self.active = Some(ix);
-            self.close_active(window, cx);
+        if let Some(document) = self.active_document() {
+            let save = document.update(cx, |document, cx| document.save(window, cx));
+            save.detach();
         }
     }
 
-    fn remove_tab(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(ix) = self.tabs.iter().position(|t| t.id == id) else {
-            return;
-        };
-        self.tabs.remove(ix);
-        if self.tabs.is_empty() {
-            self.active = None;
-            cx.notify();
-        } else {
-            self.activate(ix.min(self.tabs.len() - 1), window, cx);
+    pub fn toggle_changes(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(document) = self.active_document() {
+            document.update(cx, Document::toggle_changes);
+        }
+    }
+
+    /// Reads the open files again, as they may have changed on disk.
+    pub fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for document in self.documents() {
+            document.update(cx, |document, cx| document.refresh(window, cx));
+        }
+    }
+
+    /// Follows the files in `from` to `to`, which it was renamed to.
+    pub fn renamed(&mut self, from: &Path, to: &Path, cx: &mut Context<Self>) {
+        for document in self.documents() {
+            let path = document.read(cx).path();
+            if let Some(path) = path.and_then(|path| renamed_path(path, from, to)) {
+                document.update(cx, |document, cx| document.moved_to(path, cx));
+            }
+        }
+    }
+
+    /// Closes the files in `path`, which was deleted, but those with unsaved
+    /// changes.
+    pub fn deleted(&mut self, path: &Path, window: &mut Window, cx: &mut Context<Self>) {
+        let gone: Vec<Entity<Document>> = self
+            .documents()
+            .filter(|document| {
+                let document = document.read(cx);
+                let inside = document.path().is_some_and(|open| open.starts_with(path));
+                inside && !document.is_dirty()
+            })
+            .cloned()
+            .collect();
+        for document in gone {
+            self.remove(&document, window, cx);
         }
     }
 
     pub fn apply_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let settings = config::settings(cx).editor.clone();
-        for tab in &self.tabs {
-            tab.editor.update(cx, |editor, cx| {
-                editor.set_line_number(settings.line_numbers, window, cx);
-                editor.set_soft_wrap(settings.soft_wrap, window, cx);
-                editor.set_indent_guides(settings.indent_guides, window, cx);
-                editor.set_tab_size(tab_size(&settings), cx);
-            });
+        for document in self.documents() {
+            document.update(cx, |document, cx| document.apply_settings(window, cx));
         }
     }
 
     fn render_tabs(&self, cx: &mut Context<Self>) -> TabBar {
-        let tabs = self.tabs.iter().map(|tab| {
-            let id = tab.id;
-            let label = if tab.dirty {
-                format!("● {}", tab.title)
-            } else {
-                tab.title.to_string()
-            };
-            Tab::new().label(label).suffix(
-                Button::new(("close-editor-tab", id))
-                    .icon(IconName::Close)
-                    .ghost()
-                    .xsmall()
-                    .on_click(
-                        cx.listener(move |this, _, window, cx| this.close_tab(id, window, cx)),
-                    ),
-            )
-        });
+        let tabs: Vec<Tab> = self.tabs.iter().map(|tab| render_tab(tab, cx)).collect();
         TabBar::new("editor-tabs")
             .when_some(self.active, TabBar::selected_index)
             .on_click(cx.listener(|this, ix: &usize, window, cx| this.activate(*ix, window, cx)))
             .children(tabs)
+            .suffix(self.changes_button(cx))
     }
-}
 
-fn tab_size(settings: &EditorSettings) -> TabSize {
-    TabSize {
-        tab_size: usize::from(settings.tab_size),
-        hard_tabs: false,
-    }
-}
-
-fn file_title(path: &Path) -> SharedString {
-    path.file_name()
-        .map_or_else(
-            || path.display().to_string(),
-            |n| n.to_string_lossy().into_owned(),
+    fn changes_button(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let document = self.active_document().map(|document| document.read(cx));
+        let changed = document.is_some_and(Document::is_changed);
+        let shown = document.is_some_and(Document::shows_changes);
+        let tooltip = match (changed, shown) {
+            (false, _) => "No changes since the last commit",
+            (true, false) => "Show changes since the last commit",
+            (true, true) => "Show the file",
+        };
+        h_flex().px_2().child(
+            Button::new("editor-toggle-changes")
+                .ghost()
+                .small()
+                .icon(Lucide::FileDiff)
+                .selected(shown)
+                .disabled(!changed)
+                .tooltip(tooltip)
+                .on_click(cx.listener(|this, _, window, cx| this.toggle_changes(window, cx))),
         )
-        .into()
+    }
 }
 
-fn read_text(path: &Path) -> anyhow::Result<String> {
-    let size = std::fs::metadata(path).context("cannot read file")?.len();
-    if size > MAX_FILE_BYTES {
-        anyhow::bail!("file is larger than {} MB", MAX_FILE_BYTES / 1024 / 1024);
+/// Where `path` is after `from`, it or a folder above it, became `to`.
+fn renamed_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
+    let inside = path.strip_prefix(from).ok()?;
+    // Joining nothing would end the path with a slash.
+    if inside.as_os_str().is_empty() {
+        return Some(to.to_path_buf());
     }
-    let bytes = std::fs::read(path).context("cannot read file")?;
-    if bytes.iter().take(BINARY_SNIFF_BYTES).any(|b| *b == 0) {
-        anyhow::bail!("binary file");
-    }
-    String::from_utf8(bytes).context("file is not UTF-8 text")
+    Some(to.join(inside))
+}
+
+fn render_tab(tab: &EditorTab, cx: &Context<EditorPane>) -> Tab {
+    let read = tab.document.read(cx);
+    let title: SharedString = if read.is_dirty() {
+        format!("● {}", read.title()).into()
+    } else {
+        read.title().clone()
+    };
+    let icon = file_icon::file(read.title(), cx);
+    let closed = tab.document.clone();
+    Tab::new()
+        .label(title)
+        .prefix(div().pl_2().child(icon))
+        .suffix(
+            Button::new(("close-editor-tab", tab.id))
+                .icon(IconName::Close)
+                .ghost()
+                .xsmall()
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.close(&closed, window, cx);
+                })),
+        )
 }
 
 impl Focusable for EditorPane {
@@ -323,15 +303,8 @@ impl Focusable for EditorPane {
 
 impl Render for EditorPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let body = match self.active.map(|ix| &self.tabs[ix]) {
-            Some(tab) => Editor::new(&tab.editor)
-                .readonly(tab.path.is_none())
-                .bordered(false)
-                .size_full()
-                .aria_label(format!("Editor {}", tab.title))
-                .font_family(cx.theme().mono_font_family.clone())
-                .text_size(cx.theme().mono_font_size)
-                .into_any_element(),
+        let body = match self.active_document() {
+            Some(document) => document.clone().into_any_element(),
             None => v_flex()
                 .size_full()
                 .items_center()
@@ -349,6 +322,6 @@ impl Render for EditorPane {
             .when(!self.tabs.is_empty(), |this| {
                 this.child(self.render_tabs(cx))
             })
-            .child(gpui_kit::div().flex_1().min_h_0().child(body))
+            .child(div().flex_1().min_h_0().child(body))
     }
 }

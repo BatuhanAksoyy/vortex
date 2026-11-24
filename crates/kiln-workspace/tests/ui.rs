@@ -2,97 +2,17 @@
 
 // Inside a `cfg(test)` module so helpers may `expect`, like unit tests.
 #[cfg(test)]
+#[path = "common/project.rs"]
+mod project;
+
+#[cfg(test)]
 mod workspace {
-    use std::path::PathBuf;
     use std::time::Duration;
 
     use gpui_kit::test::{TestAppContextExt, TestQueryExt, TestWindowExt};
-    use gpui_kit::{
-        AppContext, Bounds, Entity, TestAppContext, WindowBounds, WindowHandle, WindowOptions, px,
-        size,
-    };
-    use kiln_workspace::Workspace;
+    use gpui_kit::{AppContext as _, TestAppContext, px};
 
-    /// The chat starts its agent when it opens; these tests need none.
-    struct NoAgent;
-
-    impl kiln_agent::AgentBackend for NoAgent {
-        fn spawn(&self, _: kiln_agent::SessionSpec) -> anyhow::Result<kiln_agent::Session> {
-            anyhow::bail!("no agent in workspace tests")
-        }
-
-        fn sign_in(&self, _: Vec<(String, String)>) -> anyhow::Result<kiln_agent::SignIn> {
-            anyhow::bail!("no agent in workspace tests")
-        }
-
-        fn past_sessions(
-            &self,
-            _: &std::path::Path,
-        ) -> kiln_agent::Pending<Vec<kiln_agent::PastSession>> {
-            Box::pin(async { Ok(Vec::new()) })
-        }
-
-        fn past_messages(
-            &self,
-            _: &std::path::Path,
-            _: &str,
-        ) -> kiln_agent::Pending<Vec<kiln_agent::PastMessage>> {
-            Box::pin(async { anyhow::bail!("no stored conversations in workspace tests") })
-        }
-    }
-
-    /// Workspace tests add no account, so the list is never written.
-    fn no_accounts(cx: &mut gpui_kit::App) -> Entity<kiln_accounts::Accounts> {
-        let dir = std::env::temp_dir().join("kiln-workspace-tests");
-        cx.new(|_| kiln_accounts::Accounts::empty(dir))
-    }
-
-    fn open_workspace(
-        cx: &mut TestAppContext,
-        root: PathBuf,
-    ) -> (WindowHandle<gpui_kit::base::Root>, Entity<Workspace>) {
-        cx.update(gpui_kit::init);
-        cx.update(kiln_workspace::init);
-        let (window, workspace) = cx.update(|cx| {
-            gpui_kit::open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-                        gpui_kit::Point::default(),
-                        size(px(1280.), px(800.)),
-                    ))),
-                    ..Default::default()
-                },
-                cx,
-                |window, cx| {
-                    let backend = std::rc::Rc::new(NoAgent);
-                    let accounts = no_accounts(cx);
-                    cx.new(|cx| Workspace::new(root, backend, accounts, window, cx))
-                },
-            )
-            .expect("open test window")
-        });
-        cx.run_until_parked();
-        (window.downcast().expect("kit window has a Root"), workspace)
-    }
-
-    /// The production keymap binds `cmd` on macOS where it binds `ctrl`
-    /// elsewhere.
-    fn primary(key: &str) -> String {
-        let modifier = if cfg!(target_os = "macos") {
-            "cmd"
-        } else {
-            "ctrl"
-        };
-        format!("{modifier}-{key}")
-    }
-
-    fn project() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().expect("temp dir");
-        std::fs::create_dir_all(dir.path().join("src")).expect("mkdir");
-        std::fs::write(dir.path().join("src/main.rs"), "fn main() {}\n").expect("write");
-        std::fs::write(dir.path().join("README.md"), "# demo\n").expect("write");
-        dir
-    }
+    use super::project::*;
 
     #[gpui_kit::test]
     async fn ctrl_p_opens_quick_open_and_enter_opens_the_file(cx: &mut TestAppContext) {
@@ -133,26 +53,6 @@ mod workspace {
         );
     }
 
-    fn press(cx: &mut TestAppContext, window: gpui_kit::AnyWindowHandle, key: &str) {
-        cx.update_window(window, |_, window, cx| window.press(key, cx))
-            .expect("window");
-        cx.run_until_parked();
-    }
-
-    fn type_text(cx: &mut TestAppContext, window: gpui_kit::AnyWindowHandle, text: &str) {
-        cx.update_window(window, |_, window, cx| window.input(text, cx))
-            .expect("window");
-        cx.run_until_parked();
-    }
-
-    fn has(cx: &mut TestAppContext, window: gpui_kit::AnyWindowHandle, id: &'static str) -> bool {
-        cx.update_window(window, |_, window, cx| {
-            window.render_frame(cx);
-            window.try_find(id).is_some()
-        })
-        .expect("window")
-    }
-
     #[gpui_kit::test]
     fn command_palette_runs_the_selected_command(cx: &mut TestAppContext) {
         let dir = project();
@@ -188,10 +88,8 @@ mod workspace {
         .expect("window");
         cx.run_until_parked();
         assert_eq!(cx.update(|cx| workspace.read(cx).active_file(cx)), None);
-        assert!(
-            !has(cx, window, "editor-pane"),
-            "an empty pane only takes room from the chat"
-        );
+        assert!(!has(cx, window, "editor-pane"));
+        assert!(has(cx, window, "files-empty"), "the page says what to do");
     }
 
     #[gpui_kit::test]
@@ -221,5 +119,150 @@ mod workspace {
         assert_eq!(active(cx), None);
         let saved = std::fs::read_to_string(root.join("README.md")).expect("read");
         assert!(saved.contains("edit"), "{saved}");
+    }
+
+    #[gpui_kit::test]
+    fn the_activity_bar_shows_one_page_over_the_window(cx: &mut TestAppContext) {
+        let dir = project();
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        assert!(has(cx, window, "chat"));
+        click(cx, window, "activity-files");
+        assert!(has(cx, window, "files-tree"));
+        assert!(!has(cx, window, "chat"), "the chats make room");
+        click(cx, window, "activity-git");
+        assert!(has(cx, window, "git-page"));
+        assert!(!has(cx, window, "files-tree"));
+        click(cx, window, "activity-chat");
+        assert!(has(cx, window, "chat"));
+        assert!(!has(cx, window, "git-page"));
+    }
+
+    #[gpui_kit::test]
+    fn the_file_tree_opens_a_file(cx: &mut TestAppContext) {
+        let dir = project();
+        let root = std::fs::canonicalize(dir.path()).expect("canonical root");
+        let (window, workspace) = open_workspace(cx, root.clone());
+        let window = window.into();
+        press(cx, window, &primary("shift-e"));
+        assert!(has(cx, window, "files-empty"));
+        click_label(cx, window, "src");
+        click_label(cx, window, "main.rs");
+        let active = cx.update(|cx| workspace.read(cx).active_file(cx));
+        assert_eq!(active, Some(root.join("src/main.rs")));
+        assert!(!has(cx, window, "files-empty"));
+    }
+
+    #[gpui_kit::test]
+    async fn the_git_page_lists_changes_and_shows_their_diff(cx: &mut TestAppContext) {
+        let dir = project();
+        let root = dir.path();
+        git(root, &["init", "-q", "-b", "main"]);
+        git(root, &["add", "."]);
+        git(root, &["commit", "-q", "-m", "start"]);
+        std::fs::write(root.join("README.md"), "# changed\n").expect("write");
+        std::fs::write(root.join("notes.txt"), "new\n").expect("write");
+        let (window, _) = open_workspace(cx, root.to_path_buf());
+        let window = window.into();
+
+        click(cx, window, "activity-git");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("git-diff").is_some()
+        })
+        .await;
+        assert!(has(cx, window, "git-change-unstaged-README.md"));
+        assert!(has(cx, window, "git-change-untracked-notes.txt"));
+        let branch = cx
+            .update_window(window, |_, window, cx| {
+                window.render_frame(cx);
+                window.try_find_by_label("main").is_some()
+            })
+            .expect("window");
+        assert!(branch, "the branch is shown");
+        click(cx, window, "git-change-untracked-notes.txt");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("git-diff").is_some()
+        })
+        .await;
+    }
+
+    #[gpui_kit::test]
+    async fn the_git_page_is_walked_by_keyboard_into_a_file(cx: &mut TestAppContext) {
+        let dir = changed_project();
+        let root = std::fs::canonicalize(dir.path()).expect("canonical root");
+        let (window, workspace) = open_workspace(cx, root.clone());
+        let window = window.into();
+        click(cx, window, "activity-git");
+        let second = "src/main.rs: Modified";
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find_by_label("README.md: Modified").is_some()
+        })
+        .await;
+        click(cx, window, "git-section-unstaged");
+        assert!(!has(cx, window, "git-change-unstaged-README.md"), "folded");
+        click(cx, window, "git-section-unstaged");
+        press(cx, window, "down");
+        cx.wait_for(window, Duration::from_secs(5), move |window, _| {
+            window.try_find_by_label(second).is_some()
+        })
+        .await;
+        press(cx, window, "enter");
+        let active = cx.update(|cx| workspace.read(cx).active_file(cx));
+        assert_eq!(active, Some(root.join("src/main.rs")));
+        assert!(has(cx, window, "files-tree"));
+    }
+
+    #[gpui_kit::test]
+    async fn the_file_tree_marks_changes(cx: &mut TestAppContext) {
+        let dir = changed_project();
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        click(cx, window, "activity-files");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("file-mark-README.md").is_some()
+        })
+        .await;
+        assert!(has(cx, window, "file-mark-src"));
+        click_label(cx, window, "src");
+        assert!(has(cx, window, "file-mark-src/main.rs"));
+        // Listing the files again keeps the folder open.
+        std::fs::write(dir.path().join("new.txt"), "new\n").expect("write");
+        click(cx, window, "files-refresh");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("file-mark-new.txt").is_some()
+        })
+        .await;
+        assert!(has(cx, window, "file-mark-src/main.rs"));
+    }
+
+    #[gpui_kit::test]
+    async fn the_git_page_says_when_there_is_no_repository(cx: &mut TestAppContext) {
+        let dir = project();
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        click(cx, window, "activity-git");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window
+                .try_find_by_label("This folder is not in a git repository.")
+                .is_some()
+        })
+        .await;
+    }
+
+    #[gpui_kit::test]
+    fn the_left_panel_is_hidden_and_the_open_page_folds_its_list(cx: &mut TestAppContext) {
+        let dir = project();
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        click(cx, window, "activity-files");
+        click(cx, window, "activity-files");
+        assert!(!has(cx, window, "files-tree"), "folded");
+        assert!(has(cx, window, "files-empty"));
+        click(cx, window, "activity-files");
+        assert!(has(cx, window, "files-tree"));
+        press(cx, window, &primary("b"));
+        assert!(!has(cx, window, "activity-bar"));
+        click(cx, window, "toggle-left-panel");
+        assert!(has(cx, window, "activity-bar"));
     }
 }

@@ -261,4 +261,50 @@ mod chat {
             .as_ref()
             .and_then(|spec| spec.resume.clone())
     }
+
+    #[gpui_kit::test]
+    fn a_tools_file_opens_in_the_editor_and_its_row_stays_shut(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "read it");
+        harness.emit(
+            cx,
+            AgentEvent::ToolCall(ToolCall {
+                id: "tool-1".into(),
+                parent: None,
+                name: "Read".into(),
+                input: json!({ "file_path": "/work/src/main.rs" }),
+            }),
+        );
+        harness.emit(
+            cx,
+            AgentEvent::ToolResult {
+                id: "tool-1".into(),
+                output: "fn main() {}".into(),
+                pictures: Vec::new(),
+                is_error: false,
+            },
+        );
+        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let seen = opened.clone();
+        let view = harness.view.clone();
+        cx.update(|cx| {
+            cx.subscribe(&view, move |_, event: &kiln_chat::ChatEvent, _| {
+                if let kiln_chat::ChatEvent::OpenFile(path) = event {
+                    seen.borrow_mut().push(path.clone());
+                }
+            })
+            .detach();
+        });
+        harness.with_window(cx, |window, cx| window.click(("tool-file", 2_u64), cx));
+        assert_eq!(
+            *opened.borrow(),
+            [std::path::PathBuf::from("/work/src/main.rs")]
+        );
+        assert!(
+            !harness.with_window(cx, |window, _| window
+                .try_find(("tool-output", 2_u64))
+                .is_some()),
+            "the click opens the file, not the row"
+        );
+    }
 }

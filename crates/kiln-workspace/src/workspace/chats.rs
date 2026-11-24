@@ -57,8 +57,8 @@ impl Workspace {
             cx.subscribe_in(&panel, window, |this, panel, event, window, cx| {
                 this.on_chat_panel(panel, event, window, cx);
             }),
-            cx.subscribe(&chat, |this, _, event: &ChatEvent, cx| {
-                this.on_chat(*event, cx);
+            cx.subscribe_in(&chat, window, |this, _, event: &ChatEvent, window, cx| {
+                this.on_chat(event, window, cx);
             }),
         ];
         self.chats.push(ChatTab {
@@ -269,14 +269,17 @@ impl Workspace {
         self.sync_running(cx);
     }
 
-    fn on_chat(&mut self, event: ChatEvent, cx: &mut Context<Self>) {
+    fn on_chat(&mut self, event: &ChatEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.sync_running(cx);
         match event {
             ChatEvent::SessionChanged => {
+                // Its turn ended, or it shows another conversation.
+                self.refresh_project(window, cx);
                 self.reload_sessions(cx);
                 self.save_layout(cx);
             }
             ChatEvent::AccountChanged | ChatEvent::ChoicesChanged => self.save_layout(cx),
+            ChatEvent::OpenFile(path) => self.open_absolute(path.clone(), window, cx),
             ChatEvent::TurnStarted | ChatEvent::PickConversation => {}
         }
     }

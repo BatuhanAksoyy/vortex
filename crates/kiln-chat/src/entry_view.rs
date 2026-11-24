@@ -9,6 +9,7 @@ use gpui_kit::{
     component::{
         ActiveTheme, Icon, IconName, Sizable, h_flex,
         text::{TextView, TextViewState},
+        tooltip::Tooltip,
         v_flex,
     },
     div, px, relative,
@@ -246,11 +247,18 @@ fn tool(
         )
         .child(
             div()
+                .id(("tool-file", context.id))
+                .test_support()
                 .min_w_0()
                 .truncate()
                 .font_family(theme.mono_font_family.clone())
                 .text_sm()
-                .child(tool_format::detail(&call.input, context.root)),
+                .child(tool_format::detail(&call.input, context.root))
+                .when_some(tool_format::file_path(&call.input), |this, path| {
+                    this.hover(gpui_kit::StyleRefinement::underline)
+                        .tooltip(|window, cx| Tooltip::new("Open in Files").build(window, cx))
+                        .on_click(open_file(path.to_owned(), context))
+                }),
         );
     let pictures = result
         .filter(|result| !result.pictures.is_empty())
@@ -344,6 +352,18 @@ pub fn sub_line(text: &str, is_error: bool, cx: &App) -> AnyElement {
         .text_color(color)
         .child(format!("└ {first}"))
         .into_any_element()
+}
+
+fn open_file(
+    path: String,
+    context: &EntryContext,
+) -> impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut App) + 'static {
+    let view = context.view.clone();
+    move |_, _, cx| {
+        // The row's own click expands it; this one only opens the file.
+        cx.stop_propagation();
+        let _ = view.update(cx, |view, cx| view.open_file(&path, cx));
+    }
 }
 
 pub fn toggle(

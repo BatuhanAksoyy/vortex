@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 ignore.workspace = true
+trash.workspace = true
 nucleo-matcher.workspace = true
 
 [dev-dependencies]

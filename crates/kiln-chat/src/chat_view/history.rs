@@ -7,7 +7,7 @@ use super::ChatView;
 use crate::transcript::{Status, Transcript};
 
 /// What the window's history list follows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChatEvent {
     /// Another conversation is shown, or the shown one was saved again.
     SessionChanged,
@@ -22,6 +22,8 @@ pub enum ChatEvent {
     /// The conversation's name was clicked: the user wants to switch to
     /// another conversation.
     PickConversation,
+    /// A file a tool worked on was clicked, to be shown in the editor.
+    OpenFile(std::path::PathBuf),
 }
 
 impl EventEmitter<ChatEvent> for ChatView {}
@@ -49,6 +51,11 @@ impl ChatView {
     #[must_use]
     pub fn process_id(&self) -> Option<u32> {
         self.session.as_ref()?.pid
+    }
+
+    /// Asks for `path`, as a tool call names it, to be shown in the editor.
+    pub fn open_file(&mut self, path: &str, cx: &mut Context<Self>) {
+        cx.emit(ChatEvent::OpenFile(self.cwd.join(path)));
     }
 
     /// The conversation's name: the one it is stored under, or before it

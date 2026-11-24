@@ -79,7 +79,7 @@ mod history {
         let view = harness.view.clone();
         cx.update(|cx| {
             cx.subscribe(&view, move |_, event: &ChatEvent, _| {
-                seen.borrow_mut().push(*event);
+                seen.borrow_mut().push(event.clone());
             })
             .detach();
         });
