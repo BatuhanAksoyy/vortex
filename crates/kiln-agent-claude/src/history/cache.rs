@@ -33,7 +33,7 @@ struct StoredMessage {
 /// The last request of conversation `id` and when its reply was written.
 /// Subagents' requests are cached apart and skipped.
 pub fn last_prompt_tokens(dirs: &[PathBuf], id: &str) -> Option<(PromptTokens, SystemTime)> {
-    let text = super::stored(dirs, id).ok()?;
+    let (_, text) = super::stored(dirs, id).ok()?;
     text.lines().rev().find_map(last_request)
 }
 

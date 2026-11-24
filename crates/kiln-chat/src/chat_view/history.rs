@@ -39,6 +39,12 @@ impl ChatView {
         self.conversation.as_ref().map(|stored| stored.id.as_str())
     }
 
+    /// The agent's process while it runs, to see what runs under it.
+    #[must_use]
+    pub fn process_id(&self) -> Option<u32> {
+        self.session.as_ref()?.pid
+    }
+
     /// The conversation's name, once something was said.
     #[must_use]
     pub fn title(&self) -> Option<&str> {

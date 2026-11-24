@@ -235,3 +235,151 @@ fn pictures_sent_with_a_message_and_read_by_a_tool_come_back() {
     assert_eq!(message.pictures[0].media_type, "image/png");
     assert!(message.pictures[0].data.starts_with(b"\x89PNG"));
 }
+
+/// A conversation whose subagent was sent a second task with `SendMessage`
+/// (capture.py followup), and the files the CLI stored for the subagent.
+const FOLLOWUP: &str = include_str!("../../tests/fixtures/followup-session.jsonl");
+const AGENT_ID: &str = "a84f85d1bb03e9c2c";
+const AGENT: &str = include_str!("../../tests/fixtures/followup-agent-a84f85d1bb03e9c2c.jsonl");
+const AGENT_META: &str =
+    include_str!("../../tests/fixtures/followup-agent-a84f85d1bb03e9c2c.meta.json");
+
+fn followup() -> Vec<PastMessage> {
+    reopened(FOLLOWUP, &[(AGENT_ID, AGENT_META, AGENT)])
+}
+
+/// Conversation `s-1` reopened from `session` and the files of `agents`,
+/// each its id, `.meta.json` and conversation, laid out as the CLI does.
+fn reopened(session: &str, agents: &[(&str, &str, &str)]) -> Vec<PastMessage> {
+    let dir = tempfile::tempdir().unwrap();
+    let stored = dir.path().join("s-1").join("subagents");
+    std::fs::create_dir_all(&stored).unwrap();
+    std::fs::write(dir.path().join("s-1.jsonl"), session).unwrap();
+    for (id, meta, text) in agents {
+        std::fs::write(stored.join(format!("agent-{id}.meta.json")), meta).unwrap();
+        std::fs::write(stored.join(format!("agent-{id}.jsonl")), text).unwrap();
+    }
+    read(&[dir.path().to_owned()], "s-1").unwrap()
+}
+
+/// How each subagent's card ends, by the call that started it.
+fn ends(messages: &[PastMessage]) -> Vec<(String, kiln_agent::SubagentEnd, String)> {
+    messages
+        .iter()
+        .filter_map(|message| match message {
+            PastMessage::Agent(AgentEvent::Subagent(kiln_agent::SubagentEvent {
+                call,
+                change: kiln_agent::SubagentChange::Finished { end, summary, .. },
+            })) => Some((call.clone(), *end, summary.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_stored_subagent_fills_its_card_in_the_order_it_ran() {
+    use kiln_agent::{SubagentChange, SubagentEvent};
+    let messages = followup();
+    let position = |wanted: &dyn Fn(&AgentEvent) -> bool| {
+        messages
+            .iter()
+            .position(|message| matches!(message, PastMessage::Agent(event) if wanted(event)))
+            .unwrap()
+    };
+    let agent = "toolu_01KeBu2QBL3ymTYqfr3kSWKy";
+    let change = |of: &AgentEvent| match of {
+        AgentEvent::Subagent(SubagentEvent { call, change }) => {
+            assert_eq!(call, agent);
+            Some(change.clone())
+        }
+        _ => None,
+    };
+    let started = position(
+        &|event| matches!(change(event), Some(SubagentChange::Started { description, .. }) if description == "Read the note"),
+    );
+    let read = position(
+        &|event| matches!(event, AgentEvent::ToolCall(call) if call.name == "Read" && call.parent.as_deref() == Some(agent)),
+    );
+    let lantern = position(
+        &|event| matches!(change(event), Some(SubagentChange::Finished { summary, .. }) if summary == "lantern"),
+    );
+    let send = position(
+        &|event| matches!(event, AgentEvent::ToolCall(call) if call.name == "SendMessage"),
+    );
+    let resumed = position(&|event| {
+        change(event)
+            == Some(SubagentChange::Resumed {
+                message: "Reply with the second word of note.txt.".into(),
+            })
+    });
+    let moth = position(&|event| change(event) == Some(SubagentChange::Text("moth".into())));
+    let report = position(
+        &|event| matches!(change(event), Some(SubagentChange::Finished { summary, usage: Some(_), .. }) if summary == "moth"),
+    );
+    assert!(started < read && read < lantern, "{messages:#?}");
+    assert!(lantern < send && send < resumed && resumed < moth && moth < report);
+    assert!(
+        texts(&messages)
+            .iter()
+            .all(|text| !text.contains("task-notification")),
+        "reports are not shown as messages"
+    );
+}
+
+#[test]
+fn stored_subagent_fixtures_hold_no_personal_data() {
+    for text in [FOLLOWUP, AGENT, AGENT_META] {
+        for needle in ["/home/", "/Users/", "/tmp/", "@"] {
+            assert!(!text.contains(needle), "contains {needle:?}");
+        }
+    }
+}
+
+/// Two subagents started in one turn. The first reported while the turn
+/// still ran, so its report is stored as a queued command; the second
+/// stored no report at all.
+const QUEUED: &str = r#"{"type":"user","uuid":"u1","parentUuid":null,"message":{"role":"user","content":"go"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"content":[{"type":"tool_use","id":"call-1","name":"Agent","input":{}},{"type":"tool_use","id":"call-2","name":"Agent","input":{}}]}}
+{"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":"launched"},{"type":"tool_result","tool_use_id":"call-2","content":"launched"}]}}
+{"type":"attachment","uuid":"q1","parentUuid":"r1","attachment":{"type":"queued_command","prompt":"<task-notification>\n<task-id>agent1</task-id>\n<tool-use-id>call-1</tool-use-id>\n<status>completed</status>\n<summary>Agent \"One\" finished</summary>\n<result>lantern</result>\n</task-notification>"}}
+{"type":"assistant","uuid":"a2","parentUuid":"q1","message":{"content":[{"type":"text","text":"done"}]}}
+"#;
+const AGENT_TEXT: &str = r#"{"type":"assistant","isSidechain":true,"message":{"model":"claude-haiku-5-5","content":[{"type":"text","text":"moth"}]}}"#;
+
+#[test]
+fn a_report_queued_during_a_turn_ends_its_card() {
+    use kiln_agent::SubagentEnd;
+    let one = r#"{"agentType":"general-purpose","description":"One","toolUseId":"call-1","finished":true}"#;
+    let two = r#"{"agentType":"general-purpose","description":"Two","toolUseId":"call-2","finished":true}"#;
+    let messages = reopened(
+        QUEUED,
+        &[("agent1", one, AGENT_TEXT), ("agent2", two, AGENT_TEXT)],
+    );
+    let mut ends = ends(&messages);
+    ends.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(
+        ends,
+        [
+            ("call-1".into(), SubagentEnd::Completed, "lantern".into()),
+            ("call-2".into(), SubagentEnd::Completed, "moth".into()),
+        ],
+        "the second, marked finished, reports its last text"
+    );
+    assert_eq!(
+        texts(&messages),
+        ["go", "done"],
+        "no report shows as a message"
+    );
+}
+
+#[test]
+fn a_subagent_that_never_finished_shows_stopped() {
+    use kiln_agent::SubagentEnd;
+    let two = r#"{"agentType":"general-purpose","description":"Two","toolUseId":"call-2"}"#;
+    let messages = reopened(QUEUED, &[("agent2", two, AGENT_TEXT)]);
+    let stopped = ends(&messages)
+        .into_iter()
+        .find(|(call, ..)| call == "call-2")
+        .unwrap();
+    assert_eq!(stopped.1, SubagentEnd::Stopped);
+}

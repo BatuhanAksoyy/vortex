@@ -25,6 +25,7 @@ mod resume {
     fn run(resume: Option<String>) -> Vec<AgentEvent> {
         let backend = ClaudeBackend::new(env!("CARGO_BIN_EXE_fake-claude"));
         let kiln_agent::Session {
+            pid: _,
             events,
             commands,
             driver,

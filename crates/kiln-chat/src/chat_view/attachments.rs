@@ -129,7 +129,7 @@ impl ChatView {
     pub(super) fn attach_button(cx: &Context<Self>) -> impl IntoElement + use<> {
         Button::new("chat-attach")
             .ghost()
-            .xsmall()
+            .small()
             .icon(Icon::new(gpui_kit::assets::IconName::Paperclip))
             .tooltip("Attach files or pictures")
             .on_click(cx.listener(|_, _, window, cx| Self::pick_files(window, cx)))

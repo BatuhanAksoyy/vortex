@@ -46,6 +46,7 @@ impl AgentBackend for FakeBackend {
         script.spawned += 1;
         script.last_spec = Some(spec);
         Ok(Session {
+            pid: None,
             events,
             commands,
             driver: Box::pin(async {}),

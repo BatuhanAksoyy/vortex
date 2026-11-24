@@ -45,6 +45,7 @@ impl AgentBackend for ScriptedBackend {
         let (commands, commands_rx) = async_channel::unbounded::<SessionCommand>();
         let script = script(self.prompt);
         Ok(Session {
+            pid: None,
             events,
             commands,
             driver: Box::pin(play(script, usage(self.limited), events_tx, commands_rx)),

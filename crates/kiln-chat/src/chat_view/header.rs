@@ -36,6 +36,7 @@ impl ChatView {
             .border_b_1()
             .border_color(theme.border)
             .child(div().flex_1().min_w_0().truncate().child(title))
+            .children(self.process_meter.clone())
             .child(self.account_button(cx))
             .child(usage_meter(
                 self.agent.usage(),

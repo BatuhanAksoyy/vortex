@@ -276,3 +276,107 @@ fn steps_without_a_card_stay_on_the_timeline() {
     transcript.apply(step("read", "Read"));
     assert_eq!(transcript.len(), 2);
 }
+
+#[test]
+fn a_resumed_subagent_runs_again_in_its_card() {
+    use kiln_agent::{SubagentChange, SubagentEnd};
+    let mut transcript = Transcript::default();
+    transcript.apply(AgentEvent::ToolCall(ToolCall {
+        id: "agent".into(),
+        parent: None,
+        name: "Agent".into(),
+        input: json!({}),
+    }));
+    transcript.apply(subagent(SubagentChange::Started {
+        description: "Read the note".into(),
+        kind: None,
+    }));
+    transcript.apply(subagent(SubagentChange::Finished {
+        end: SubagentEnd::Completed,
+        summary: "lantern".into(),
+        usage: None,
+    }));
+    transcript.apply(subagent(SubagentChange::Resumed {
+        message: "And the second word?".into(),
+    }));
+    let Some((_, Entry::Subagent { agent, .. })) = transcript.entry(0) else {
+        panic!("expected the card");
+    };
+    assert_eq!(
+        (agent.end, agent.summary.as_deref()),
+        (None, None),
+        "running"
+    );
+    assert_eq!(agent.steps, [Step::Message("And the second word?".into())]);
+    transcript.apply(subagent(SubagentChange::Finished {
+        end: SubagentEnd::Completed,
+        summary: "moth".into(),
+        usage: None,
+    }));
+    let Some((_, Entry::Subagent { agent, .. })) = transcript.entry(0) else {
+        panic!("expected the card");
+    };
+    assert_eq!(agent.summary.as_deref(), Some("moth"));
+}
+
+#[test]
+fn a_message_taken_back_from_behind_a_running_turn_leaves_it_interrupted() {
+    let mut transcript = Transcript::default();
+    transcript.push_user("count to 100".into());
+    transcript.apply(text(0, "1 2 3"));
+    transcript.push_user("and then stop".into());
+    assert_eq!(transcript.withdraw(), Some((2, "and then stop".into())));
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
+    assert!(
+        matches!(transcript.entry(2), Some((_, Entry::Notice { text, .. })) if text == "Interrupted"),
+        "the turn that answered was interrupted"
+    );
+}
+
+#[test]
+fn a_take_back_without_an_end_does_not_hide_the_next_interruption() {
+    let mut transcript = Transcript::default();
+    transcript.push_user("first".into());
+    transcript.withdraw();
+    // The interrupted turn's end never came; the next turn starts anew.
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Completed));
+    transcript.push_user("second".into());
+    transcript.apply(text(0, "working"));
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
+    assert!(matches!(
+        transcript.entry(2),
+        Some((_, Entry::Notice { .. }))
+    ));
+}
+
+#[test]
+fn an_interruption_stops_the_subagents_it_ran_in_the_foreground() {
+    use kiln_agent::{SubagentChange, SubagentEnd};
+    let mut transcript = Transcript::default();
+    transcript.push_user("go".into());
+    for (id, background) in [("agent", false), ("helper", true)] {
+        transcript.apply(AgentEvent::ToolCall(ToolCall {
+            id: id.into(),
+            parent: None,
+            name: "Agent".into(),
+            input: json!({ "run_in_background": background }),
+        }));
+        transcript.apply(AgentEvent::Subagent(kiln_agent::SubagentEvent {
+            call: id.into(),
+            change: SubagentChange::Started {
+                description: id.into(),
+                kind: None,
+            },
+        }));
+    }
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
+    let ends: Vec<_> = transcript.subagents().map(|card| card.agent.end).collect();
+    assert_eq!(ends, [Some(SubagentEnd::Stopped), None]);
+    transcript.apply(AgentEvent::Exited { error: None });
+    assert!(
+        transcript
+            .subagents()
+            .all(|card| card.agent.end == Some(SubagentEnd::Stopped)),
+        "none runs on without the process"
+    );
+}

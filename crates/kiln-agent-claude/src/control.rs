@@ -22,6 +22,7 @@ pub enum Asked {
     Settings,
     Context,
     Usage,
+    Models,
     /// Read by the translator, which keeps the skills' other names.
     Skills,
     Hooks,
@@ -71,6 +72,12 @@ pub fn parse_effort(name: &str) -> Option<Effort> {
         "max" => Effort::Max,
         _ => return None,
     })
+}
+
+#[derive(Deserialize)]
+struct ModelList {
+    #[serde(default)]
+    models: Vec<WireModel>,
 }
 
 #[derive(Deserialize)]
@@ -180,6 +187,11 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
         }
         Asked::Hooks => crate::hooks::from_reply(response).map(AgentEvent::Hooks),
         Asked::Usage => crate::usage::from_reply(&response).map(AgentEvent::Usage),
+        Asked::Models => {
+            let list: ModelList = decode(response)?;
+            let models = list.models.into_iter().map(model_option).collect();
+            Some(AgentEvent::ModelsChanged(models))
+        }
         Asked::Context => {
             let context: WireContext = decode(response)?;
             Some(AgentEvent::ContextUsage(ContextUsage {

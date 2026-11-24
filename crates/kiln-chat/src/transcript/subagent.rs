@@ -42,6 +42,8 @@ pub enum Step {
         result: Option<ToolResult>,
     },
     Text(String),
+    /// A message it was sent after it started, which it runs again to answer.
+    Message(String),
 }
 
 impl Transcript {
@@ -59,6 +61,32 @@ impl Transcript {
                 }),
                 _ => None,
             })
+    }
+
+    /// Marks stopped the subagents a turn that was interrupted or failed
+    /// ran in the foreground: the CLI ends them with the turn but reports
+    /// no end. Ones sent to the background run on and report their own.
+    pub(super) fn stop_foreground_subagents(&mut self) {
+        self.stop_subagents(|call| {
+            call.input.get("run_in_background") != Some(&serde_json::Value::Bool(true))
+        });
+    }
+
+    /// Marks stopped every subagent still running, once the agent's process
+    /// is gone and none can report an end.
+    pub(super) fn stop_all_subagents(&mut self) {
+        self.stop_subagents(|_| true);
+    }
+
+    fn stop_subagents(&mut self, started_by: impl Fn(&ToolCall) -> bool) {
+        for (_, entry) in &mut self.entries {
+            if let Entry::Subagent { call, agent, .. } = entry
+                && agent.end.is_none()
+                && started_by(call)
+            {
+                agent.end = Some(SubagentEnd::Stopped);
+            }
+        }
     }
 
     pub(super) fn apply_subagent(&mut self, event: SubagentEvent) -> Change {
@@ -128,6 +156,12 @@ impl Subagent {
         match change {
             SubagentChange::Model(model) if self.model.is_none() => self.model = Some(model),
             SubagentChange::Request(tokens) => self.request = Some(tokens),
+            SubagentChange::Resumed { message } => {
+                self.steps.push(Step::Message(message));
+                self.end = None;
+                self.summary = None;
+                self.activity = None;
+            }
             SubagentChange::Progress { activity, usage } if self.end.is_none() => {
                 self.activity = Some(activity).filter(|activity| !activity.is_empty());
                 self.usage = Some(usage);

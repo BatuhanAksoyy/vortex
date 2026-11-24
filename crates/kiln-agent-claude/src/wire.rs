@@ -50,19 +50,23 @@ pub enum System {
     /// A background task started: a subagent, but also e.g. a backgrounded
     /// shell command.
     TaskStarted {
+        task_id: Option<String>,
         tool_use_id: Option<String>,
         #[serde(default)]
         description: String,
+        prompt: Option<String>,
         subagent_type: Option<String>,
         task_type: Option<String>,
     },
     TaskProgress {
+        task_id: Option<String>,
         tool_use_id: Option<String>,
         #[serde(default)]
         description: String,
         usage: TaskUsage,
     },
     TaskNotification {
+        task_id: Option<String>,
         tool_use_id: Option<String>,
         status: String,
         #[serde(default)]

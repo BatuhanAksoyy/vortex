@@ -24,6 +24,7 @@ pub struct Translator {
     next_request: u64,
     /// Each skill's other names, from the last skills reply.
     skill_handles: HashMap<String, Value>,
+    tasks: subagent::Tasks,
 }
 
 /// An open permission request: the tool input, echoed back on allow, and the
@@ -59,6 +60,7 @@ impl Translator {
             | SessionCommand::SetEffort(_) => self.change(command),
             SessionCommand::RefreshContext
             | SessionCommand::RefreshUsage
+            | SessionCommand::RefreshModels
             | SessionCommand::RefreshSkills
             | SessionCommand::RefreshHooks
             | SessionCommand::RefreshEffort => self.refresh(&command),
@@ -110,6 +112,10 @@ impl Translator {
                 let id = self.ask("usage", Asked::Usage);
                 Some(outgoing::get_usage(&id))
             }
+            SessionCommand::RefreshModels => {
+                let id = self.ask("models", Asked::Models);
+                Some(outgoing::list_models(&id))
+            }
             SessionCommand::RefreshSkills => {
                 let id = self.ask("skills", Asked::Skills);
                 Some(outgoing::get_skills_dialog(&id))
@@ -152,7 +158,7 @@ impl Translator {
 
     fn on_decoded(&mut self, line: Line) -> Vec<AgentEvent> {
         match line {
-            Line::System(system) => system::events(system),
+            Line::System(system) => system::events(system, &mut self.tasks),
             Line::StreamEvent(event) => stream::event(event).into_iter().collect(),
             Line::Assistant(message) => assistant_events(message),
             Line::User(message) => tool_results(message),
@@ -262,16 +268,22 @@ fn assistant_events(message: wire::Assistant) -> Vec<AgentEvent> {
 }
 
 fn tool_calls(message: wire::Assistant) -> Vec<AgentEvent> {
-    let parent = message.parent_tool_use_id;
-    message
-        .message
-        .content
+    calls(
+        message.message.content,
+        message.parent_tool_use_id.as_deref(),
+    )
+}
+
+/// The tool calls among `content`, made under `parent` if a subagent made
+/// them.
+pub(crate) fn calls(content: Vec<wire::AssistantBlock>, parent: Option<&str>) -> Vec<AgentEvent> {
+    content
         .into_iter()
         .filter_map(|block| match block {
             wire::AssistantBlock::ToolUse { id, name, input } => {
                 Some(AgentEvent::ToolCall(ToolCall {
                     id,
-                    parent: parent.clone(),
+                    parent: parent.map(str::to_owned),
                     name,
                     input,
                 }))
@@ -302,7 +314,7 @@ fn command_output(message: wire::Assistant) -> Vec<AgentEvent> {
         .collect()
 }
 
-fn tool_results(message: wire::User) -> Vec<AgentEvent> {
+pub(crate) fn tool_results(message: wire::User) -> Vec<AgentEvent> {
     let wire::UserContent::Blocks(blocks) = message.message.content else {
         return Vec::new();
     };

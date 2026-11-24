@@ -75,6 +75,8 @@ pub struct SignIn {
 /// A running session. The owner must poll `driver` (typically on a
 /// background executor); dropping `commands` ends the session.
 pub struct Session {
+    /// The agent's own process, when it runs as one.
+    pub pid: Option<u32>,
     pub events: async_channel::Receiver<AgentEvent>,
     pub commands: async_channel::Sender<SessionCommand>,
     pub driver: Pin<Box<dyn Future<Output = ()> + Send>>,
@@ -100,6 +102,8 @@ pub enum SessionCommand {
     RefreshContext,
     /// Asks for a fresh [`AgentEvent::Usage`].
     RefreshUsage,
+    /// Asks for a fresh [`AgentEvent::ModelsChanged`].
+    RefreshModels,
     /// Asks for a fresh [`AgentEvent::Skills`].
     RefreshSkills,
     /// Saves how the skill named `name` is offered; a fresh
@@ -326,6 +330,8 @@ pub enum AgentEvent {
     Ready(SessionInfo),
     /// The model in use changed; carries the concrete model id.
     ModelChanged(String),
+    /// The models the user can pick from, as the agent now lists them.
+    ModelsChanged(Vec<ModelOption>),
     ModeChanged(PermissionMode),
     /// The effort the next request runs with; `None` when the model takes
     /// none.

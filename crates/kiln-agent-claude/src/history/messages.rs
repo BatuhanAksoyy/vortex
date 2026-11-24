@@ -33,8 +33,22 @@ enum Stored {
         uuid: String,
         message: AssistantMessage,
     },
+    Attachment {
+        attachment: Attachment,
+    },
     #[serde(other)]
     Other,
+}
+
+/// A note the CLI adds to the conversation. A message that arrived while a
+/// turn ran is stored as a queued command, which is how a subagent's report
+/// is often stored.
+#[derive(Deserialize)]
+struct Attachment {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    prompt: Value,
 }
 
 #[derive(Deserialize)]
@@ -164,7 +178,14 @@ fn shown(line: Stored) -> Vec<PastMessage> {
             message,
         } => user_messages(message.content),
         Stored::Assistant { uuid, message } => assistant_messages(&uuid, message),
-        Stored::User { .. } | Stored::Other => Vec::new(),
+        Stored::Attachment { attachment } if attachment.kind == "queued_command" => attachment
+            .prompt
+            .as_str()
+            .filter(|prompt| prompt.starts_with("<task-notification>"))
+            .and_then(super::subagents::report)
+            .into_iter()
+            .collect(),
+        Stored::User { .. } | Stored::Attachment { .. } | Stored::Other => Vec::new(),
     }
 }
 
@@ -227,6 +248,9 @@ fn typed(text: &str) -> Option<PastMessage> {
             TurnOutcome::Interrupted,
         )));
     }
+    if text.starts_with("<task-notification>") {
+        return super::subagents::report(text);
+    }
     if let Some(name) = tagged(text, "command-name") {
         let command = match tagged(text, "command-args").filter(|args| !args.is_empty()) {
             Some(args) => format!("{name} {args}"),
@@ -255,7 +279,7 @@ fn unwrap_pastes(text: &str) -> String {
 }
 
 /// The trimmed text between `<tag>` and `</tag>`.
-fn tagged<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+pub(super) fn tagged<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
     let start = text.find(&format!("<{tag}>"))? + tag.len() + 2;
     let end = start + text[start..].find(&format!("</{tag}>"))?;
     Some(text[start..end].trim())

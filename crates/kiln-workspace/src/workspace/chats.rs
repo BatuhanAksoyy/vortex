@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use gpui_kit::{
-    AppContext as _, Context, Entity, Focusable as _, Subscription, Window,
+    AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Window,
     component::dock::{
         DockArea, DockLayout, DockPlacement, DockSkin, InsertTarget, NodeId, PanelId, PanelStyle,
         panel_handle,
@@ -152,6 +152,18 @@ impl Workspace {
             mode: chat.known_mode(),
             effort: chat.known_effort(),
         })
+    }
+
+    /// Each running agent's process, under its chat's name.
+    pub(super) fn agent_roots(&self, cx: &gpui_kit::App) -> Vec<(SharedString, u32)> {
+        self.chats
+            .iter()
+            .filter_map(|tab| {
+                let chat = tab.panel.read(cx).chat().read(cx);
+                let title = chat.title().unwrap_or("New session");
+                Some((SharedString::from(title.to_owned()), chat.process_id()?))
+            })
+            .collect()
     }
 
     fn chat_showing(&self, session_id: &str, cx: &gpui_kit::App) -> Option<Entity<ChatPanel>> {

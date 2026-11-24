@@ -51,7 +51,7 @@ impl ChatView {
         };
         let trigger = Button::new("chat-skills")
             .ghost()
-            .xsmall()
+            .small()
             .icon(Icon::new(gpui_kit::assets::IconName::Puzzle))
             .tooltip("Skills");
         let opener = view.clone();

@@ -16,6 +16,9 @@ pub enum SubagentChange {
         /// The kind of agent, e.g. `general-purpose`, when the agent names it.
         kind: Option<String>,
     },
+    /// It was sent `message` after it had ended or while it ran, and runs
+    /// again to answer it.
+    Resumed { message: String },
     /// The model a message of the subagent was written with.
     Model(String),
     /// Text the subagent wrote, whole.

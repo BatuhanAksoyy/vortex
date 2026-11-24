@@ -26,7 +26,7 @@ use crate::{
     transcript::Status,
 };
 
-const SEND_BUTTON_SIZE: f32 = 26.;
+const SEND_BUTTON_SIZE: f32 = 28.;
 const MENU_WIDTH: f32 = 280.;
 
 impl ChatView {
@@ -104,7 +104,7 @@ impl ChatView {
         let view = view.clone();
         Button::new("chat-mode")
             .ghost()
-            .xsmall()
+            .small()
             .icon(Icon::new(gpui_kit::assets::IconName::Pencil))
             .label(agent_state::mode_label(current))
             .tooltip("Change mode (Shift+Tab)")
@@ -125,7 +125,7 @@ impl ChatView {
         Some(
             Button::new("chat-model")
                 .ghost()
-                .xsmall()
+                .small()
                 .label(label)
                 .tooltip("Change model")
                 .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
@@ -149,7 +149,7 @@ impl ChatView {
         Some(
             Button::new("chat-effort")
                 .ghost()
-                .xsmall()
+                .small()
                 .icon(Icon::new(gpui_kit::assets::IconName::Gauge))
                 .label(agent_state::effort_label(current))
                 .tooltip("Change effort")

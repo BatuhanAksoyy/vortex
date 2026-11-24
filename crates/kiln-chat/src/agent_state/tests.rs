@@ -189,3 +189,25 @@ fn each_account_keeps_its_own_usage() {
     assert!(state.left_limit_at("a", now).is_none());
     assert!(state.left_limit_at("b", now).is_none());
 }
+
+#[test]
+fn a_fresh_model_list_replaces_the_one_the_agent_started_with() {
+    let mut state = AgentState::default();
+    state.apply(&ready());
+    state.apply(&AgentEvent::Started {
+        session_id: "s".into(),
+        model: "claude-opus-5-5".into(),
+    });
+    let ended = AgentEvent::TurnEnded(kiln_agent::TurnOutcome::Completed);
+    assert!(AgentState::refreshes_after(&ended).contains(&SessionCommand::RefreshModels));
+    assert!(
+        AgentState::refreshes_after(&ready()).contains(&SessionCommand::RefreshModels),
+        "the list it starts with is short"
+    );
+    state.apply(&AgentEvent::ModelsChanged(vec![
+        option("default", "claude-opus-5-5", "Default (recommended)"),
+        option("opus", "claude-opus-5-5", "Opus"),
+    ]));
+    assert_eq!(state.models().len(), 2);
+    assert_eq!(state.model_label().as_deref(), Some("Opus"));
+}

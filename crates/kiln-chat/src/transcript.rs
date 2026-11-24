@@ -78,6 +78,8 @@ pub struct Transcript {
     /// The last message was taken back before any reply, so the turn's end
     /// adds no "Interrupted" line under a message no longer shown.
     withdrawn: bool,
+    /// Whether the agent wrote or did anything since the turn began.
+    answered: bool,
 }
 
 impl Transcript {
@@ -127,7 +129,9 @@ impl Transcript {
         let Entry::User(message) = entry else {
             return None;
         };
-        self.withdrawn = true;
+        // Taken back from behind a turn that answered already, it leaves
+        // that turn to end as interrupted.
+        self.withdrawn = !self.answered;
         Some((self.entries.len(), message))
     }
 
@@ -171,6 +175,11 @@ impl Transcript {
     }
 
     pub fn push_user(&mut self, message: Message) -> Change {
+        // A message sent while a turn runs waits for it; it starts none.
+        if self.status != Status::Running {
+            self.withdrawn = false;
+            self.answered = false;
+        }
         self.status = Status::Running;
         self.push(Entry::User(message))
     }
@@ -196,7 +205,10 @@ impl Transcript {
             | AgentEvent::ThinkingDelta { .. }
             | AgentEvent::ToolCall(_)
             | AgentEvent::ToolResult { .. }
-            | AgentEvent::Subagent(_) => self.apply_step(event),
+            | AgentEvent::Subagent(_) => {
+                self.answered = true;
+                self.apply_step(event)
+            }
             AgentEvent::PermissionRequest(request) => {
                 self.pending.push(request);
                 Change::default()
@@ -315,6 +327,9 @@ impl Transcript {
         self.status = Status::Idle;
         self.pending.clear();
         let withdrawn = std::mem::take(&mut self.withdrawn);
+        if outcome != TurnOutcome::Completed {
+            self.stop_foreground_subagents();
+        }
         match outcome {
             TurnOutcome::Completed => Change::default(),
             TurnOutcome::Interrupted if withdrawn => Change::default(),
@@ -332,6 +347,7 @@ impl Transcript {
     fn exit(&mut self, error: Option<String>) -> Change {
         self.status = Status::Ended;
         self.pending.clear();
+        self.stop_all_subagents();
         let (text, is_error) = match error {
             Some(error) => (format!("Session ended: {error}"), true),
             None => ("Session ended".to_owned(), false),

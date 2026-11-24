@@ -157,6 +157,7 @@ impl Render for ChatView {
                     .child(bottom),
             )
             .children(self.render_agents(cx))
+            .children(self.render_processes(cx))
             .children(self.render_picture_viewer(window, cx))
     }
 }

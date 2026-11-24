@@ -16,6 +16,8 @@ const DETAIL_KEYS: &[&str] = &[
     "query",
     "description",
     "prompt",
+    // SendMessage: what the message asks.
+    "summary",
 ];
 
 /// The argument shown after the tool name, e.g. `npm test` for Bash. Paths
@@ -48,6 +50,8 @@ pub fn summary(tool: &str, output: &str) -> String {
     match tool {
         "Read" => format!("Read {}", plural(count, "line")),
         "Glob" => format!("Found {}", plural(count, "file")),
+        // The CLI answers with JSON meant for the model.
+        "SendMessage" if output.starts_with(r#"{"success":true"#) => "Sent".to_owned(),
         _ => output
             .lines()
             .map(str::trim)
@@ -153,6 +157,13 @@ mod tests {
         assert_eq!(summary("Glob", "a.rs"), "Found 1 file");
         assert_eq!(summary("Grep", "\nFound 3 files\nx"), "Found 3 files");
         assert_eq!(summary("Task", ""), "No output");
+        assert_eq!(
+            summary(
+                "SendMessage",
+                r#"{"success":true,"message":"Resuming agent a84f85d"}"#
+            ),
+            "Sent"
+        );
     }
 
     #[test]

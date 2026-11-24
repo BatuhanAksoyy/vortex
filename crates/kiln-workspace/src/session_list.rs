@@ -9,7 +9,8 @@ use std::{
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Context, EventEmitter, FontWeight, SharedString, Task, TestSupportExt, Window,
+    AnyElement, AnyView, App, Context, EventEmitter, FontWeight, SharedString, Task,
+    TestSupportExt, Window,
     component::{
         ActiveTheme, Icon, IconName, Sizable as _, button::Button, h_flex, tooltip::Tooltip, v_flex,
     },
@@ -37,11 +38,20 @@ pub struct SessionList {
     loaded: bool,
     error: Option<String>,
     load: Option<Task<()>>,
+    /// Shown at the bottom: what every agent's processes use.
+    footer: Option<AnyView>,
 }
 
 impl EventEmitter<SessionListEvent> for SessionList {}
 
 impl SessionList {
+    pub fn with_footer(footer: impl Into<AnyView>) -> Self {
+        Self {
+            footer: Some(footer.into()),
+            ..Self::default()
+        }
+    }
+
     pub fn set_current(
         &mut self,
         current: Option<String>,
@@ -280,6 +290,13 @@ impl Render for SessionList {
                     .overflow_y_scroll()
                     .children(rows),
             )
+            .children(self.footer.clone().map(|footer| {
+                h_flex()
+                    .pt_1()
+                    .border_t_1()
+                    .border_color(theme.border)
+                    .child(footer)
+            }))
     }
 }
 

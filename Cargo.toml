@@ -17,6 +17,7 @@ kiln-agent-claude = { path = "crates/kiln-agent-claude" }
 kiln-chat = { path = "crates/kiln-chat" }
 kiln-keymap = { path = "crates/kiln-keymap" }
 kiln-project = { path = "crates/kiln-project" }
+kiln-services = { path = "crates/kiln-services" }
 kiln-settings = { path = "crates/kiln-settings" }
 kiln-workspace = { path = "crates/kiln-workspace" }
 
@@ -36,6 +37,7 @@ nucleo-matcher = "0.3.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 serde_json_lenient = "0.2.4"
+sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }
 tempfile = "3"
 
 [workspace.lints.rust]

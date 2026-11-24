@@ -29,7 +29,7 @@ impl ChatView {
         let view = cx.entity().downgrade();
         let trigger = Button::new("chat-context")
             .ghost()
-            .xsmall()
+            .small()
             .label(format!("{percent}%"))
             .text_color(color)
             .tooltip("Context usage");

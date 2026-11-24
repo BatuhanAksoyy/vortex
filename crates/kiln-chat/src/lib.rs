@@ -9,6 +9,7 @@ mod hook_list;
 mod literal;
 mod permission_prompt;
 mod pictures;
+mod processes;
 mod prompt_cache;
 mod question_form;
 mod question_prompt;
@@ -21,4 +22,8 @@ mod transcript;
 
 pub use assets::Assets;
 pub use chat_view::{ChatEvent, ChatView};
+pub use processes::{
+    AgentProcesses, ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog,
+    ProcessesDialogEvent,
+};
 pub use transcript::Status;

@@ -9,7 +9,9 @@ identifiers with stable placeholders so replays are deterministic.
 
 A stored session file (capture.py history) is scrubbed line by line too: the
 API request records go, attachments keep only their type, which still links
-the conversation's chain, and messages keep what a reopened chat shows.
+the conversation's chain, and messages keep what a reopened chat shows. So
+is a stored subagent's conversation and its `.meta.json`, which keeps what
+ties it to the call that started it.
 """
 import getpass, json, re, sys
 
@@ -162,7 +164,7 @@ SESSION_DROP = {"api-request", "api-request-blob", "api-request-shape", "atis-la
 SESSION_KEEP = ("type", "subtype", "uuid", "parentUuid", "logicalParentUuid", "isSidechain",
                 "isMeta", "isCompactSummary", "sessionId", "timestamp", "message", "attachment",
                 "lastPrompt", "leafUuid", "operation", "content", "aiTitle", "customTitle",
-                "entrypoint", "version")
+                "entrypoint", "version", "agentId", "origin")
 MESSAGE_KEEP = ("id", "type", "role", "model", "content", "usage")
 
 
@@ -172,15 +174,27 @@ RUNNING_KEEP = ("pid", "sessionId", "cwd", "startedAt", "version", "kind", "entr
                 "status", "updatedAt")
 
 
+# A stored subagent's `.meta.json`.
+AGENT_META_KEEP = ("agentType", "description", "toolUseId", "finished")
+
+
 def session_line(line):
     """A stored session's line, or None to drop it."""
+    if "toolUseId" in line and "agentType" in line:
+        return {k: line[k] for k in AGENT_META_KEEP if k in line}
     if "pid" in line and "sessionId" in line:
         return {k: line[k] for k in RUNNING_KEEP if k in line}
     if line.get("type") in SESSION_DROP:
         return None
     kept = {k: line[k] for k in SESSION_KEEP if k in line}
     if isinstance(kept.get("attachment"), dict):
-        kept["attachment"] = {"type": kept["attachment"].get("type")}
+        attachment = kept["attachment"]
+        kept["attachment"] = {"type": attachment.get("type")}
+        # A report that arrived while a turn ran.
+        prompt = attachment.get("prompt")
+        if attachment.get("type") == "queued_command" and isinstance(prompt, str) \
+                and prompt.startswith("<task-notification>"):
+            kept["attachment"]["prompt"] = prompt
     if isinstance(kept.get("message"), dict):
         kept["message"] = {k: kept["message"][k] for k in MESSAGE_KEEP if k in kept["message"]}
     return kept

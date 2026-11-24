@@ -58,7 +58,7 @@ impl ChatView {
         };
         let trigger = Button::new("chat-hooks")
             .ghost()
-            .xsmall()
+            .small()
             .icon(Icon::new(gpui_kit::assets::IconName::FishingHook))
             .tooltip("Hooks");
         let opener = view.clone();

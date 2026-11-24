@@ -132,6 +132,7 @@ mod live {
             fork: false,
         };
         let kiln_agent::Session {
+            pid: _,
             events,
             commands,
             driver,

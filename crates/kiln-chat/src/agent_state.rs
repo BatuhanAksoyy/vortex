@@ -57,7 +57,6 @@ impl AgentState {
                 self.account.clone_from(&info.account);
                 self.commands.clone_from(&info.commands);
             }
-            AgentEvent::CommandsChanged(commands) => self.commands.clone_from(commands),
             AgentEvent::ConversationReset => self.reset_context(),
             AgentEvent::Usage(usage) => {
                 // A report may leave a window out; the last known value
@@ -78,6 +77,16 @@ impl AgentState {
                 self.record_cache(event);
             }
             AgentEvent::ContextUsage(usage) => self.context = Some(usage.clone()),
+            _ => return self.apply_list(event),
+        }
+        true
+    }
+
+    /// A fresh list of the slash commands or models on offer.
+    fn apply_list(&mut self, event: &AgentEvent) -> bool {
+        match event {
+            AgentEvent::CommandsChanged(commands) => self.commands.clone_from(commands),
+            AgentEvent::ModelsChanged(models) => self.models.clone_from(models),
             _ => return false,
         }
         true
@@ -96,11 +105,14 @@ impl AgentState {
     /// header current.
     pub fn refreshes_after(event: &AgentEvent) -> &'static [SessionCommand] {
         match event {
-            // A turn may have run `/effort` or `/model`.
+            // A turn may have run `/effort` or `/model`. The models the
+            // agent starts with leave out some it lists when asked, so a chat
+            // that never ran a turn would offer fewer than the others.
             AgentEvent::Ready(_) | AgentEvent::TurnEnded(_) => &[
                 SessionCommand::RefreshContext,
                 SessionCommand::RefreshUsage,
                 SessionCommand::RefreshEffort,
+                SessionCommand::RefreshModels,
             ],
             // Each model has an effort of its own.
             AgentEvent::ModelChanged(_) => &[

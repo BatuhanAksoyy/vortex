@@ -29,7 +29,7 @@ impl ChatView {
         Some(
             Button::new("chat-agents")
                 .ghost()
-                .xsmall()
+                .small()
                 .label(button_label(running, total))
                 .text_color(if running > 0 {
                     crate::spinner::accent()

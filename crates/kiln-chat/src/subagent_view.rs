@@ -152,7 +152,8 @@ fn details(agent: &Subagent, context: &EntryContext, cx: &App) -> impl IntoEleme
         }))
 }
 
-/// One thing the subagent did: its text, or a tool call and its outcome.
+/// One thing the subagent did: its text, a tool call and its outcome, or
+/// a message it was sent.
 pub fn step_row(
     step: &Step,
     id: SharedString,
@@ -166,6 +167,7 @@ pub fn step_row(
             .text_color(theme.muted_foreground)
             .child(text.clone())
             .into_any_element(),
+        Step::Message(message) => message_step(message, id, cx),
         Step::Tool { call, result } => {
             let summary = result.as_ref().map(|result| {
                 sub_line(
@@ -216,6 +218,30 @@ fn duration(duration: Duration) -> String {
     } else {
         format!("{}m {}s", seconds / 60, seconds % 60)
     }
+}
+
+/// A message the subagent was sent after it started.
+fn message_step(message: &str, id: SharedString, cx: &App) -> AnyElement {
+    let theme = cx.theme();
+    v_flex()
+        .id(id)
+        .test_support()
+        .aria_label(SharedString::from(message.to_owned()))
+        .gap_0p5()
+        .px_2()
+        .py_1()
+        .rounded(theme.radius)
+        .border_1()
+        .border_color(theme.border)
+        .bg(theme.secondary)
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child("Message from Claude"),
+        )
+        .child(message.to_owned())
+        .into_any_element()
 }
 
 #[cfg(test)]

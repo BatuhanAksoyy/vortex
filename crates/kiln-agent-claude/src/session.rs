@@ -126,10 +126,12 @@ impl AgentBackend for ClaudeBackend {
         let child = command
             .spawn()
             .with_context(|| format!("cannot start {}", self.program.display()))?;
-        self.children.borrow_mut().insert(child.id());
+        let pid = child.id();
+        self.children.borrow_mut().insert(pid);
         let (event_tx, events) = async_channel::unbounded();
         let (commands, command_rx) = async_channel::unbounded();
         Ok(Session {
+            pid: Some(pid),
             events,
             commands,
             driver: Box::pin(async move {

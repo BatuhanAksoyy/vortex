@@ -16,6 +16,7 @@ kiln-agent.workspace = true
 kiln-chat.workspace = true
 kiln-keymap.workspace = true
 kiln-project.workspace = true
+kiln-services.workspace = true
 kiln-settings.workspace = true
 log.workspace = true
 serde.workspace = true

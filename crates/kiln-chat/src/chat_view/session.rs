@@ -189,6 +189,7 @@ impl ChatView {
             {}
         });
         Ok(LiveSession {
+            pid: session.pid,
             commands: session.commands,
             _driver: cx.background_spawn(session.driver),
             _events: events_task,

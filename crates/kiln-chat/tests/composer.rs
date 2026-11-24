@@ -56,7 +56,8 @@ mod composer {
             [
                 SessionCommand::RefreshContext,
                 SessionCommand::RefreshUsage,
-                SessionCommand::RefreshEffort
+                SessionCommand::RefreshEffort,
+                SessionCommand::RefreshModels
             ]
         );
         harness.emit(
@@ -80,7 +81,8 @@ mod composer {
                 SessionCommand::Send("hi".into()),
                 SessionCommand::RefreshContext,
                 SessionCommand::RefreshUsage,
-                SessionCommand::RefreshEffort
+                SessionCommand::RefreshEffort,
+                SessionCommand::RefreshModels
             ]
         );
     }

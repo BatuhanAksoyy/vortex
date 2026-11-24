@@ -14,7 +14,7 @@ mod replay {
     };
     use kiln_agent_claude::{ClaudeBackend, Translator};
 
-    const FIXTURES: [&str; 13] = [
+    const FIXTURES: [&str; 15] = [
         "allow",
         "deny",
         "interrupt",
@@ -28,6 +28,8 @@ mod replay {
         "skills",
         "hooks",
         "resume",
+        "followup",
+        "models",
     ];
 
     fn translate(name: &str) -> Vec<AgentEvent> {
@@ -241,6 +243,7 @@ mod replay {
         mut react: impl FnMut(&AgentEvent) -> Option<SessionCommand>,
     ) -> Vec<AgentEvent> {
         let kiln_agent::Session {
+            pid: _,
             events,
             commands,
             driver,
@@ -340,6 +343,7 @@ mod live {
             fork: false,
         };
         let kiln_agent::Session {
+            pid: _,
             events,
             commands,
             driver,

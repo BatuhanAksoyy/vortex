@@ -133,7 +133,11 @@ mod native {
         input(&harness, cx, "/model");
         press(&harness, cx, "enter");
         assert!(shown(&harness, cx, "chat-model-picker"));
-        assert_eq!(harness.commands(), Vec::<SessionCommand>::new());
+        assert_eq!(
+            harness.commands(),
+            [SessionCommand::RefreshModels],
+            "the list is asked for again"
+        );
         press(&harness, cx, "down");
         press(&harness, cx, "enter");
         assert_eq!(

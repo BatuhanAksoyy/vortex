@@ -89,6 +89,8 @@ impl ChatView {
     }
 
     fn open_model_picker(&mut self, cx: &mut Context<Self>) {
+        // The list it opens with may be stale; a fresh one replaces it.
+        self.send_command(SessionCommand::RefreshModels);
         let current = self.agent.selected_model().map(|option| option.id.clone());
         let models = self.agent.models();
         if models.is_empty() {

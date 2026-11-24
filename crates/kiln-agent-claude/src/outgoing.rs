@@ -48,6 +48,10 @@ pub fn get_usage(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "get_usage" }))
 }
 
+pub fn list_models(request_id: &str) -> Value {
+    control_request(request_id, &json!({ "subtype": "list_models" }))
+}
+
 pub fn get_skills_dialog(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "get_skills_dialog" }))
 }

@@ -25,6 +25,7 @@ impl AgentBackend for Stored {
         let (events_tx, events) = async_channel::unbounded();
         let (commands, commands_rx) = async_channel::unbounded();
         Ok(Session {
+            pid: None,
             events,
             commands,
             driver: Box::pin(hold(events_tx, commands_rx)),
@@ -89,7 +90,7 @@ fn session(id: &str, title: &str, updated_at: SystemTime) -> PastSession {
 /// A Kiln window that keeps its chat layout in `layouts`.
 pub fn open_keeping(
     cx: &mut TestAppContext,
-    backend: Stored,
+    backend: impl AgentBackend + 'static,
     layouts: Option<PathBuf>,
     accounts: Accounts,
 ) -> AnyWindowHandle {

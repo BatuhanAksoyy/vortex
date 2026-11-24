@@ -10,16 +10,18 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     BackgroundExecutor, Context, Entity, FocusHandle, Focusable, Subscription, Task, Window,
     component::{
-        ActiveTheme, TitleBar, WindowExt,
+        ActiveTheme, Icon, IconName, Selectable as _, Sizable as _, TitleBar, WindowExt,
+        button::{Button, ButtonVariants as _},
         dock::{DockArea, DockEvent},
         notification::Notification,
-        resizable::{h_resizable, resizable_panel},
+        resizable::{ResizablePanelGroup, h_resizable, resizable_panel},
         status_bar::StatusBar,
         v_flex,
     },
 };
 use kiln_accounts::Accounts;
 use kiln_agent::AgentBackend;
+use kiln_chat::{ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog};
 use kiln_project::ListOptions;
 
 use crate::{
@@ -34,6 +36,7 @@ use crate::{
 mod actions;
 mod chats;
 mod layout;
+mod processes;
 
 /// The project's files, and whether the listing hit the entry limit.
 type Scan = (Arc<[PathBuf]>, bool);
@@ -62,6 +65,12 @@ pub struct Workspace {
     files: Arc<[PathBuf]>,
     sidebar_visible: bool,
     editor_visible: bool,
+    /// The last reading of the agents' processes, which chats show.
+    processes: Entity<Processes>,
+    /// Reads the agents' processes while the window is open.
+    _process_watch: Task<()>,
+    /// Every agent's processes over the whole window, while open.
+    processes_page: Option<(Entity<ProcessesDialog>, Subscription)>,
     focus_handle: FocusHandle,
     /// Dropping the task stops the watcher, so it is replaced, not detached,
     /// when another folder is opened.
@@ -83,10 +92,15 @@ impl Workspace {
             workspace,
         });
         cx.on_release(|_, cx| cx.quit()).detach();
-        let sessions = cx.new(|_| SessionList::default());
+        let processes = Processes::shared(cx);
+        let meter = cx.new(|cx| ProcessMeter::all(processes.clone(), cx));
+        let sessions = cx.new(|_| SessionList::with_footer(meter.clone()));
         let editor_pane = cx.new(EditorPane::new);
         let dock = chats::new_dock(window, cx);
         let subscriptions = vec![
+            cx.subscribe_in(&meter, window, |this, _, event, window, cx| match event {
+                ProcessMeterEvent::Open => this.open_processes(window, cx),
+            }),
             cx.subscribe_in(&sessions, window, Self::on_session_list),
             cx.subscribe(&dock, |this, _, event: &DockEvent, cx| {
                 if matches!(event, DockEvent::LayoutChanged) {
@@ -117,6 +131,9 @@ impl Workspace {
             files: Arc::from([]),
             sidebar_visible: true,
             editor_visible: false,
+            processes,
+            _process_watch: Self::watch_processes(cx),
+            processes_page: None,
             focus_handle: cx.focus_handle(),
             config_watch: None,
             _subscriptions: subscriptions,
@@ -238,7 +255,7 @@ impl Workspace {
         }
     }
 
-    fn render_body(&self, window: &Window, cx: &gpui_kit::App) -> impl IntoElement {
+    fn render_body(&self, window: &Window, cx: &gpui_kit::App) -> ResizablePanelGroup {
         let rem = window.rem_size();
         // With no file open the pane would only take room from the chat.
         let editor_shown = self.editor_visible && !self.editor_pane.read(cx).is_empty();
@@ -282,6 +299,19 @@ fn project_name(root: &Path) -> String {
     )
 }
 
+impl Workspace {
+    /// The button that shows and hides the session list.
+    fn sidebar_toggle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        Button::new("toggle-sidebar")
+            .ghost()
+            .xsmall()
+            .icon(Icon::new(IconName::PanelLeft))
+            .selected(self.sidebar_visible)
+            .tooltip("Toggle Sidebar")
+            .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx)))
+    }
+}
+
 impl Focusable for Workspace {
     fn focus_handle(&self, _: &gpui_kit::App) -> FocusHandle {
         self.focus_handle.clone()
@@ -309,10 +339,12 @@ impl Render for Workspace {
                     .min_h_0()
                     .child(self.render_body(window, cx)),
             )
+            .children(self.render_processes(window, cx))
             .child(
                 StatusBar::new()
                     .left(self.root.display().to_string())
-                    .child(active_file.unwrap_or_default()),
+                    .child(active_file.unwrap_or_default())
+                    .right(self.sidebar_toggle(cx)),
             )
     }
 }

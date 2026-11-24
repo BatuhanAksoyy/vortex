@@ -3,52 +3,57 @@
 
 use kiln_agent::AgentEvent;
 
-use crate::{control, subagent, wire};
+use crate::{
+    control,
+    subagent::{Report, Start, Tasks},
+    wire,
+};
 
-pub fn events(system: wire::System) -> Vec<AgentEvent> {
-    match system {
-        wire::System::Init { session_id, model } => {
-            vec![AgentEvent::Started { session_id, model }]
-        }
+pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
+    let event = match system {
+        wire::System::Init { session_id, model } => Some(AgentEvent::Started { session_id, model }),
         wire::System::Status { permission_mode } => permission_mode
             .as_deref()
             .and_then(control::parse_mode)
-            .map(AgentEvent::ModeChanged)
-            .into_iter()
-            .collect(),
-        wire::System::CommandsChanged { commands } => {
-            vec![AgentEvent::CommandsChanged(control::slash_commands(
-                commands,
-            ))]
-        }
+            .map(AgentEvent::ModeChanged),
+        wire::System::CommandsChanged { commands } => Some(AgentEvent::CommandsChanged(
+            control::slash_commands(commands),
+        )),
         wire::System::TaskStarted {
+            task_id,
             tool_use_id,
             description,
+            prompt,
             subagent_type,
             task_type,
-        } => subagent::started(
-            tool_use_id,
+        } => tasks.started(Start {
+            task: task_id,
+            call: tool_use_id,
             description,
-            subagent_type,
-            task_type.as_deref(),
-        )
-        .into_iter()
-        .collect(),
+            kind: subagent_type,
+            task_type,
+            prompt,
+        }),
         wire::System::TaskProgress {
+            task_id,
             tool_use_id,
             description,
             usage,
-        } => subagent::progress(tool_use_id, description, &usage)
-            .into_iter()
-            .collect(),
+        } => tasks.progress(task_id.as_deref(), tool_use_id, description, &usage),
         wire::System::TaskNotification {
+            task_id,
             tool_use_id,
             status,
             summary,
             usage,
-        } => subagent::finished(tool_use_id, &status, summary, usage.as_ref())
-            .into_iter()
-            .collect(),
-        wire::System::Other => Vec::new(),
-    }
+        } => tasks.finished(Report {
+            task: task_id.as_deref(),
+            call: tool_use_id,
+            status: &status,
+            summary,
+            usage: usage.as_ref(),
+        }),
+        wire::System::Other => None,
+    };
+    event.into_iter().collect()
 }

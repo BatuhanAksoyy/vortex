@@ -5,6 +5,7 @@
 mod cache;
 mod messages;
 mod running;
+mod subagents;
 
 use std::{
     fs::File,
@@ -100,19 +101,25 @@ pub fn list(dirs: &[PathBuf]) -> anyhow::Result<Vec<PastSession>> {
     Ok(sessions)
 }
 
-/// The messages of conversation `id`, from the first of `dirs` that has it.
+/// The messages of conversation `id`, from the first of `dirs` that has it,
+/// with what its subagents did on their cards.
 pub fn read(dirs: &[PathBuf], id: &str) -> anyhow::Result<Vec<PastMessage>> {
-    Ok(messages(&stored(dirs, id)?))
+    let (dir, text) = stored(dirs, id)?;
+    let agents = subagents::load(&dir.join(id).join("subagents"));
+    Ok(subagents::weave(messages(&text), agents))
 }
 
-/// The file of conversation `id`, from the first of `dirs` that has it.
-fn stored(dirs: &[PathBuf], id: &str) -> anyhow::Result<String> {
-    let path = dirs
+/// The file of conversation `id`, from the first of `dirs` that has it, and
+/// the directory it is in.
+fn stored<'a>(dirs: &'a [PathBuf], id: &str) -> anyhow::Result<(&'a Path, String)> {
+    let dir = dirs
         .iter()
-        .map(|dir| dir.join(format!("{id}.jsonl")))
-        .find(|path| path.is_file())
+        .find(|dir| dir.join(format!("{id}.jsonl")).is_file())
         .with_context(|| format!("no stored conversation {id}"))?;
-    std::fs::read_to_string(&path).with_context(|| format!("cannot read {}", path.display()))
+    let path = dir.join(format!("{id}.jsonl"));
+    let text = std::fs::read_to_string(&path)
+        .with_context(|| format!("cannot read {}", path.display()))?;
+    Ok((dir, text))
 }
 
 fn listed(path: &Path) -> Option<PastSession> {

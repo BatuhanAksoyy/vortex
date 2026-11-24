@@ -4,7 +4,7 @@
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
-        | running | attach
+        | running | attach | followup | models
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -54,6 +54,15 @@ its text, which also mentions a file as `@note.txt`. The model reads a second
 picture with the Read tool. It records how a picture goes in, whether the
 CLI expands a mention, and how a tool's picture comes back. Every tool call
 is allowed.
+"followup" runs the "subagent" turn, then, once the subagent has reported,
+has the model send that subagent a second task with SendMessage, and records
+until it has reported again. It keeps its session and copies it, with the
+files the CLI stores for each subagent, beside the output as
+`<out>-session.jsonl` and `<out>-agent-<id>.jsonl`/`.meta.json`. Every tool
+call is allowed.
+"models" sends no prompt, so it spends no usage: it asks for the model
+catalogue with `list_models`, to compare it with the models `initialize`
+lists.
 "running" sends no prompt, so it spends no usage: it starts a process and
 copies the record the CLI keeps of it under `<config>/sessions/` while it
 runs, which tells other clients the conversation is open.
@@ -76,6 +85,7 @@ PROMPTS = {
     "questions": "Call the AskUserQuestion tool once with two questions. First: 'Which fruits do you like?' with header 'Fruits', multiSelect true, options Apple, Banana, Cherry. Second: 'Which city do you prefer?' with header 'City', multiSelect false, options Paris, Rome. After I answer, reply with only my answers, separated by a semicolon.",
     "ask": "Use the AskUserQuestion tool to ask me which color I prefer, with exactly two options: Red and Blue. After I answer, reply with only the color I chose.",
     "resume": "What word did I ask you to remember? Reply with that word only.",
+    "followup": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
     "subagent": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
@@ -102,6 +112,11 @@ if case == "attach":
 if case == "subagent":
     with open("note.txt", "w") as note:
         note.write("lantern\n")
+if case == "followup":
+    with open("note.txt", "w") as note:
+        note.write("lantern moth\n")
+FOLLOWUP = ("Use the SendMessage tool to send the agent you started the message "
+            "'Reply with the second word of note.txt.' Then reply with only the word it reports.")
 if case == "skills":
     for name in ("kiln-fixture", "kiln-hidden"):
         os.makedirs(f".claude/skills/{name}", exist_ok=True)
@@ -220,14 +235,19 @@ if case == "running":
     sys.exit(0)
 resumed = first_session() if case == "resume" else None
 proc = subprocess.Popen(
-    BASE + ["--no-session-persistence"]
+    BASE + ([] if case == "followup" else ["--no-session-persistence"])
     + (["--permission-mode", "plan"] if case == "plan" else [])
-    + (["--forward-subagent-text"] if case == "subagent" else [])
+    + (["--forward-subagent-text"] if case in ("subagent", "followup") else [])
     + (["--resume", resumed] if resumed else []),
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     env=env, text=True, bufsize=1,
 )
 notified = False
+# For "followup": how many subagent reports have come, and whether the
+# follow-up was sent; and the session to copy.
+reports = 0
+followed_up = False
+session_id = None
 log = open(out_path, "w")
 lock = threading.Lock()
 if resumed:
@@ -246,7 +266,7 @@ def send(obj):
     proc.stdin.flush()
 
 
-send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "hooks", "effort", "login") else "init-1",
+send({"type": "control_request", "request_id": "initialize" if case in ("controls", "commands", "skills", "hooks", "effort", "login", "models") else "init-1",
       "request": {"subtype": "initialize", "hooks": None}})
 # Ids follow Kiln's own scheme (`Translator::request_id`), so a replay can
 # issue the same commands and match the replies.
@@ -271,6 +291,9 @@ if case == "controls":
 elif case == "skills":
     send({"type": "control_request", "request_id": "kiln-skills-1",
           "request": {"subtype": "get_skills_dialog"}})
+elif case == "models":
+    send({"type": "control_request", "request_id": "kiln-models-1",
+          "request": {"subtype": "list_models"}})
 elif case == "hooks":
     send({"type": "control_request", "request_id": "kiln-hooks-1",
           "request": {"subtype": "get_hooks_listing"}})
@@ -298,7 +321,7 @@ awaiting = {request_id for request_id, _ in CONTROLS} if case == "controls" else
 
 deltas = 0
 interrupted = False
-deadline = time.time() + (600 if case == "login" else 120)
+deadline = time.time() + {"login": 600, "followup": 240}.get(case, 120)
 for line in proc.stdout:
     line = line.strip()
     if not line:
@@ -312,7 +335,7 @@ for line in proc.stdout:
     kind = msg.get("type")
     if kind == "control_request" and msg["request"].get("subtype") == "can_use_tool":
         req = msg["request"]
-        if case in ("allow", "plan", "subagent", "attach"):
+        if case in ("allow", "plan", "subagent", "attach", "followup"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
         elif case == "questions":
             answers = {}
@@ -343,6 +366,8 @@ for line in proc.stdout:
         if case == "usage" and msg["response"].get("request_id") == "kiln-usage-1":
             break
         if case == "skills" and msg["response"].get("request_id") == "kiln-skills-1":
+            break
+        if case == "models" and msg["response"].get("request_id") == "kiln-models-1":
             break
         ids = [request_id for request_id, _ in EFFORT]
         if case == "effort" and msg["response"].get("request_id") in ids:
@@ -400,8 +425,19 @@ for line in proc.stdout:
     # first, and its report starts another turn once it finishes.
     if kind == "system" and msg.get("subtype") == "task_notification":
         notified = True
+        reports += 1
+    if kind == "system" and msg.get("subtype") == "init":
+        session_id = msg.get("session_id")
     if kind == "result" and case == "subagent" and not notified:
         continue
+    if kind == "result" and case == "followup":
+        if reports == 0 or (followed_up and reports < 2):
+            continue
+        if not followed_up:
+            followed_up = True
+            send({"type": "user", "message": {"role": "user", "content": FOLLOWUP},
+                  "parent_tool_use_id": None, "session_id": ""})
+            continue
     if kind == "result" and case == "usage":
         send({"type": "control_request", "request_id": "kiln-usage-1",
               "request": {"subtype": "get_usage"}})
@@ -417,4 +453,28 @@ except subprocess.TimeoutExpired:
 err = proc.stderr.read()
 if err.strip():
     record("stderr", err)
+
+
+def copy_session():
+    """Copies the session file and each subagent's files beside the output."""
+    config = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    projects = os.path.join(config, "projects")
+    stem = out_path[:-len(".jsonl")] if out_path.endswith(".jsonl") else out_path
+    for project in os.listdir(projects):
+        path = os.path.join(projects, project, f"{session_id}.jsonl")
+        if not os.path.exists(path):
+            continue
+        with open(path) as stored, open(f"{stem}-session.jsonl", "w") as out:
+            out.write(stored.read())
+        agents = os.path.join(projects, project, session_id, "subagents")
+        for name in sorted(os.listdir(agents)) if os.path.isdir(agents) else []:
+            with open(os.path.join(agents, name)) as stored, open(f"{stem}-{name}", "w") as out:
+                out.write(stored.read())
+        print(f"Copied {path} and {agents}")
+        return
+    print(f"no session file for {session_id}")
+
+
+if case == "followup":
+    copy_session()
 print(case, "exit", proc.returncode, "lines", sum(1 for _ in open(out_path)))

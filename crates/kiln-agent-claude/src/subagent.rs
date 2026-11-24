@@ -1,8 +1,12 @@
 //! A subagent's life as the CLI reports it: the `task_*` lines of a task
 //! the Agent tool started, and the messages the subagent writes, which
 //! `--forward-subagent-text` adds to the stream.
+//!
+//! A subagent sent a message with `SendMessage` runs again as the same task,
+//! but its start, progress and report name the `SendMessage` call; they are
+//! reported under the call that first started it, which its messages name.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use kiln_agent::{AgentEvent, SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage};
 
@@ -12,45 +16,79 @@ use crate::{stream, wire};
 /// command, are not subagents.
 const AGENT_TASK: &str = "local_agent";
 
-pub fn started(
-    call: Option<String>,
-    description: String,
-    kind: Option<String>,
-    task_type: Option<&str>,
-) -> Option<AgentEvent> {
-    if task_type.is_some_and(|task_type| task_type != AGENT_TASK) {
-        return None;
+/// The call that first started each task, by task id.
+#[derive(Default)]
+pub struct Tasks(HashMap<String, String>);
+
+/// A task's start as the CLI reports it.
+pub struct Start {
+    pub task: Option<String>,
+    pub call: Option<String>,
+    pub description: String,
+    pub kind: Option<String>,
+    pub task_type: Option<String>,
+    pub prompt: Option<String>,
+}
+
+/// A task's report as the CLI sends it.
+pub struct Report<'a> {
+    pub task: Option<&'a str>,
+    pub call: Option<String>,
+    pub status: &'a str,
+    pub summary: String,
+    pub usage: Option<&'a wire::TaskUsage>,
+}
+
+impl Tasks {
+    pub fn started(&mut self, start: Start) -> Option<AgentEvent> {
+        if start
+            .task_type
+            .is_some_and(|task_type| task_type != AGENT_TASK)
+        {
+            return None;
+        }
+        let call = start.call?;
+        if let Some(first) = start.task.as_ref().and_then(|task| self.0.get(task))
+            && *first != call
+        {
+            let message = start.prompt.unwrap_or_default();
+            return Some(event(first.clone(), SubagentChange::Resumed { message }));
+        }
+        if let Some(task) = start.task {
+            self.0.insert(task, call.clone());
+        }
+        let change = SubagentChange::Started {
+            description: start.description,
+            kind: start.kind,
+        };
+        Some(event(call, change))
     }
-    Some(event(call?, SubagentChange::Started { description, kind }))
-}
 
-pub fn progress(
-    call: Option<String>,
-    activity: String,
-    usage: &wire::TaskUsage,
-) -> Option<AgentEvent> {
-    let usage = subagent_usage(usage);
-    Some(event(call?, SubagentChange::Progress { activity, usage }))
-}
+    pub fn progress(
+        &self,
+        task: Option<&str>,
+        call: Option<String>,
+        activity: String,
+        usage: &wire::TaskUsage,
+    ) -> Option<AgentEvent> {
+        let usage = subagent_usage(usage);
+        let change = SubagentChange::Progress { activity, usage };
+        Some(event(self.first(task, call)?, change))
+    }
 
-pub fn finished(
-    call: Option<String>,
-    status: &str,
-    summary: String,
-    usage: Option<&wire::TaskUsage>,
-) -> Option<AgentEvent> {
-    let end = match status {
-        "completed" => SubagentEnd::Completed,
-        "failed" => SubagentEnd::Failed,
-        _ => SubagentEnd::Stopped,
-    };
-    let usage = usage.map(subagent_usage);
-    let change = SubagentChange::Finished {
-        end,
-        summary,
-        usage,
-    };
-    Some(event(call?, change))
+    pub fn finished(&self, report: Report<'_>) -> Option<AgentEvent> {
+        let change = SubagentChange::Finished {
+            end: end(report.status),
+            summary: report.summary,
+            usage: report.usage.map(subagent_usage),
+        };
+        Some(event(self.first(report.task, report.call)?, change))
+    }
+
+    /// The call that first started `task`, else the call the line names.
+    fn first(&self, task: Option<&str>, call: Option<String>) -> Option<String> {
+        task.and_then(|task| self.0.get(task)).cloned().or(call)
+    }
 }
 
 /// The model, request and text of a message the subagent under `call`
@@ -75,7 +113,16 @@ pub fn message(call: &str, message: &wire::AssistantMessage) -> Vec<AgentEvent> 
         .collect()
 }
 
-fn event(call: String, change: SubagentChange) -> AgentEvent {
+/// How a task ended, by the status the CLI reports.
+pub fn end(status: &str) -> SubagentEnd {
+    match status {
+        "completed" => SubagentEnd::Completed,
+        "failed" => SubagentEnd::Failed,
+        _ => SubagentEnd::Stopped,
+    }
+}
+
+pub fn event(call: String, change: SubagentChange) -> AgentEvent {
     AgentEvent::Subagent(SubagentEvent { call, change })
 }
 

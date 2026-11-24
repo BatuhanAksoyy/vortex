@@ -18,6 +18,7 @@ mod layout;
 mod menu_keys;
 mod native;
 mod picture_viewer;
+mod processes_page;
 mod session;
 mod skills;
 mod skills_panel;
@@ -58,6 +59,7 @@ const COMPOSER_MAX_ROWS: usize = 10;
 
 /// A running agent process. Dropping it stops the process.
 struct LiveSession {
+    pid: Option<u32>,
     commands: async_channel::Sender<SessionCommand>,
     _driver: Task<()>,
     _events: Task<()>,
@@ -95,6 +97,9 @@ pub struct ChatView {
     /// Entries the user toggled away from their default expansion.
     toggled: HashSet<u64>,
     session: Option<LiveSession>,
+    /// What the agent's processes use; `None` when the app reads none.
+    process_meter: Option<Entity<crate::processes::ProcessMeter>>,
+    processes_page: Option<(Entity<crate::processes::ProcessesDialog>, Subscription)>,
     /// The stored conversation shown; a process started after the last one
     /// ended resumes it.
     conversation: Option<Conversation>,
@@ -166,6 +171,10 @@ impl ChatView {
             this.adopt_added_account(window, cx);
             cx.notify();
         });
+        let process_meter = crate::processes::ProcessMeter::for_chat(cx.entity().downgrade(), cx);
+        let meter_opened = process_meter
+            .as_ref()
+            .map(|meter| Self::follow_meter(meter, window, cx));
         let account = accounts
             .read(cx)
             .added()
@@ -180,6 +189,8 @@ impl ChatView {
             transcript: Transcript::default(),
             toggled: HashSet::new(),
             session: None,
+            process_meter,
+            processes_page: None,
             conversation: None,
             history_load: None,
             agent: AgentState::default(),
@@ -202,7 +213,10 @@ impl ChatView {
             limit_timer: None,
             cache_timer: None,
             _usage_poll: cx.spawn(Self::poll_usage),
-            _subscriptions: vec![subscription, accounts_changed],
+            _subscriptions: [subscription, accounts_changed]
+                .into_iter()
+                .chain(meter_opened)
+                .collect(),
         };
         // Started now, not on the first message: the composer shows the
         // models, mode and context the agent reports when it starts.

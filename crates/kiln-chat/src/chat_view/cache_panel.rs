@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Anchor, App, Context, SharedString, TestSupportExt,
+    Anchor, App, AsyncApp, Context, SharedString, TestSupportExt, WeakEntity,
     component::{
         ActiveTheme, Sizable,
         button::{Button, ButtonVariants},
@@ -51,7 +51,7 @@ impl ChatView {
             .is_some_and(|until| until <= now);
         let trigger = Button::new("chat-cache")
             .ghost()
-            .xsmall()
+            .small()
             .label(button_label(shown.as_ref(), now))
             .text_color(if expired {
                 cx.theme().warning
@@ -75,29 +75,63 @@ impl ChatView {
         cx.notify();
     }
 
-    /// Redraws once the cache expires, so the button says so.
+    /// Redraws each time the minutes left change, and once the cache
+    /// expires, so the button says so.
     pub(super) fn sync_cache_timer(&mut self, cx: &mut Context<Self>) {
-        let wait = self
-            .agent
-            .prompt_cache()
-            .warm_until()
-            .and_then(|until| until.duration_since(SystemTime::now()).ok());
-        self.cache_timer = wait.map(|wait| {
-            cx.spawn(async move |this, cx| {
-                cx.background_executor().timer(wait).await;
-                let _ = this.update(cx, |_, cx| cx.notify());
-            })
-        });
+        let until = self.agent.prompt_cache().warm_until();
+        self.cache_timer =
+            until.map(|until| cx.spawn(async move |this, cx| count_down(this, until, cx).await));
     }
 }
 
-/// `Cache 18:05` while warm, `Cache expired` after, `Cache` until known.
+async fn count_down(this: WeakEntity<ChatView>, until: SystemTime, cx: &mut AsyncApp) {
+    let mut alive = true;
+    while alive && let Ok(left) = until.duration_since(SystemTime::now()) {
+        cx.background_executor().timer(next_change(left)).await;
+        alive = this.update(cx, |_, cx| cx.notify()).is_ok();
+    }
+}
+
+/// `Cache 30m` while warm, with the time left, `Cache expired` after,
+/// `Cache` until known.
 fn button_label(shown: Option<&CacheShown>, now: SystemTime) -> String {
-    match shown.and_then(|shown| shown.warm_until) {
-        Some(until) if until > now => format!("Cache {}", reset_label(until, now)),
+    match shown
+        .and_then(|shown| shown.warm_until)
+        .map(|until| until.duration_since(now))
+    {
+        Some(Ok(left)) if !left.is_zero() => format!("Cache {}", time_left(left)),
         Some(_) => "Cache expired".to_owned(),
         None => "Cache".to_owned(),
     }
+}
+
+/// Whole minutes left, rounded up so the last one reads `1m`, not `0m`;
+/// `1h` for the hour a long-kept cache starts with.
+fn time_left(left: Duration) -> String {
+    let minutes = left.as_secs().div_ceil(60);
+    if minutes >= 60 && minutes.is_multiple_of(60) {
+        format!("{}h", minutes / 60)
+    } else if minutes >= 60 {
+        format!("{}h {}m", minutes / 60, minutes % 60)
+    } else {
+        format!("{minutes}m")
+    }
+}
+
+/// How long until [`time_left`] reads differently, with `left` to go: just
+/// past the next whole minute, or when it runs out.
+fn next_change(left: Duration) -> Duration {
+    const MINUTE: Duration = Duration::from_mins(1);
+    let into_minute = Duration::from_millis(
+        u64::try_from(left.as_millis() % MINUTE.as_millis()).unwrap_or_default(),
+    );
+    let wait = if into_minute.is_zero() {
+        MINUTE
+    } else {
+        into_minute
+    };
+    // Past the boundary, so the minutes are already one fewer.
+    wait + Duration::from_millis(50)
 }
 
 fn panel(shown: Option<&CacheShown>, cx: &App) -> impl IntoElement + use<> {
@@ -167,6 +201,21 @@ fn status(shown: &CacheShown, now: SystemTime) -> Option<String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_time_left_reads_in_whole_minutes_rounded_up() {
+        assert_eq!(time_left(Duration::from_secs(29 * 60 + 1)), "30m");
+        assert_eq!(time_left(Duration::from_secs(20)), "1m");
+        assert_eq!(time_left(Duration::from_hours(1)), "1h");
+        assert_eq!(time_left(Duration::from_mins(75)), "1h 15m");
+        let left = Duration::from_secs(4 * 60 + 10);
+        assert_eq!(next_change(left), Duration::from_millis(10_050));
+        assert_eq!(
+            time_left(left.saturating_sub(next_change(left))),
+            "4m",
+            "one fewer once it fires"
+        );
+    }
+
     fn shown(warm_until: SystemTime) -> CacheShown {
         CacheShown {
             last: PromptTokens::default(),
@@ -181,7 +230,7 @@ mod tests {
         let now = SystemTime::now();
         assert_eq!(button_label(None, now), "Cache");
         let warm = shown(now + Duration::from_mins(5));
-        assert!(button_label(Some(&warm), now).starts_with("Cache "));
+        assert_eq!(button_label(Some(&warm), now), "Cache 5m");
         assert!(status(&warm, now).is_some_and(|text| text.contains("5 minutes")));
         let cold = shown(now - Duration::from_mins(1));
         assert_eq!(button_label(Some(&cold), now), "Cache expired");
