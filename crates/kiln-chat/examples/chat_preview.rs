@@ -258,6 +258,7 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
     ]);
     if prompt {
         events.push(AgentEvent::PermissionRequest(PermissionRequest {
+            subagent: None,
             id: "p1".into(),
             tool: "Bash".into(),
             input: json!({ "command": "npm test -- formatDate" }),

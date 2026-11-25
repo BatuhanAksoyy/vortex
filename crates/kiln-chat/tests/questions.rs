@@ -41,6 +41,7 @@ mod questions {
         harness.emit(
             cx,
             AgentEvent::PermissionRequest(PermissionRequest {
+                subagent: None,
                 id: "ask-1".into(),
                 tool: "AskUserQuestion".into(),
                 input: json!({}),

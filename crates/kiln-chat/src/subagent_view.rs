@@ -187,7 +187,7 @@ pub fn status(agent: &Subagent) -> String {
         .join(" · ")
 }
 
-fn usage_parts(usage: &SubagentUsage) -> [String; 3] {
+pub fn usage_parts(usage: &SubagentUsage) -> [String; 3] {
     let calls = if usage.tool_uses == 1 {
         "tool"
     } else {

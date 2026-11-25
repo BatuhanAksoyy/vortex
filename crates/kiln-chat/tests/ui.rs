@@ -20,6 +20,7 @@ mod chat {
 
     fn permission() -> AgentEvent {
         AgentEvent::PermissionRequest(PermissionRequest {
+            subagent: None,
             id: "req-1".into(),
             tool: "Bash".into(),
             input: json!({ "command": "touch a.txt" }),

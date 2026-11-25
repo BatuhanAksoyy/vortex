@@ -1,4 +1,4 @@
-use kiln_agent::{AgentEvent, TurnOutcome};
+use kiln_agent::{AgentEvent, PermissionRequest, TurnOutcome};
 use serde_json::json;
 
 use super::*;
@@ -122,4 +122,32 @@ fn an_interruption_leaves_what_a_background_subagent_waits_for_running() {
         .filter(|agent| agent.end.is_none())
         .collect();
     assert_eq!(names(&running), ["near-helper", "far", "far-child"]);
+}
+
+#[test]
+fn an_ended_subagent_takes_its_permission_request_along() {
+    let mut transcript = Transcript::default();
+    start(&mut transcript, "a", None, true);
+    transcript.apply(AgentEvent::PermissionRequest(PermissionRequest {
+        id: "ask".into(),
+        tool: "Bash".into(),
+        input: serde_json::json!({}),
+        description: None,
+        remember: None,
+        questions: Vec::new(),
+        subagent: Some("a".into()),
+    }));
+    assert_eq!(transcript.waits_for(agent(&transcript, "a")), Some("Bash"));
+    transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Completed));
+    assert!(
+        transcript.pending_permission().is_some(),
+        "it waits on in the background"
+    );
+    let finished = SubagentChange::Finished {
+        end: SubagentEnd::Stopped,
+        summary: String::new(),
+        usage: None,
+    };
+    transcript.apply(change("a", finished));
+    assert_eq!(transcript.pending_permission(), None);
 }

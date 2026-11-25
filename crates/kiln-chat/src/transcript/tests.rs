@@ -26,6 +26,7 @@ fn call(id: &str) -> AgentEvent {
 
 fn permission(id: &str) -> AgentEvent {
     AgentEvent::PermissionRequest(PermissionRequest {
+        subagent: None,
         id: id.into(),
         tool: "Bash".into(),
         input: json!({}),

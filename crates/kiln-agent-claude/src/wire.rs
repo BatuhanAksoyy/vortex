@@ -331,6 +331,7 @@ pub enum Request {
         description: Option<String>,
         #[serde(default)]
         permission_suggestions: Vec<Value>,
+        agent_id: Option<String>,
     },
     #[serde(other)]
     Other,

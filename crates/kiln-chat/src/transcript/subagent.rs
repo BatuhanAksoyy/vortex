@@ -2,6 +2,8 @@
 //! card that gathers its progress, report and own steps, which stay out of
 //! the main timeline. One that a subagent started is a step of that one.
 
+mod waiting;
+
 use std::collections::{BTreeMap, HashSet};
 
 use kiln_agent::{
@@ -33,6 +35,15 @@ pub struct Subagent {
     pub end: Option<SubagentEnd>,
     pub summary: Option<String>,
     pub steps: Vec<Step>,
+    /// What came of the last attempt to stop it.
+    pub stop: Option<StopAttempt>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StopAttempt {
+    /// Asked for, and its end has not come yet.
+    Asked,
+    Failed,
 }
 
 /// Something the subagent did, in order.
@@ -160,6 +171,7 @@ impl Transcript {
     }
 
     pub(super) fn apply_subagent(&mut self, event: SubagentEvent) -> Change {
+        let finished = matches!(event.change, SubagentChange::Finished { .. });
         let Some(&place) = self.tools.get(&event.call) else {
             return Change::default();
         };
@@ -176,6 +188,9 @@ impl Transcript {
             (Holder::Step(id), SubagentChange::Text(text)) => self.add_step(id, Step::Text(text)),
             _ => false,
         };
+        if finished {
+            self.drop_requests(false);
+        }
         updated(changed, place.row)
     }
 
@@ -215,6 +230,7 @@ impl Transcript {
             end: None,
             summary: None,
             steps: Vec::new(),
+            stop: None,
         };
         self.agents.0.insert(card, agent);
         true
@@ -312,6 +328,7 @@ impl Subagent {
             SubagentChange::Resumed { message } => {
                 self.steps.push(Step::Message(message));
                 self.end = None;
+                self.stop = None;
                 self.summary = None;
                 self.activity = None;
             }
@@ -319,12 +336,23 @@ impl Subagent {
                 self.activity = Some(activity).filter(|activity| !activity.is_empty());
                 self.usage = Some(usage);
             }
+            change => return self.settle(change),
+        }
+        true
+    }
+
+    fn settle(&mut self, change: SubagentChange) -> bool {
+        match change {
+            SubagentChange::StopFailed if self.end.is_none() => {
+                self.stop = Some(StopAttempt::Failed);
+            }
             SubagentChange::Finished {
                 end,
                 summary,
                 usage,
             } => {
                 self.end = Some(end);
+                self.stop = None;
                 self.summary = Some(summary).filter(|summary| !summary.is_empty());
                 self.usage = usage.or(self.usage);
             }

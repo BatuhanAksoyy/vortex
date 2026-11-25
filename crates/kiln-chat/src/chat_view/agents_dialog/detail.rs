@@ -18,7 +18,7 @@ use super::{AgentsDialog, ChatView};
 use crate::{
     agent_state::tokens,
     literal::literal_markdown,
-    scale::ScaledText as _,
+    scale::{ScaledButton as _, ScaledText as _},
     subagent_view::{self, StepPlace, small_dot},
     transcript::{EntryId, Subagent, Subagents},
 };
@@ -78,10 +78,11 @@ fn title(agent: &Subagent, cx: &Context<AgentsDialog>) -> impl IntoElement + use
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(agent.description.clone()),
         )
+        .children(super::card::stop_button("chat-agent-stop", agent, cx).map(Button::ghost))
         .child(
             Button::new("chat-agent-reveal")
                 .ghost()
-                .small()
+                .control()
                 .label("Show in chat")
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.show_in_chat(id, window, cx);

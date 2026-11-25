@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::wire::WireCommand;
 
 /// What a sent request asked for, so its reply can be read.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Asked {
     Initialize,
     Model,
@@ -26,6 +26,8 @@ pub enum Asked {
     /// Read by the translator, which keeps the skills' other names.
     Skills,
     Hooks,
+    /// To stop the subagent this call started.
+    Stop(String),
 }
 
 pub fn mode_name(mode: PermissionMode) -> &'static str {
@@ -157,7 +159,7 @@ pub fn signed_in(response: &Value) -> Option<Account> {
 }
 
 /// The event a successful reply means, if any.
-pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
+pub fn on_success(asked: &Asked, response: Value) -> Option<AgentEvent> {
     match asked {
         Asked::Initialize => {
             let init: Initialized = decode(response)?;
@@ -178,8 +180,8 @@ pub fn on_success(asked: Asked, response: Value) -> Option<AgentEvent> {
         }
         // The CLI also announces the new mode in a status line, which covers
         // changes Kiln did not ask for; that line is the one translated.
-        Asked::Mode | Asked::Skills => None,
-        Asked::Effort(effort) => Some(AgentEvent::EffortChanged(Some(effort))),
+        Asked::Mode | Asked::Skills | Asked::Stop(_) => None,
+        Asked::Effort(effort) => Some(AgentEvent::EffortChanged(Some(*effort))),
         Asked::Settings => {
             let settings: Settings = decode(response)?;
             let effort = settings.applied.effort.as_deref().and_then(parse_effort);

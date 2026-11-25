@@ -84,6 +84,11 @@ pub fn interrupt(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "interrupt" }))
 }
 
+pub fn stop_task(request_id: &str, task: &str) -> Value {
+    let request = json!({ "subtype": "stop_task", "task_id": task });
+    control_request(request_id, &request)
+}
+
 pub fn user_message(message: &Message) -> Value {
     json!({
         "type": "user",

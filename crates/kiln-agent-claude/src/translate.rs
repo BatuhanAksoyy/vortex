@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use kiln_agent::{
     AgentEvent, BlockKey, HookEdit, PermissionRequest, Remember, SessionCommand, SkillState,
-    ToolCall,
+    SubagentChange, ToolCall,
 };
 use serde_json::Value;
 
@@ -59,6 +59,11 @@ impl Translator {
             SessionCommand::Send(message) => Some(outgoing::user_message(&message)),
             SessionCommand::Recap => self.recaps.ask(),
             SessionCommand::Interrupt => Some(outgoing::interrupt(&self.request_id("interrupt"))),
+            SessionCommand::StopSubagent(call) => {
+                let task = self.tasks.task(&call)?.to_owned();
+                let id = self.ask("stop", Asked::Stop(call));
+                Some(outgoing::stop_task(&id, &task))
+            }
             SessionCommand::SetModel(_)
             | SessionCommand::SetMode(_)
             | SessionCommand::SetEffort(_) => self.change(command),
@@ -201,9 +206,9 @@ impl Translator {
                 }
                 Asked::Settings => {
                     self.recaps.follow(&response);
-                    control::on_success(Asked::Settings, response)
+                    control::on_success(&Asked::Settings, response)
                 }
-                asked => control::on_success(asked, response),
+                asked => control::on_success(&asked, response),
             },
             // Only changes the user asked for are worth showing as failed;
             // background refreshes run every turn and just keep the old
@@ -212,6 +217,7 @@ impl Translator {
                 Asked::Model | Asked::Mode | Asked::Effort(_) => {
                     Some(AgentEvent::CommandFailed(error))
                 }
+                Asked::Stop(call) => Some(subagent::event(call, SubagentChange::StopFailed)),
                 asked => {
                     log::warn!("{asked:?} request failed: {error}");
                     None
@@ -236,6 +242,7 @@ impl Translator {
             input,
             description,
             permission_suggestions,
+            agent_id,
         } = request.request
         else {
             return None;
@@ -255,6 +262,7 @@ impl Translator {
             description,
             remember,
             questions,
+            subagent: agent_id.and_then(|task| self.tasks.call(&task).map(str::to_owned)),
         }))
     }
 }

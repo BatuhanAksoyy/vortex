@@ -31,6 +31,8 @@ pub enum SubagentChange {
         activity: String,
         usage: SubagentUsage,
     },
+    /// It could not be stopped when asked to.
+    StopFailed,
     Finished {
         end: SubagentEnd,
         /// Its report, or why it ended.

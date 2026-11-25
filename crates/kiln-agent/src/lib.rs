@@ -96,6 +96,8 @@ pub enum SessionCommand {
         decision: Decision,
     },
     Interrupt,
+    /// Stops the subagent that tool call started, and those below it.
+    StopSubagent(String),
     /// Asks for an [`AgentEvent::Recap`], as no turn of the conversation.
     /// None comes when the user turned recaps off in the agent.
     Recap,

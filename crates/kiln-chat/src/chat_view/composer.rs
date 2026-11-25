@@ -25,7 +25,6 @@ use crate::{
     clock,
     scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
     spinner,
-    transcript::Status,
 };
 
 const MENU_WIDTH: f32 = 280.;
@@ -181,7 +180,7 @@ impl ChatView {
     }
 
     fn action_button(&self, cx: &mut Context<Self>) -> AnyElement {
-        if self.status() == Status::Running {
+        if self.can_stop(cx) {
             round_button(
                 "chat-stop",
                 IconName::Square,

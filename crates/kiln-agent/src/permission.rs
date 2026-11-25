@@ -12,6 +12,8 @@ pub struct PermissionRequest {
     /// Set when the agent asks the user questions rather than for
     /// permission; answered with [`Decision::Answer`].
     pub questions: Vec<Question>,
+    /// The call that started the subagent asking; `None` for the main agent.
+    pub subagent: Option<String>,
 }
 
 /// A question the agent asks, with options to choose from. The user may

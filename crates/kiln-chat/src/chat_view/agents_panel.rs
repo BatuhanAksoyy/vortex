@@ -11,8 +11,13 @@ use gpui_kit::{
     div,
 };
 
+use kiln_agent::SessionCommand;
+
 use super::{ChatView, agents_dialog::AgentsDialog};
-use crate::{scale::ScaledButton as _, transcript::EntryId};
+use crate::{
+    scale::ScaledButton as _,
+    transcript::{EntryId, Status},
+};
 
 impl ChatView {
     /// `None` until the conversation starts a subagent.
@@ -51,6 +56,28 @@ impl ChatView {
         window.focus(&focus, cx);
         self.agents = Some(dialog);
         cx.notify();
+    }
+
+    pub fn stop_subagent(&mut self, id: EntryId, cx: &mut Context<Self>) {
+        let Some(agent) = self.transcript.subagents().get(id) else {
+            return;
+        };
+        let stop = SessionCommand::StopSubagent(agent.call.id.clone());
+        if self.send_command(stop) {
+            self.transcript.stop_asked(id);
+        }
+        cx.notify();
+    }
+
+    /// Whether the button stops the session: while a turn runs, and while
+    /// only subagents in the background do, until a message is written.
+    pub(super) fn can_stop(&self, cx: &Context<Self>) -> bool {
+        let empty = self.attachments.is_empty() && self.composer.read(cx).value().is_empty();
+        match self.status() {
+            Status::Running => true,
+            Status::Idle => empty && self.transcript.subagents().running() > 0,
+            Status::Ended => false,
+        }
     }
 
     pub(super) fn close_agents(&mut self, window: &mut Window, cx: &mut Context<Self>) {

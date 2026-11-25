@@ -9,11 +9,11 @@ mod common;
 mod subagents {
     use std::time::Duration;
 
-    use gpui_kit::TestAppContext;
     use gpui_kit::test::{TestQueryExt, TestWindowExt};
+    use gpui_kit::{TestAppContext, point, px};
     use kiln_agent::{
-        AgentEvent, PromptTokens, SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage,
-        ToolCall, TurnOutcome,
+        AgentEvent, PromptTokens, SessionCommand, SubagentChange, SubagentEnd, SubagentEvent,
+        SubagentUsage, ToolCall, TurnOutcome,
     };
     use kiln_chat::Status;
     use serde_json::json;
@@ -50,7 +50,7 @@ mod subagents {
         harness.type_and_send(cx, "read the note through an agent");
         assert_eq!(
             harness.commands(),
-            [kiln_agent::SessionCommand::Send(
+            [SessionCommand::Send(
                 "read the note through an agent".into()
             )]
         );
@@ -228,5 +228,125 @@ mod subagents {
             assert!(window.try_find("chat-agents-dialog").is_none());
             assert!(window.find_by_label("Grep").visible(), "both cards opened");
         });
+    }
+
+    #[gpui_kit::test]
+    fn the_agent_map_opens_from_the_list_and_leads_to_an_agent(cx: &mut TestAppContext) {
+        let harness = nested(cx);
+        harness.with_window(cx, |window, cx| window.click("chat-agents", cx));
+        harness.with_window(cx, |window, cx| window.click("chat-agents-map-show", cx));
+        harness.with_window(cx, |window, _| {
+            let outer = window.find("chat-agents-map-2").bounds();
+            let inner = window.find("chat-agents-map-3").bounds();
+            assert!(inner.left() > outer.right(), "to the right of its parent");
+            assert_eq!(inner.top(), outer.top(), "the first on its line");
+            assert!(window.try_find("chat-agents-list").is_none());
+        });
+        let click = |cx: &mut TestAppContext, id: &'static str| {
+            harness.with_window(cx, |window, cx| window.click(id, cx));
+        };
+        let shows = |cx: &mut TestAppContext, id: &'static str| {
+            harness.with_window(cx, |window, _| window.try_find(id).is_some())
+        };
+        click(cx, "chat-agents-map-3");
+        assert_eq!(
+            label(&harness, cx, "chat-agents-card-title"),
+            "Count the words"
+        );
+        click(cx, "chat-agents-card-back");
+        assert!(!shows(cx, "chat-agents-card"));
+        click(cx, "chat-agents-map-main");
+        assert!(shows(cx, "chat-agents-card"), "the conversation's own");
+        click(cx, "chat-agents-card-back");
+        click(cx, "chat-agents-map-3");
+        click(cx, "chat-agents-card-transcript");
+        assert_eq!(label(&harness, cx, "chat-agent-detail"), "Count the words");
+        for (gone, left) in [
+            ("chat-agent-detail", "chat-agents-card"),
+            ("chat-agents-card", "chat-agents-map"),
+            ("chat-agents-map", "chat-agents-list"),
+        ] {
+            harness.with_window(cx, |window, cx| window.press("escape", cx));
+            assert!(!shows(cx, gone) && shows(cx, left), "back to {left}");
+        }
+        click(cx, "chat-agents-map-show");
+        click(cx, "chat-agents-list-show");
+        assert!(shows(cx, "chat-agents-list"), "the map's own way back");
+        harness.with_window(cx, |window, cx| window.press("escape", cx));
+        assert!(!shows(cx, "chat-agents-dialog"));
+    }
+
+    #[gpui_kit::test]
+    fn an_agent_is_stopped_from_its_card(cx: &mut TestAppContext) {
+        let harness = started(cx);
+        for id in [
+            "chat-agents",
+            "chat-agents-map-show",
+            "chat-agents-map-2",
+            "chat-agents-card-stop",
+        ] {
+            harness.with_window(cx, |window, cx| window.click(id, cx));
+        }
+        // Stopping, so a second press does nothing.
+        harness.with_window(cx, |window, cx| window.click("chat-agents-card-stop", cx));
+        assert_eq!(
+            harness.commands(),
+            [SessionCommand::StopSubagent("agent".into())]
+        );
+        harness.emit(cx, change(SubagentChange::StopFailed));
+        harness.with_window(cx, |window, cx| window.click("chat-agents-card-stop", cx));
+        assert_eq!(harness.commands().len(), 1, "it can be tried again");
+        harness.emit(cx, stopped());
+        harness.with_window(cx, |window, _| {
+            assert!(window.try_find("chat-agents-card-stop").is_none());
+        });
+    }
+
+    fn stopped() -> AgentEvent {
+        change(SubagentChange::Finished {
+            end: SubagentEnd::Stopped,
+            summary: String::new(),
+            usage: None,
+        })
+    }
+
+    #[gpui_kit::test]
+    fn stop_reaches_agents_that_outlive_their_turn(cx: &mut TestAppContext) {
+        let harness = started(cx);
+        harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
+        assert_eq!(harness.status(cx), Status::Idle);
+        harness.commands();
+        harness.with_window(cx, |window, cx| window.click("chat-stop", cx));
+        assert_eq!(harness.commands(), [SessionCommand::Interrupt]);
+        harness.with_window(cx, |window, cx| window.click("chat-composer", cx));
+        harness.with_window(cx, |window, cx| window.input("go on", cx));
+        harness.with_window(cx, |window, _| {
+            assert!(window.try_find("chat-stop").is_none(), "a message is sent");
+        });
+        harness.with_window(cx, |window, cx| window.press("enter", cx));
+        harness.emit(cx, stopped());
+        harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
+        harness.with_window(cx, |window, _| {
+            assert!(window.try_find("chat-stop").is_none());
+        });
+    }
+
+    #[gpui_kit::test]
+    fn the_lists_width_is_dragged_and_kept(cx: &mut TestAppContext) {
+        let harness = started(cx);
+        harness.with_window(cx, |window, cx| window.click("chat-agents", cx));
+        let list = |cx: &mut TestAppContext| {
+            harness.with_window(cx, |window, _| window.find("chat-agents-list").bounds())
+        };
+        let before = list(cx);
+        let edge = point(before.right(), before.center().y);
+        let wider = point(edge.x + px(60.), edge.y);
+        harness.with_window(cx, |window, cx| window.drag(edge, wider, cx));
+        let dragged = list(cx).size.width;
+        assert!(dragged > before.size.width + px(40.), "{dragged:?}");
+        harness.with_window(cx, |window, cx| window.press("escape", cx));
+        harness.with_window(cx, |window, cx| window.click("chat-agents", cx));
+        let kept = list(cx).size.width;
+        assert!((kept - dragged).abs() < px(2.), "{kept:?}, not {dragged:?}");
     }
 }

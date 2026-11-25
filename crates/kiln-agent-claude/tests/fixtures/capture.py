@@ -5,7 +5,7 @@ usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
         | running | attach | followup | models | suggestion | thinking | recap
-        | nested
+        | nested | stop
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -70,6 +70,9 @@ predicts. The CLI predicts none after a turn that writes much to the prompt
 cache, as a session's first turn does.
 "nested" runs one turn whose subagent starts two subagents of its own, and
 copies its session as "followup" does. Every tool call is allowed.
+"stop" runs one turn whose subagent runs a long shell command, stops that
+subagent with `stop_task`, then tries to stop it again, to record both
+replies and how a stopped subagent is reported. Every tool call is allowed.
 "thinking" runs one turn that needs some reasoning, with thinking summaries
 asked for (`--thinking-display summarized`), to record how a summary, its
 token estimates and the turn's thinking tokens arrive.
@@ -101,6 +104,7 @@ PROMPTS = {
     "followup": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
     "subagent": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
     "nested": "Use the Agent tool once, with subagent_type general-purpose, run_in_background false, description 'Outer' and this prompt: 'Use the Agent tool twice in one message, both with subagent_type general-purpose and run_in_background false, with descriptions Inner A and Inner B, each with the prompt: Read note.txt with the Read tool and reply with its word only. Then reply with both words.' Then reply with only what the agent reported.",
+    "stop": "Use the Agent tool once, with subagent_type general-purpose, run_in_background false, description 'Wait' and the prompt 'Run the shell command `perl -e \"sleep 60\"` with the Bash tool in the foreground and reply with the word done.' Then reply with the single word ok.",
     "suggestion": "Write a Python function that returns the sum of a list of numbers. Reply with only the code.",
     "thinking": "Think step by step: how many times does the letter r appear in 'strawberry raspberry'? Reply with only the number.",
     "recap": "Write a haiku about rust. Reply with only the haiku.",
@@ -256,7 +260,7 @@ resumed = first_session() if case == "resume" else None
 proc = subprocess.Popen(
     BASE + ([] if case in ("followup", "recap", "nested") else ["--no-session-persistence"])
     + (["--permission-mode", "plan"] if case == "plan" else [])
-    + (["--forward-subagent-text"] if case in ("subagent", "followup", "nested") else [])
+    + (["--forward-subagent-text"] if case in ("subagent", "followup", "nested", "stop") else [])
     + (["--prompt-suggestions"] if case == "suggestion" else [])
     + (["--thinking-display", "summarized"] if case == "thinking" else [])
     + (["--resume", resumed] if resumed else []),
@@ -356,7 +360,7 @@ for line in proc.stdout:
     kind = msg.get("type")
     if kind == "control_request" and msg["request"].get("subtype") == "can_use_tool":
         req = msg["request"]
-        if case in ("allow", "plan", "subagent", "attach", "followup", "nested"):
+        if case in ("allow", "plan", "subagent", "attach", "followup", "nested", "stop"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
         elif case == "questions":
             answers = {}
@@ -380,6 +384,15 @@ for line in proc.stdout:
             interrupted = True
             send({"type": "control_request", "request_id": "interrupt-1",
                   "request": {"subtype": "interrupt"}})
+    if case == "stop":
+        if msg.get("subtype") == "task_started" and msg.get("task_type") == "local_agent":
+            stopped_task = msg["task_id"]
+        if msg.get("subtype") == "task_started" and msg.get("task_type") == "local_bash":
+            send({"type": "control_request", "request_id": "kiln-stop-1",
+                  "request": {"subtype": "stop_task", "task_id": stopped_task}})
+        if kind == "control_response" and msg["response"].get("request_id") == "kiln-stop-1":
+            send({"type": "control_request", "request_id": "kiln-stop-2",
+                  "request": {"subtype": "stop_task", "task_id": stopped_task}})
     if kind == "control_response":
         awaiting.discard(msg["response"].get("request_id"))
         if case == "controls" and not awaiting:

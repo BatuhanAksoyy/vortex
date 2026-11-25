@@ -8,7 +8,7 @@ mod thinking;
 mod turn_end;
 
 use subagent::{Holder, Place};
-pub use subagent::{Step, Subagent, Subagents};
+pub use subagent::{Step, StopAttempt, Subagent, Subagents};
 
 use kiln_agent::{
     AgentEvent, BlockKey, Message, PastMessage, PermissionRequest, Picture, ToolCall, TurnOutcome,
@@ -360,15 +360,15 @@ impl Transcript {
         true
     }
 
-    /// Unanswered requests die with their turn: the CLI no longer waits.
+    /// The CLI waits on only for what subagents still running asked.
     fn end_turn(&mut self, outcome: TurnOutcome) -> Change {
         self.status = Status::Idle;
-        self.pending.clear();
         self.unclaimed_thinking = 0;
         let withdrawn = std::mem::take(&mut self.withdrawn);
         if outcome != TurnOutcome::Completed {
             self.stop_foreground_subagents();
         }
+        self.drop_requests(true);
         match outcome {
             TurnOutcome::Completed => Change::default(),
             TurnOutcome::Interrupted if withdrawn => Change::default(),

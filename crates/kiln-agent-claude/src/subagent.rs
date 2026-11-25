@@ -85,6 +85,17 @@ impl Tasks {
         Some(event(self.first(report.task, report.call)?, change))
     }
 
+    /// The call that first started `task`.
+    pub fn call(&self, task: &str) -> Option<&str> {
+        self.0.get(task).map(String::as_str)
+    }
+
+    /// The task `call` started.
+    pub fn task(&self, call: &str) -> Option<&str> {
+        let started = |(_, first): &(&String, &String)| *first == call;
+        self.0.iter().find(started).map(|(task, _)| task.as_str())
+    }
+
     /// The call that first started `task`, else the call the line names.
     fn first(&self, task: Option<&str>, call: Option<String>) -> Option<String> {
         task.and_then(|task| self.0.get(task)).cloned().or(call)
