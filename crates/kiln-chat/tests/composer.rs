@@ -13,7 +13,7 @@ mod composer {
 
     use kiln_agent::{
         AgentEvent, ContextUsage, Effort, ModelOption, PermissionMode, PromptTokens,
-        SessionCommand, SessionInfo, TurnOutcome,
+        SessionCommand, SessionInfo, SpentTokens, TurnOutcome,
     };
     use kiln_chat::Status;
 
@@ -121,6 +121,69 @@ mod composer {
     }
 
     #[gpui_kit::test]
+    fn bypassing_permissions_is_confirmed_first(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.commands();
+        let ask = |cx: &mut TestAppContext| {
+            harness.with_window(cx, |window, cx| window.click("chat-mode", cx));
+            harness.with_window(cx, |window, cx| {
+                window.click("chat-mode-BypassPermissions", cx);
+            });
+        };
+        ask(cx);
+        harness.with_window(cx, |window, cx| window.click("cancel", cx));
+        assert_eq!(harness.commands(), []);
+        ask(cx);
+        assert_eq!(harness.commands(), []);
+        harness.with_window(cx, |window, cx| window.click("ok", cx));
+        assert_eq!(
+            harness.commands(),
+            [SessionCommand::SetMode(PermissionMode::BypassPermissions)]
+        );
+        let mode = PermissionMode::BypassPermissions;
+        harness.emit(cx, AgentEvent::ModeChanged(mode));
+        cx.update(|cx| {
+            let chat = harness.view.read(cx);
+            assert_eq!((chat.mode(), chat.known_mode()), (mode, None));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn tab_takes_the_message_the_agent_predicts(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.emit(cx, started());
+        harness.commands();
+        harness.emit(cx, AgentEvent::PromptSuggestion("run the tests".into()));
+        harness.with_window(cx, |window, cx| window.click("chat-composer", cx));
+        harness.with_window(cx, |window, cx| window.press("tab", cx));
+        harness.with_window(cx, |window, cx| window.press("enter", cx));
+        let sent = harness.commands();
+        assert!(
+            matches!(&sent[..], [SessionCommand::Send(message), ..] if message.text == "run the tests"),
+            "{sent:?}"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn typing_drops_the_predicted_message(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.emit(cx, started());
+        harness.emit(cx, AgentEvent::PromptSuggestion("run the tests".into()));
+        harness.commands();
+        harness.type_and_send(cx, "no");
+        let sent = harness.commands();
+        assert!(
+            matches!(&sent[..], [SessionCommand::Send(message), ..] if message.text == "no"),
+            "{sent:?}"
+        );
+        harness.with_window(cx, |window, cx| window.press("tab", cx));
+        cx.update(|cx| assert_eq!(harness.view.read(cx).status(), Status::Running));
+    }
+
+    #[gpui_kit::test]
     fn the_mode_changes_only_when_the_agent_confirms(cx: &mut TestAppContext) {
         let harness = Harness::new(cx);
         harness.emit(cx, ready());
@@ -164,6 +227,27 @@ mod composer {
             !harness.with_window(cx, |window, _| window.try_find("chat-effort").is_some()),
             "a model that takes no effort hides it"
         );
+    }
+
+    #[gpui_kit::test]
+    fn the_strip_tells_what_the_conversation_spent(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.emit(cx, started());
+        let spent = SpentTokens {
+            input: 2,
+            cached: 10_000,
+            written: 4_998,
+            output: 300,
+        };
+        harness.emit(cx, AgentEvent::SpentTokens(spent));
+        harness.with_window(cx, |window, cx| window.click("chat-tokens", cx));
+        harness.with_window(cx, |window, _| {
+            let panel = window.find("chat-tokens-panel");
+            assert_eq!(panel.label(), Some("15.3k tokens spent"));
+        });
+        harness.emit(cx, AgentEvent::ConversationReset);
+        assert!(!harness.with_window(cx, |window, _| window.try_find("chat-tokens").is_some()));
     }
 
     #[gpui_kit::test]

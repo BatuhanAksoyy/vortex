@@ -4,7 +4,7 @@
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
-        | running | attach | followup | models
+        | running | attach | followup | models | suggestion | thinking
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -63,6 +63,13 @@ call is allowed.
 "models" sends no prompt, so it spends no usage: it asks for the model
 catalogue with `list_models`, to compare it with the models `initialize`
 lists.
+"suggestion" runs two tiny turns with `--prompt-suggestions`, and records
+on past the second's result until the CLI sends the next prompt it
+predicts. The CLI predicts none after a turn that writes much to the prompt
+cache, as a session's first turn does.
+"thinking" runs one turn that needs some reasoning, with thinking summaries
+asked for (`--thinking-display summarized`), to record how a summary, its
+token estimates and the turn's thinking tokens arrive.
 "running" sends no prompt, so it spends no usage: it starts a process and
 copies the record the CLI keeps of it under `<config>/sessions/` while it
 runs, which tells other clients the conversation is open.
@@ -87,9 +94,13 @@ PROMPTS = {
     "resume": "What word did I ask you to remember? Reply with that word only.",
     "followup": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
     "subagent": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
+    "suggestion": "Write a Python function that returns the sum of a list of numbers. Reply with only the code.",
+    "thinking": "Think step by step: how many times does the letter r appear in 'strawberry raspberry'? Reply with only the number.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
+
+SECOND_SUGGESTION = "Now make it ignore values that are not numbers. Reply with only the code."
 
 
 def square_png(rgb, size=16):
@@ -238,6 +249,8 @@ proc = subprocess.Popen(
     BASE + ([] if case == "followup" else ["--no-session-persistence"])
     + (["--permission-mode", "plan"] if case == "plan" else [])
     + (["--forward-subagent-text"] if case in ("subagent", "followup") else [])
+    + (["--prompt-suggestions"] if case == "suggestion" else [])
+    + (["--thinking-display", "summarized"] if case == "thinking" else [])
     + (["--resume", resumed] if resumed else []),
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     env=env, text=True, bufsize=1,
@@ -438,6 +451,17 @@ for line in proc.stdout:
             send({"type": "user", "message": {"role": "user", "content": FOLLOWUP},
                   "parent_tool_use_id": None, "session_id": ""})
             continue
+    # The prediction comes after the turn's result.
+    if kind == "result" and case == "suggestion" and not interrupted:
+        interrupted = True
+        send({"type": "user", "message": {"role": "user", "content": SECOND_SUGGESTION},
+              "parent_tool_use_id": None, "session_id": ""})
+        continue
+    if kind == "result" and case == "suggestion":
+        deadline = min(deadline, time.time() + 60)
+        continue
+    if kind == "prompt_suggestion" and case == "suggestion":
+        break
     if kind == "result" and case == "usage":
         send({"type": "control_request", "request_id": "kiln-usage-1",
               "request": {"subtype": "get_usage"}})

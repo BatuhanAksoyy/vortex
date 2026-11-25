@@ -7,14 +7,16 @@ mod hooks;
 mod message;
 mod past;
 mod permission;
+mod skills;
 mod subagent;
 mod tools;
 
-pub use effort::{Effort, PromptTokens};
+pub use effort::{Effort, PromptTokens, SpentTokens};
 pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
 pub use message::{Message, Picture};
 pub use past::{PastMessage, PastSession};
 pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Remember, RuleScope};
+pub use skills::{Skill, SkillLock, SkillState};
 pub use subagent::{SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage};
 pub use tools::ToolServer;
 
@@ -22,7 +24,7 @@ use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use serde_json::Value;
@@ -237,66 +239,6 @@ pub enum ContextKind {
     Free,
 }
 
-/// A skill the agent can load, as its skill settings list it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Skill {
-    /// The name its settings are saved under, e.g. `plugin:skill`.
-    pub name: String,
-    /// The name the user types after `/`.
-    pub display_name: String,
-    pub description: String,
-    /// Where it comes from, e.g. `project`, `user` or `plugin`.
-    pub source: String,
-    /// What listing it costs in the system prompt.
-    pub tokens: u64,
-    pub state: SkillState,
-    /// Set when the state cannot be changed here.
-    pub locked_by: Option<SkillLock>,
-    /// Whether it is offered as a slash command; a skill that is off is not.
-    pub advertised: bool,
-}
-
-/// How a skill is offered, from most to least visible.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SkillState {
-    /// Listed for the model, and the user can run it.
-    #[default]
-    On,
-    /// Listed for the model by name only, without its description.
-    NameOnly,
-    /// The user can run it; the model does not see it.
-    UserOnly,
-    /// Hidden from the model and from the command list.
-    Off,
-}
-
-impl SkillState {
-    pub const ALL: [Self; 4] = [Self::On, Self::NameOnly, Self::UserOnly, Self::Off];
-
-    /// The state after this one, wrapping around.
-    #[must_use]
-    pub fn next(self) -> Self {
-        let index = Self::ALL
-            .iter()
-            .position(|state| *state == self)
-            .unwrap_or(0);
-        Self::ALL[(index + 1) % Self::ALL.len()]
-    }
-}
-
-/// Why a skill's state cannot be changed here.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SkillLock {
-    /// The skill's own file sets it.
-    Author,
-    /// Its plugin manages it.
-    Plugin,
-    /// Managed or start-up settings set it.
-    Policy,
-    /// Settings cannot hold an entry under its name.
-    ReservedName,
-}
-
 /// Identifies one streamed content block, so consecutive deltas can be
 /// appended to the same transcript entry.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -318,6 +260,14 @@ pub enum AgentEvent {
     ThinkingDelta {
         block: BlockKey,
         text: String,
+    },
+    /// About how many more tokens the model thought, for the thinking under
+    /// way. The words of a thought are a summary; its tokens are not.
+    ThinkingTokens(u64),
+    /// How long the model thought in the message `message_id`.
+    ThinkingTime {
+        message_id: String,
+        duration: Duration,
     },
     ToolCall(ToolCall),
     /// A subagent's own tool calls and results come as `ToolCall` and
@@ -343,6 +293,11 @@ pub enum AgentEvent {
     /// A model request of the conversation started; how its prompt was
     /// read. Subagents' requests are not reported.
     PromptTokens(PromptTokens),
+    /// Tokens the model wrote in the request under way, thinking included.
+    OutputTokens(u64),
+    /// Everything the conversation spent so far, subagents included; comes
+    /// as a turn ends.
+    SpentTokens(SpentTokens),
     /// The last request of the conversation a session resumes, as the agent
     /// stored it, so the prompt cache shows before anything is sent.
     PastPromptTokens {
@@ -374,6 +329,9 @@ pub enum AgentEvent {
     /// The agent started over with an empty conversation, e.g. on `/clear`.
     ConversationReset,
     TurnEnded(TurnOutcome),
+    /// The message the user is likely to send next, predicted after a turn
+    /// ends. None comes when the next step is not obvious.
+    PromptSuggestion(String),
     /// The agent process is gone; no further events follow.
     Exited {
         error: Option<String>,

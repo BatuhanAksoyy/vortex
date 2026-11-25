@@ -15,7 +15,7 @@ ties it to the call that started it.
 """
 import getpass, json, re, sys
 
-DROP_SYSTEM = {"hook_started", "hook_response", "thinking_tokens"}
+DROP_SYSTEM = {"hook_started", "hook_response"}
 KEEP_INIT = {"type", "subtype", "session_id", "cwd", "model", "permissionMode",
              "claude_code_version", "tools", "mcp_servers", "slash_commands", "uuid"}
 

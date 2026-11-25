@@ -32,6 +32,11 @@ pub(crate) const ARGS: &[&str] = &[
     "--forward-subagent-text",
     "--permission-prompt-tool",
     "stdio",
+    // The composer offers the message the user is likely to send next.
+    "--prompt-suggestions",
+    // Without it the CLI sends no words of the model's thinking.
+    "--thinking-display",
+    "summarized",
 ];
 
 /// Set by a parent Claude Code process. Inherited, they make the child behave
@@ -91,6 +96,9 @@ impl AgentBackend for ClaudeBackend {
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
         let mut command = Command::new(&self.program);
         command.args(ARGS);
+        // Lets the user switch to bypassing permissions later; it does not
+        // turn it on. The CLI refuses the switch without it.
+        command.arg("--allow-dangerously-skip-permissions");
         if let Some(model) = &spec.model {
             command.args(["--model", model]);
         }

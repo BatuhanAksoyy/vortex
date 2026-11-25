@@ -1,9 +1,10 @@
 //! The chat transcript as data: agent events fold into a list of entries.
 //! Kept free of GPUI so the folding rules are unit-tested directly.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 mod subagent;
+mod thinking;
 
 pub use subagent::{Card, Step, Subagent};
 
@@ -23,7 +24,12 @@ pub enum Entry {
     },
     Thinking {
         block: BlockKey,
+        /// A summary of the thought, as the CLI sends it.
         text: String,
+        /// About how many tokens the model thought.
+        tokens: u64,
+        /// How long it thought, once it is done.
+        took: Option<Duration>,
     },
     Tool {
         call: ToolCall,
@@ -80,6 +86,8 @@ pub struct Transcript {
     withdrawn: bool,
     /// Whether the agent wrote or did anything since the turn began.
     answered: bool,
+    /// Tokens of a thought reported before its first words.
+    unclaimed_thinking: u64,
 }
 
 impl Transcript {
@@ -203,6 +211,8 @@ impl Transcript {
         match event {
             AgentEvent::TextDelta { .. }
             | AgentEvent::ThinkingDelta { .. }
+            | AgentEvent::ThinkingTokens(_)
+            | AgentEvent::ThinkingTime { .. }
             | AgentEvent::ToolCall(_)
             | AgentEvent::ToolResult { .. }
             | AgentEvent::Subagent(_) => {
@@ -238,6 +248,11 @@ impl Transcript {
     fn apply_step(&mut self, event: AgentEvent) -> Change {
         match event {
             AgentEvent::TextDelta { block, text } => self.append_text(block, text, false),
+            AgentEvent::ThinkingTokens(tokens) => self.count_thinking(tokens),
+            AgentEvent::ThinkingTime {
+                message_id,
+                duration,
+            } => self.time_thinking(&message_id, duration),
             AgentEvent::ThinkingDelta { block, text } => self.append_text(block, text, true),
             AgentEvent::ToolCall(call) => self.push_tool(call),
             AgentEvent::ToolResult {
@@ -264,6 +279,7 @@ impl Transcript {
         self.entries.clear();
         self.tools.clear();
         self.pending.clear();
+        self.unclaimed_thinking = 0;
     }
 
     fn push(&mut self, entry: Entry) -> Change {
@@ -276,8 +292,13 @@ impl Transcript {
     }
 
     fn append_text(&mut self, block: BlockKey, delta: String, thinking: bool) -> Change {
-        if let Some((_, Entry::Text { block: last, text } | Entry::Thinking { block: last, text })) =
-            self.entries.last_mut()
+        if let Some((
+            _,
+            Entry::Text { block: last, text }
+            | Entry::Thinking {
+                block: last, text, ..
+            },
+        )) = self.entries.last_mut()
             && *last == block
         {
             text.push_str(&delta);
@@ -287,11 +308,17 @@ impl Transcript {
             };
         }
         let text = delta;
-        self.push(if thinking {
-            Entry::Thinking { block, text }
+        let entry = if thinking {
+            Entry::Thinking {
+                block,
+                text,
+                tokens: std::mem::take(&mut self.unclaimed_thinking),
+                took: None,
+            }
         } else {
             Entry::Text { block, text }
-        })
+        };
+        self.push(entry)
     }
 
     fn push_tool(&mut self, call: ToolCall) -> Change {
@@ -326,6 +353,7 @@ impl Transcript {
     fn end_turn(&mut self, outcome: TurnOutcome) -> Change {
         self.status = Status::Idle;
         self.pending.clear();
+        self.unclaimed_thinking = 0;
         let withdrawn = std::mem::take(&mut self.withdrawn);
         if outcome != TurnOutcome::Completed {
             self.stop_foreground_subagents();

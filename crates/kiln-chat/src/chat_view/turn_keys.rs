@@ -98,7 +98,12 @@ impl ChatView {
         (text, cursor)
     }
 
-    fn show_in_composer(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn show_in_composer(
+        &mut self,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let end = text.len();
         self.composer.update(cx, |composer, cx| {
             composer.replace_all(text.to_owned(), window, cx);

@@ -25,6 +25,9 @@ pub fn event(event: wire::StreamEvent) -> Option<AgentEvent> {
             };
             delta_event(block, delta)
         }
+        wire::ApiEvent::MessageDelta { usage } => {
+            Some(AgentEvent::OutputTokens(usage.output_tokens))
+        }
         wire::ApiEvent::Other => None,
     }
 }
@@ -32,14 +35,24 @@ pub fn event(event: wire::StreamEvent) -> Option<AgentEvent> {
 fn delta_event(block: BlockKey, delta: wire::Delta) -> Option<AgentEvent> {
     match delta {
         wire::Delta::Text { text } => Some(AgentEvent::TextDelta { block, text }),
-        wire::Delta::Thinking { thinking } if !thinking.is_empty() => {
-            Some(AgentEvent::ThinkingDelta {
-                block,
-                text: thinking,
-            })
-        }
-        wire::Delta::Thinking { .. } | wire::Delta::Other => None,
+        // An empty one still starts the block, which shows the model
+        // thinking when the CLI sends no words of it.
+        wire::Delta::Thinking { thinking } => Some(AgentEvent::ThinkingDelta {
+            block,
+            text: thinking,
+        }),
+        wire::Delta::Other => None,
     }
+}
+
+/// How long the model thought before `message`, if it holds the thought.
+pub fn thinking_time(message: &wire::Assistant) -> Option<AgentEvent> {
+    let millis = message.thinking_duration_ms?;
+    let main = message.parent_tool_use_id.is_none();
+    main.then(|| AgentEvent::ThinkingTime {
+        message_id: message.message.id.clone(),
+        duration: Duration::from_millis(millis),
+    })
 }
 
 pub fn prompt_tokens(usage: &wire::PromptUsage) -> PromptTokens {

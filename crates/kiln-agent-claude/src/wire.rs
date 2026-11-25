@@ -2,6 +2,8 @@
 //! line types and subtypes decode to `Other` so new CLI versions degrade
 //! gracefully instead of failing.
 
+use std::collections::HashMap;
+
 use kiln_agent::Picture;
 use serde::Deserialize;
 use serde_json::Value;
@@ -22,6 +24,10 @@ pub enum Line {
     },
     #[serde(rename = "result")]
     TurnResult(TurnResult),
+    /// What the user may send next, predicted after a turn.
+    PromptSuggestion {
+        suggestion: String,
+    },
     /// The conversation was emptied; a new `init` follows. `trigger` says
     /// why: `clear` for `/clear` and its aliases.
     ConversationReset {
@@ -73,6 +79,12 @@ pub enum System {
         summary: String,
         usage: Option<TaskUsage>,
     },
+    /// An estimate of the tokens thought since the last one, while the
+    /// model thinks.
+    ThinkingTokens {
+        #[serde(default)]
+        estimated_tokens_delta: u64,
+    },
     #[serde(other)]
     Other,
 }
@@ -119,6 +131,11 @@ pub enum ApiEvent {
         index: u64,
         delta: Delta,
     },
+    /// Ends a message, with how many tokens it took.
+    MessageDelta {
+        #[serde(default)]
+        usage: WrittenUsage,
+    },
     #[serde(other)]
     Other,
 }
@@ -127,6 +144,12 @@ pub enum ApiEvent {
 pub struct StartedMessage {
     #[serde(default)]
     pub usage: PromptUsage,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct WrittenUsage {
+    pub output_tokens: u64,
 }
 
 /// How the request's prompt was billed, as the API reports it.
@@ -166,6 +189,10 @@ pub struct Assistant {
     /// is never streamed.
     #[serde(default)]
     pub local_command_run: Option<Value>,
+    /// On the message that holds a thinking block: how long the model
+    /// thought.
+    #[serde(default)]
+    pub thinking_duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -336,4 +363,20 @@ pub struct TurnResult {
     /// Set on turns the API refused, which still end with `success`.
     #[serde(default)]
     pub is_error: bool,
+    /// What the conversation spent so far, by model.
+    #[serde(default, rename = "modelUsage")]
+    pub model_usage: HashMap<String, ModelUsage>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ModelUsage {
+    #[serde(rename = "inputTokens")]
+    pub input: u64,
+    #[serde(rename = "outputTokens")]
+    pub output: u64,
+    #[serde(rename = "cacheReadInputTokens")]
+    pub cached: u64,
+    #[serde(rename = "cacheCreationInputTokens")]
+    pub written: u64,
 }

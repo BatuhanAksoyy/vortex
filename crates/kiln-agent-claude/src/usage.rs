@@ -2,11 +2,16 @@
 //! reply (percent, ISO reset times) and the `rate_limit_event` line sent
 //! during turns (fractions, Unix reset times).
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
-use kiln_agent::{Limited, Usage, UsageWindow};
+use kiln_agent::{Limited, SpentTokens, Usage, UsageWindow};
 use serde::Deserialize;
 use serde_json::Value;
+
+use crate::wire;
 
 #[derive(Deserialize)]
 struct Reply {
@@ -125,6 +130,21 @@ fn decode<T: for<'de> Deserialize<'de>>(value: &Value) -> Option<T> {
     T::deserialize(value)
         .map_err(|error| log::warn!("unreadable usage report: {error}"))
         .ok()
+}
+
+/// What every model together spent; `None` when the CLI does not say, as
+/// after a command it ran itself.
+pub fn spent(models: &HashMap<String, wire::ModelUsage>) -> Option<SpentTokens> {
+    let mut total = SpentTokens::default();
+    for usage in models.values() {
+        total += SpentTokens {
+            input: usage.input,
+            cached: usage.cached,
+            written: usage.written,
+            output: usage.output,
+        };
+    }
+    (total.total() > 0).then_some(total)
 }
 
 #[cfg(test)]

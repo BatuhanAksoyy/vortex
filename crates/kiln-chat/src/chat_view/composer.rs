@@ -98,6 +98,7 @@ impl ChatView {
             .border_color(cx.theme().border)
             .child(choices)
             .children(self.agents_button(cx))
+            .children(self.tokens_button(cx))
             .child(self.cache_button(cx))
             .children(self.context_meter(cx))
             .child(self.action_button(cx))
@@ -122,6 +123,7 @@ impl ChatView {
             .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
                 MENU_MODES
                     .into_iter()
+                    .chain([PermissionMode::BypassPermissions])
                     .fold(menu.min_w(px(MENU_WIDTH)), |menu, mode| {
                         menu.item(mode_item(mode, mode == current, &view))
                     })
@@ -239,8 +241,8 @@ fn mode_item(mode: PermissionMode, checked: bool, view: &WeakEntity<ChatView>) -
         )
     })
     .checked(checked)
-    .on_click(move |_, _, cx| {
-        let _ = view.update(cx, |view, cx| view.set_mode(mode, cx));
+    .on_click(move |_, window, cx| {
+        let _ = view.update(cx, |view, cx| view.choose_mode(mode, window, cx));
     })
 }
 

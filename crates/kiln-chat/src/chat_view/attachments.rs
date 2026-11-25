@@ -76,6 +76,7 @@ impl ChatView {
         let Some(commands) = self.ensure_session(window, cx) else {
             return false;
         };
+        self.drop_suggestion(window, cx);
         let change = self.transcript.push_user(message.clone());
         self.apply_change(change, cx);
         cx.emit(ChatEvent::TurnStarted);

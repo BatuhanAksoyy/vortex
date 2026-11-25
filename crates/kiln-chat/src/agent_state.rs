@@ -7,13 +7,14 @@ use std::{collections::HashMap, time::SystemTime};
 
 use kiln_agent::{
     Account, AgentEvent, ContextUsage, Effort, Limited, ModelOption, PermissionMode,
-    SessionCommand, SlashCommand, ToolServer, Usage,
+    SessionCommand, SlashCommand, SpentTokens, ToolServer, Usage,
 };
 
-use crate::prompt_cache::PromptCache;
+use crate::{prompt_cache::PromptCache, spent::Spent};
 
-/// Modes offered in the composer's menu. `DontAsk` and `BypassPermissions`
-/// are shown when the agent reports them but never offered.
+/// Modes Shift+Tab goes through. The menu adds `BypassPermissions`, which
+/// must be confirmed; `DontAsk` is shown when the agent reports it but never
+/// offered.
 pub const MENU_MODES: [PermissionMode; 4] = [
     PermissionMode::AskBeforeEdits,
     PermissionMode::EditAutomatically,
@@ -38,6 +39,7 @@ pub struct AgentState {
     effort: Option<Effort>,
     context: Option<ContextUsage>,
     cache: PromptCache,
+    spent: Spent,
     account: Option<Account>,
     usage: Usage,
     usage_updated_at: Option<SystemTime>,
@@ -77,7 +79,9 @@ impl AgentState {
             AgentEvent::EffortChanged(effort) => self.effort = *effort,
             AgentEvent::PromptTokens(_) | AgentEvent::PastPromptTokens { .. } => {
                 self.record_cache(event);
+                self.spent.record(event);
             }
+            AgentEvent::OutputTokens(_) | AgentEvent::SpentTokens(_) => self.spent.record(event),
             AgentEvent::ContextUsage(usage) => self.context = Some(usage.clone()),
             _ => return self.apply_list(event),
         }
@@ -170,6 +174,12 @@ impl AgentState {
     pub fn reset_context(&mut self) {
         self.context = None;
         self.cache = PromptCache::default();
+        self.spent = Spent::default();
+    }
+
+    /// What the conversation spent so far, once anything is known of it.
+    pub fn spent(&self) -> Option<SpentTokens> {
+        self.spent.so_far()
     }
 
     /// Moves from account `from` to `to`: keeps how much of `from`'s plan

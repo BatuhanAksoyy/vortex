@@ -6,8 +6,10 @@ mod accounts_panel;
 mod agents_dialog;
 mod agents_panel;
 pub(crate) mod attachments;
+mod bypass;
 mod cache_panel;
 mod composer;
+mod composer_box;
 mod context_panel;
 mod find;
 mod header;
@@ -24,6 +26,7 @@ mod session;
 mod skills;
 mod skills_panel;
 mod slash_menu;
+mod tokens_panel;
 mod turn_keys;
 
 use hooks::HooksPanel;
@@ -34,10 +37,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyView, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels, Subscription, Task,
     Window,
-    component::{
-        input::{InputEvent, TextareaState},
-        message_scroller::MessageScrollerState,
-    },
+    component::{input::TextareaState, message_scroller::MessageScrollerState},
 };
 use kiln_accounts::Accounts;
 use kiln_agent::{AgentBackend, SessionCommand};
@@ -55,8 +55,6 @@ pub use history::ChatEvent;
 use history::Conversation;
 use native::ModelPicker;
 use slash_menu::SlashMenu;
-
-const COMPOSER_MAX_ROWS: usize = 10;
 
 /// A running agent process. Dropping it stops the process.
 struct LiveSession {
@@ -78,6 +76,7 @@ struct ShownPrompt {
 /// The panels the header and composer strip open; one is open at a time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum StripPanel {
+    Tokens,
     Usage,
     Context,
     Cache,
@@ -112,6 +111,9 @@ pub struct ChatView {
     /// The transcript's width last frame, and how many times it changed.
     transcript_width: Rc<Cell<(Option<Pixels>, u32)>>,
     composer: Entity<TextareaState>,
+    /// The message the agent predicts the user sends next, offered in the
+    /// empty composer.
+    suggestion: Option<String>,
     find: Option<find::Find>,
     /// The sent message Up last put in the box, by its place from the
     /// newest, while the box still holds it unchanged.
@@ -141,25 +143,6 @@ pub struct ChatView {
 }
 
 impl ChatView {
-    fn follow_composer(
-        composer: &Entity<TextareaState>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Subscription {
-        cx.subscribe_in(composer, window, |this, _, event, window, cx| match event {
-            InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
-            InputEvent::Change => {
-                // Typing a message puts the picker away; the text box
-                // emptying as a command runs leaves it open.
-                if !this.composer.read(cx).value().is_empty() {
-                    this.close_model_picker(cx);
-                }
-                this.sync_slash_menu(cx);
-            }
-            _ => {}
-        })
-    }
-
     pub fn new(
         backend: Rc<dyn AgentBackend>,
         accounts: Entity<Accounts>,
@@ -167,7 +150,7 @@ impl ChatView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let composer = new_composer(window, cx);
+        let composer = composer_box::new_composer(window, cx);
         let subscription = Self::follow_composer(&composer, window, cx);
         let accounts_changed = cx.observe_in(&accounts, window, |this, _, window, cx| {
             this.adopt_added_account(window, cx);
@@ -199,6 +182,7 @@ impl ChatView {
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             transcript_width: Rc::default(),
             composer,
+            suggestion: None,
             find: None,
             recalled: None,
             slash: SlashMenu::default(),
@@ -251,6 +235,7 @@ impl ChatView {
         self.toggled.clear();
         self.find = None;
         self.agent.reset_context();
+        self.drop_suggestion(window, cx);
         self.scroller
             .update(cx, |scroller, cx| scroller.reset(1, cx));
         self.sync_prompt(window, cx);
@@ -378,16 +363,6 @@ impl ChatView {
             alive = this.update(cx, Self::next_spinner_frame).is_ok();
         }
     }
-}
-
-fn new_composer(window: &mut Window, cx: &mut Context<ChatView>) -> Entity<TextareaState> {
-    cx.new(|cx| {
-        let mut state = TextareaState::new(window, cx)
-            .auto_grow(1, COMPOSER_MAX_ROWS)
-            .placeholder("Ask Claude to edit, explain or run something…");
-        state.set_submit_on_enter(true, cx);
-        state
-    })
 }
 
 impl Focusable for ChatView {

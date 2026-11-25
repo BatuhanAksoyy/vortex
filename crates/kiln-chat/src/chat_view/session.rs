@@ -70,10 +70,14 @@ impl ChatView {
     }
 
     /// The mode the agent reported or the user chose; `None` until then,
-    /// while the user's own settings decide it.
+    /// while the user's own settings decide it. Never bypassing permissions:
+    /// this is kept for the chat to reopen in, and that one is confirmed
+    /// anew.
     #[must_use]
     pub fn known_mode(&self) -> Option<PermissionMode> {
-        self.agent.start_mode()
+        self.agent
+            .start_mode()
+            .filter(|mode| *mode != PermissionMode::BypassPermissions)
     }
 
     /// Runs the chat in `mode` from its first process, as when a kept
@@ -266,6 +270,7 @@ impl ChatView {
         self.update_hooks(&event, cx);
         let exited = matches!(event, AgentEvent::Exited { .. });
         let turn_ended = matches!(event, AgentEvent::TurnEnded(_));
+        self.update_suggestion(&event, window, cx);
         if event == AgentEvent::ConversationReset {
             self.toggled.clear();
             self.scroller

@@ -33,14 +33,15 @@ impl ChatView {
         self.move_model_choice(step, cx) || self.move_slash_choice(step, cx)
     }
 
-    /// Tab completes a command without running it.
+    /// Tab completes a command without running it, or takes the message
+    /// the agent predicts.
     pub(super) fn on_menu_tab(
         &mut self,
         _: &IndentInline,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.pick_slash_choice(false, window, cx) {
+        if self.pick_slash_choice(false, window, cx) || self.take_suggestion(window, cx) {
             cx.stop_propagation();
         }
     }

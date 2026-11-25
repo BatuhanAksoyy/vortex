@@ -162,18 +162,26 @@ impl Translator {
             Line::StreamEvent(event) => stream::event(event).into_iter().collect(),
             Line::Assistant(message) => assistant_events(message),
             Line::User(message) => tool_results(message),
-            Line::ControlRequest(request) => self.control_request(request).into_iter().collect(),
-            Line::RateLimitEvent { rate_limit_info } => usage::from_event(&rate_limit_info)
-                .map(AgentEvent::Usage)
+            Line::ConversationReset { trigger } => system::conversation_reset(&trigger),
+            Line::TurnResult(result) => usage::spent(&result.model_usage)
+                .map(AgentEvent::SpentTokens)
                 .into_iter()
+                .chain([AgentEvent::TurnEnded(outcome(result))])
                 .collect(),
-            Line::ControlResponse(response) => self
-                .control_response(response.response)
-                .into_iter()
-                .collect(),
-            Line::ConversationReset { trigger } => conversation_reset(&trigger),
-            Line::TurnResult(result) => vec![AgentEvent::TurnEnded(outcome(result))],
-            Line::Other => Vec::new(),
+            line => self.on_single(line).into_iter().collect(),
+        }
+    }
+
+    /// A line that says one thing at most.
+    fn on_single(&mut self, line: Line) -> Option<AgentEvent> {
+        match line {
+            Line::ControlRequest(request) => self.control_request(request),
+            Line::ControlResponse(response) => self.control_response(response.response),
+            Line::RateLimitEvent { rate_limit_info } => {
+                usage::from_event(&rate_limit_info).map(AgentEvent::Usage)
+            }
+            Line::PromptSuggestion { suggestion } => Some(AgentEvent::PromptSuggestion(suggestion)),
+            _ => None,
         }
     }
 
@@ -244,18 +252,6 @@ impl Translator {
     }
 }
 
-/// Only `/clear` is known to empty the conversation. Another trigger keeps
-/// the transcript: wrongly keeping history is harmless, wrongly wiping what
-/// the user can see is not.
-fn conversation_reset(trigger: &str) -> Vec<AgentEvent> {
-    if trigger == "clear" {
-        vec![AgentEvent::ConversationReset]
-    } else {
-        log::warn!("conversation reset by {trigger:?} kept the transcript");
-        Vec::new()
-    }
-}
-
 fn assistant_events(message: wire::Assistant) -> Vec<AgentEvent> {
     if message.local_command_run.is_some() {
         return command_output(message);
@@ -264,7 +260,11 @@ fn assistant_events(message: wire::Assistant) -> Vec<AgentEvent> {
         .parent_tool_use_id
         .as_deref()
         .map_or_default(|call| subagent::message(call, &message.message));
-    written.into_iter().chain(tool_calls(message)).collect()
+    written
+        .into_iter()
+        .chain(stream::thinking_time(&message))
+        .chain(tool_calls(message))
+        .collect()
 }
 
 fn tool_calls(message: wire::Assistant) -> Vec<AgentEvent> {

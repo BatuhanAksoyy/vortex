@@ -1,6 +1,8 @@
 //! One transcript entry, laid out like the Claude Code VS Code panel: user
 //! messages in a box, agent steps as a timeline of dots joined by a line.
 
+mod thinking;
+
 use std::path::Path;
 
 use gpui_kit::prelude::*;
@@ -68,7 +70,9 @@ pub fn render(entry: &Entry, context: &EntryContext, cx: &App) -> AnyElement {
                 .child(body)
                 .into_any_element()
         }
-        Entry::Thinking { text, .. } => thinking(text, context, cx),
+        Entry::Thinking {
+            text, tokens, took, ..
+        } => thinking::render(text, *tokens, *took, context, cx),
         Entry::Tool { call, result } => tool(call, result.as_ref(), context, cx),
         Entry::Subagent { agent, .. } => subagent_view::render(agent, context, cx),
     }
@@ -194,30 +198,6 @@ fn user(message: &Message, context: &EntryContext, cx: &App) -> AnyElement {
                 .children(more)
                 .children(message.files.iter().map(|path| attached_file(path, cx))),
         )
-        .into_any_element()
-}
-
-fn thinking(text: &str, context: &EntryContext, cx: &App) -> AnyElement {
-    let expanded = context.toggled;
-    let muted = cx.theme().muted_foreground;
-    timeline_row(muted, context, cx)
-        .child(
-            div()
-                .id(("thinking", context.id))
-                .test_support()
-                .cursor_pointer()
-                .italic()
-                .text_color(muted)
-                .child(if expanded {
-                    "Thinking ▾"
-                } else {
-                    "Thinking ▸"
-                })
-                .on_click(toggle(context)),
-        )
-        .when(expanded, |this| {
-            this.child(div().italic().text_color(muted).child(text.to_owned()))
-        })
         .into_any_element()
 }
 

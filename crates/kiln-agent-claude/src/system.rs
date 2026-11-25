@@ -12,6 +12,10 @@ use crate::{
 pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
     let event = match system {
         wire::System::Init { session_id, model } => Some(AgentEvent::Started { session_id, model }),
+        wire::System::ThinkingTokens {
+            estimated_tokens_delta,
+        } => (estimated_tokens_delta > 0)
+            .then_some(AgentEvent::ThinkingTokens(estimated_tokens_delta)),
         wire::System::Status { permission_mode } => permission_mode
             .as_deref()
             .and_then(control::parse_mode)
@@ -56,4 +60,16 @@ pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
         wire::System::Other => None,
     };
     event.into_iter().collect()
+}
+
+/// Only `/clear` is known to empty the conversation. Another trigger keeps
+/// the transcript: wrongly keeping history is harmless, wrongly wiping what
+/// the user can see is not.
+pub fn conversation_reset(trigger: &str) -> Vec<AgentEvent> {
+    if trigger == "clear" {
+        vec![AgentEvent::ConversationReset]
+    } else {
+        log::warn!("conversation reset by {trigger:?} kept the transcript");
+        Vec::new()
+    }
 }
