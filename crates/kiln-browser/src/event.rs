@@ -5,9 +5,12 @@ use serde_json::Value;
 
 use crate::{
     console::{self, ConsoleEntry},
+    device::{self, DeviceRequest},
     dialog::{self, Dialog},
     download::{self, DownloadProgress},
     guest::{self, MenuTarget, Select},
+    network::{self, NetworkEvent},
+    permission::{self, PermissionRequest},
 };
 
 /// A picture of the page.
@@ -46,9 +49,19 @@ pub enum PageEvent {
         name: String,
     },
     Download(DownloadProgress),
+    /// The page asks for a device, and waits on the user choosing one.
+    DeviceRequest(DeviceRequest),
+    /// The page needs the user's leave to go on.
+    Permission(PermissionRequest),
+    /// The page shows a notification.
+    Notification {
+        title: String,
+        body: String,
+    },
     /// The element at this node was picked.
     Picked(i64),
     Console(ConsoleEntry),
+    Network(NetworkEvent),
     Crashed,
 }
 
@@ -75,7 +88,7 @@ pub(crate) fn parse(method: &str, params: &Value, main: &str) -> Option<PageEven
 /// What the page asks for or hands over.
 fn request(method: &str, params: &Value) -> Option<PageEvent> {
     match method {
-        "Runtime.bindingCalled" => guest::parse(params),
+        "Runtime.bindingCalled" => guest::parse(params).or_else(|| permission::parse(params)),
         "Page.javascriptDialogOpening" => Some(PageEvent::Dialog(dialog::parse(params))),
         "Page.javascriptDialogClosed" => Some(PageEvent::DialogClosed),
         "Page.fileChooserOpened" => Some(PageEvent::ChooseFiles {
@@ -87,8 +100,11 @@ fn request(method: &str, params: &Value) -> Option<PageEvent> {
             name: params["suggestedFilename"].as_str()?.to_owned(),
         }),
         "Page.downloadProgress" => download::progress(params).map(PageEvent::Download),
+        "DeviceAccess.deviceRequestPrompted" => device::parse(params).map(PageEvent::DeviceRequest),
         "Overlay.inspectNodeRequested" => params["backendNodeId"].as_i64().map(PageEvent::Picked),
-        _ => console::parse(method, params).map(PageEvent::Console),
+        _ => network::parse(method, params)
+            .map(PageEvent::Network)
+            .or_else(|| console::parse(method, params).map(PageEvent::Console)),
     }
 }
 

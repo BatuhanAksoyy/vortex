@@ -4,17 +4,24 @@
 mod activity;
 mod agent;
 mod console_panel;
+mod device_prompt;
 mod dialog;
 mod downloads;
 mod host;
 mod keyboard;
 mod live;
 mod menus;
+mod network_panel;
 mod page_view;
+mod permission_prompt;
 mod picking;
 mod requests;
+mod site_permissions;
 mod site_question;
+mod storage_panel;
 mod toolbar;
+mod tools_panel;
+mod usage_panel;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -79,8 +86,15 @@ pub struct Browser {
     cursor: CursorStyle,
     menu: Option<menus::OpenMenu>,
     dialog: Option<dialog::OpenDialog>,
+    /// The page waits on the user choosing a device.
+    devices: Option<device_prompt::DevicePrompt>,
+    permits: permission_prompt::Permits,
     downloads: Vec<downloads::Download>,
     console: console_panel::Console,
+    tools: tools_panel::Tools,
+    network: network_panel::Network,
+    storage: storage_panel::Storage,
+    usage: usage_panel::Usage,
     picking: picking::Picking,
     agent: agent::AgentUse,
     activity: activity::Activity,
@@ -136,8 +150,14 @@ impl Browser {
             cursor: CursorStyle::Arrow,
             menu: None,
             dialog: None,
+            devices: None,
+            permits: permission_prompt::Permits::default(),
             downloads: Vec::new(),
             console: console_panel::Console::default(),
+            tools: tools_panel::Tools::default(),
+            network: network_panel::Network::default(),
+            storage: storage_panel::Storage::default(),
+            usage: usage_panel::Usage::default(),
             picking: picking::Picking::default(),
             agent: agent::AgentUse::default(),
             activity: activity::Activity::default(),
@@ -271,10 +291,12 @@ impl Render for Browser {
                     .child(self.content(cx))
                     .children(self.render_activity(cx))
                     .children(self.render_dialog(cx))
+                    .children(self.render_device_prompt(cx))
+                    .children(self.render_permission_question(cx))
                     .children(self.render_site_question(cx))
                     .children(self.render_menu()),
             )
-            .children(self.render_console(cx))
+            .children(self.render_tools(cx))
             .children(self.render_downloads(cx))
     }
 }

@@ -36,6 +36,7 @@ impl Browser {
                 self.console.push(entry);
                 cx.notify();
             }
+            PageEvent::Network(event) => self.on_network(event, cx),
             _ => {}
         }
     }

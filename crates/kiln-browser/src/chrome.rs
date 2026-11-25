@@ -96,6 +96,12 @@ impl Chrome {
         self.transport.ended()
     }
 
+    /// The browser's own process; its helpers run under it.
+    #[must_use]
+    pub fn pid(&self) -> Option<u32> {
+        self.child.as_ref().map(Child::id)
+    }
+
     #[must_use]
     pub fn scale(&self) -> f32 {
         self.scale

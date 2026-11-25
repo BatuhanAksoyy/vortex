@@ -24,6 +24,6 @@ pub use assets::Assets;
 pub use chat_view::{ChatEvent, ChatView, attachments::Attachment};
 pub use processes::{
     AgentProcesses, ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog,
-    ProcessesDialogEvent,
+    ProcessesDialogEvent, format_cpu, format_memory,
 };
 pub use transcript::Status;

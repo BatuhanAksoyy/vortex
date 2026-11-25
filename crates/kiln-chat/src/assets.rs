@@ -10,6 +10,7 @@ gpui_kit::assets::icon_assets!(
     [
         ArrowLeft,
         ArrowRight,
+        Bluetooth,
         Camera,
         Columns2,
         CopyMinus,

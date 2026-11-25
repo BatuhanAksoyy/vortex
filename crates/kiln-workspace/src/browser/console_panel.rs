@@ -4,15 +4,14 @@ use std::collections::VecDeque;
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Context, FontWeight, ScrollHandle, SharedString, TestSupportExt,
-    assets::IconName as Lucide,
+    AnyElement, Context, ScrollHandle, TestSupportExt,
     base::Selectable as _,
     component::{
-        ActiveTheme, Disableable as _, IconName, Sizable as _,
+        ActiveTheme, Disableable as _, Sizable as _,
         button::{Button, ButtonVariants as _},
         h_flex, v_flex,
     },
-    div, px,
+    div,
 };
 use kiln_browser::{ConsoleEntry, Level};
 
@@ -20,12 +19,10 @@ use super::Browser;
 
 /// The newest ones; a page can write any number.
 const MOST: usize = 300;
-const HEIGHT: f32 = 200.;
 
 #[derive(Default)]
 pub(super) struct Console {
     lines: VecDeque<Line>,
-    pub open: bool,
     errors_only: bool,
     scroll: ScrollHandle,
 }
@@ -64,33 +61,7 @@ impl Console {
 }
 
 impl Browser {
-    pub(super) fn console_button(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
-        let errors = self.console.errors().count();
-        let tooltip = match errors {
-            0 => "Console".to_owned(),
-            1 => "Console, 1 error".to_owned(),
-            count => format!("Console, {count} errors"),
-        };
-        Button::new("browser-console")
-            .ghost()
-            .small()
-            .icon(Lucide::Terminal)
-            .tooltip(tooltip)
-            .selected(self.console.open)
-            .when(errors > 0, |button| {
-                button.label(SharedString::from(errors.to_string()))
-            })
-            .when(errors > 0, |button| button.text_color(cx.theme().danger))
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.console.open = !this.console.open;
-                cx.notify();
-            }))
-    }
-
-    pub(super) fn render_console(&self, cx: &Context<Self>) -> Option<AnyElement> {
-        if !self.console.open {
-            return None;
-        }
+    pub(super) fn render_console(&self, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
         let shown = self.console.lines.iter();
         let errors_only = self.console.errors_only;
@@ -107,28 +78,13 @@ impl Browser {
             .text_xs()
             .when(lines.is_empty(), |list| list.child(empty(errors_only, cx)))
             .children(lines);
-        let panel = v_flex()
-            .flex_none()
-            .h(px(HEIGHT))
-            .border_t_1()
-            .border_color(theme.border)
-            .child(self.console_header(cx))
-            .child(list);
-        Some(panel.into_any_element())
+        list.into_any_element()
     }
 
-    fn console_header(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+    pub(super) fn console_actions(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
         let no_errors = self.console.errors().next().is_none();
         h_flex()
-            .flex_none()
             .gap_1()
-            .px_2()
-            .py_1()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .text_sm()
-            .child(div().font_weight(FontWeight::SEMIBOLD).child("Console"))
-            .child(div().flex_1())
             .child(
                 Button::new("browser-console-errors")
                     .ghost()
@@ -156,17 +112,6 @@ impl Browser {
                     .label("Clear")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.console.clear();
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("browser-console-close")
-                    .ghost()
-                    .xsmall()
-                    .icon(IconName::Close)
-                    .tooltip("Close Console")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.console.open = false;
                         cx.notify();
                     })),
             )

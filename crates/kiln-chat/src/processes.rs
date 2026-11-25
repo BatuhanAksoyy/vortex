@@ -8,6 +8,8 @@ mod detail;
 mod dialog;
 mod rows;
 
+pub use rows::{cpu as format_cpu, memory as format_memory};
+
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Context, Entity, EventEmitter, Global, SharedString, Subscription, WeakEntity, Window,

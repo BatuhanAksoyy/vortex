@@ -16,17 +16,38 @@ impl Browser {
         cx: &mut Context<Self>,
     ) {
         match event {
-            PageEvent::Dialog(dialog) => self.ask(dialog, window, cx),
-            PageEvent::DialogClosed => self.dialog_closed(window, cx),
+            PageEvent::Dialog(_)
+            | PageEvent::DialogClosed
+            | PageEvent::DeviceRequest(_)
+            | PageEvent::Permission(_)
+            | PageEvent::Notification { .. } => {
+                self.on_question(event, window, cx);
+            }
             PageEvent::Select(select) => self.open_select(&select, window, cx),
             PageEvent::ContextMenu(target) => self.open_context_menu(&target, window, cx),
             PageEvent::ChooseFiles { node, multiple } => self.choose_files(node, multiple, cx),
             PageEvent::DownloadStarted { id, name } => self.download_started(id, name, cx),
             PageEvent::Download(progress) => self.download_progressed(&progress, cx),
-            PageEvent::Picked(_) | PageEvent::Console(_) => self.on_inspection(event, window, cx),
+            PageEvent::Picked(_) | PageEvent::Console(_) | PageEvent::Network(_) => {
+                self.on_inspection(event, window, cx);
+            }
             PageEvent::Cursor(name) => {
                 self.cursor = cursor(&name);
                 cx.notify();
+            }
+            _ => {}
+        }
+    }
+
+    /// The page waits on the user's answer.
+    fn on_question(&mut self, event: PageEvent, window: &mut Window, cx: &mut Context<Self>) {
+        match event {
+            PageEvent::Dialog(dialog) => self.ask(dialog, window, cx),
+            PageEvent::DialogClosed => self.dialog_closed(window, cx),
+            PageEvent::DeviceRequest(request) => self.ask_device(request, window, cx),
+            PageEvent::Permission(request) => self.ask_permission(request, cx),
+            PageEvent::Notification { title, body } => {
+                self.show_notification(&title, &body, window, cx);
             }
             _ => {}
         }

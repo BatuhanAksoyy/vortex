@@ -17,6 +17,7 @@ use crate::{
     guest,
     input::{MouseInput, Wheel},
     keys::Key,
+    permission,
     transport::Transport,
 };
 
@@ -127,18 +128,24 @@ impl Page {
         page.send("Page.enable", &json!({}));
         page.send("Inspector.enable", &json!({}));
         // Elements are picked through the last two.
-        for domain in ["Runtime", "Log", "DOM", "Overlay"] {
+        page.send("Network.enable", &json!({}));
+        for domain in ["Runtime", "Log", "DOM", "Overlay", "Performance"] {
             page.send(&format!("{domain}.enable"), &json!({}));
         }
         let binding = json!({"name": guest::BINDING, "executionContextName": guest::WORLD});
         page.send("Runtime.addBinding", &binding);
         let script = json!({"source": guest::SOURCE, "worldName": guest::WORLD});
         page.send("Page.addScriptToEvaluateOnNewDocument", &script);
+        // In the page's own world: that is where it calls what needs leave.
+        page.send("Runtime.addBinding", &json!({"name": permission::BINDING}));
+        let script = json!({"source": permission::SOURCE});
+        page.send("Page.addScriptToEvaluateOnNewDocument", &script);
         // A window without focus draws no caret and hides menus on hover.
         page.send(
             "Emulation.setFocusEmulationEnabled",
             &json!({"enabled": true}),
         );
+        page.send("DeviceAccess.enable", &json!({}));
         // The browser's own file dialog would not show without a window.
         page.send(
             "Page.setInterceptFileChooserDialog",

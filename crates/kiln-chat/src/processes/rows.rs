@@ -110,10 +110,12 @@ pub fn totals(rows: &[Row]) -> (f32, u64) {
 }
 
 /// Percent of one core, so a process using two reads 200%.
+#[must_use]
 pub fn cpu(percent: f32) -> String {
     format!("{percent:.0}%")
 }
 
+#[must_use]
 pub fn memory(bytes: u64) -> String {
     const UNITS: [&str; 3] = ["KB", "MB", "GB"];
     if bytes < 1024 {

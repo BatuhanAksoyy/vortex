@@ -39,6 +39,13 @@ impl Drop for Open {
 }
 
 impl Browser {
+    pub(super) fn chrome_pid(&self) -> Option<u32> {
+        match &self.state {
+            State::Open(open) => open.chrome.pid(),
+            State::Blank | State::Opening | State::PutAway | State::Failed(_) => None,
+        }
+    }
+
     pub(super) fn page(&self) -> Option<&Page> {
         match &self.state {
             State::Open(open) => Some(&open.page),
@@ -90,6 +97,7 @@ impl Browser {
         }
         // The panel may have been sized meanwhile.
         open.page.resize(self.viewport);
+        self.restore_permissions(open.page.clone(), cx);
         self.navigation = cx.background_spawn(navigate(open.page.clone(), url));
         self.state = State::Open(open);
         cx.notify();
@@ -100,6 +108,8 @@ impl Browser {
         self.loading = false;
         self.menu = None;
         self.dialog = None;
+        self.devices = None;
+        self.drop_permission_requests();
         self.picking.on = false;
         self.unpainted.clear();
         self.ahead = false;
@@ -159,17 +169,22 @@ impl Browser {
         match event {
             PageEvent::Opened => {
                 self.menu = None;
+                // The document that asked is gone.
+                self.devices = None;
+                self.drop_permission_requests();
                 self.set_picking(false, cx);
                 if self.shown {
                     self.show(cx);
                 }
                 self.read_history(window, cx);
+                self.storage_changed(cx);
             }
             PageEvent::Navigated => self.read_history(window, cx),
             PageEvent::Loading(loading) => {
                 // Before the new document runs.
                 if loading {
                     self.console.clear();
+                    self.clear_network();
                 }
                 self.loading = loading;
                 cx.notify();

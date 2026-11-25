@@ -20,7 +20,7 @@ use super::{Browser, BrowserEvent, Device};
 const MIN_ADDRESS: f32 = 140.;
 
 impl Browser {
-    pub(super) fn toolbar(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+    pub(super) fn toolbar(&mut self, cx: &Context<Self>) -> impl IntoElement + use<> {
         h_flex()
             .flex_none()
             .flex_wrap()
@@ -66,7 +66,7 @@ impl Browser {
             .child(reload.disabled(closed))
     }
 
-    fn tools(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+    fn tools(&mut self, cx: &Context<Self>) -> impl IntoElement + use<> {
         let closed = self.page().is_none();
         h_flex()
             .flex_none()
@@ -90,7 +90,8 @@ impl Browser {
                 .disabled(closed)
                 .on_click(cx.listener(|this, _, window, cx| this.attach_screenshot(window, cx))),
             )
-            .child(self.console_button(cx))
+            .children(self.site_permissions_button(cx))
+            .child(self.tools_button(cx))
             .child(
                 button("browser-phone", Lucide::Smartphone, "Phone Size")
                     .selected(self.device == Device::Phone)
