@@ -21,6 +21,7 @@ mod profile;
 mod transport;
 
 pub use address::normalize;
+pub use agent::Target;
 pub use chrome::Chrome;
 pub use console::{ConsoleEntry, Level};
 pub use dialog::{Dialog, DialogKind};

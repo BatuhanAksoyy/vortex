@@ -62,6 +62,24 @@ const SELECT_TEXT: &str = "function () {
 
 const GONE: &str = "The element is gone from the page; take a new snapshot.";
 
+/// An element in view, in page pixels from the top left of what shows,
+/// and what it is called.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Target {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub name: String,
+}
+
+impl Target {
+    #[must_use]
+    pub fn middle(&self) -> (f32, f32) {
+        (self.x + self.width / 2., self.y + self.height / 2.)
+    }
+}
+
 impl Page {
     /// The page's accessibility tree, one element a line, indented as nested.
     pub async fn snapshot(&self) -> anyhow::Result<String> {
@@ -69,13 +87,30 @@ impl Page {
         Ok(outline(&tree["nodes"]))
     }
 
-    /// Scrolls the element into view and clicks its middle.
-    pub async fn click_node(&self, node: i64) -> anyhow::Result<()> {
+    /// Scrolls the element into view, and says where it is then.
+    pub async fn locate(&self, node: i64) -> anyhow::Result<Target> {
         let at = json!({"backendNodeId": node});
         let scrolled = self.call("DOM.scrollIntoViewIfNeeded", at.clone()).await;
         scrolled.context(GONE)?;
         let quads = self.call("DOM.getContentQuads", at).await.context(GONE)?;
-        let (x, y) = middle(&quads).context("The element takes no space; it may be hidden.")?;
+        let mut target = area(&quads).context("The element takes no space; it may be hidden.")?;
+        let alone = json!({"backendNodeId": node, "fetchRelatives": false});
+        // The name only tells the user what is used; it may be missing.
+        if let Ok(tree) = self.call("Accessibility.getPartialAXTree", alone).await {
+            target.name = cut(name(&tree["nodes"][0]), MAX_NAME);
+        }
+        Ok(target)
+    }
+
+    /// Scrolls the element into view and clicks its middle.
+    pub async fn click_node(&self, node: i64) -> anyhow::Result<()> {
+        let target = self.locate(node).await?;
+        self.click(&target).await
+    }
+
+    /// Clicks the middle of an element located just before.
+    pub async fn click(&self, target: &Target) -> anyhow::Result<()> {
+        let (x, y) = target.middle();
         let at = |kind, button| MouseInput {
             kind,
             x,
@@ -161,10 +196,25 @@ impl Page {
     }
 }
 
-fn middle(quads: &Value) -> Option<(f32, f32)> {
+/// The box around the element's first quad.
+fn area(quads: &Value) -> Option<Target> {
     let points: Vec<f32> = serde_json::from_value(quads["quads"][0].clone()).ok()?;
-    let average = |from: usize| points.iter().skip(from).step_by(2).sum::<f32>() / 4.;
-    (points.len() == 8).then(|| (average(0), average(1)))
+    if points.len() != 8 {
+        return None;
+    }
+    let side = |from: usize| {
+        let values = points.iter().skip(from).step_by(2).copied();
+        let low = values.clone().fold(f32::INFINITY, f32::min);
+        (low, values.fold(f32::NEG_INFINITY, f32::max) - low)
+    };
+    let ((x, width), (y, height)) = (side(0), side(1));
+    Some(Target {
+        x,
+        y,
+        width,
+        height,
+        name: String::new(),
+    })
 }
 
 fn cut(text: &str, most: usize) -> String {
@@ -299,9 +349,14 @@ mod tests {
     }
 
     #[test]
-    fn the_middle_of_an_element() {
+    fn the_box_around_an_element() {
         let quads = json!({"quads": [[10., 20., 30., 20., 30., 60., 10., 60.]]});
-        assert_eq!(middle(&quads), Some((20., 40.)));
-        assert_eq!(middle(&json!({"quads": []})), None);
+        let target = area(&quads).unwrap();
+        assert_eq!(
+            (target.x, target.y, target.width, target.height),
+            (10., 20., 20., 40.)
+        );
+        assert_eq!(target.middle(), (20., 40.));
+        assert_eq!(area(&json!({"quads": []})), None);
     }
 }

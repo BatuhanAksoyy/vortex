@@ -7,9 +7,9 @@ use std::{collections::HashSet, time::Duration};
 use async_channel::Sender;
 use gpui_kit::{AsyncWindowContext, Context, WeakEntity, Window};
 use kiln_bridge::{Content, Reply, Request};
-use kiln_browser::{Level, Page};
+use kiln_browser::{Level, Page, Target};
 
-use super::{Browser, live::State};
+use super::{Browser, activity::LOOK, live::State};
 
 /// How long a page may take to open or load before the agent is answered.
 const PATIENCE: Duration = Duration::from_secs(20);
@@ -95,12 +95,14 @@ impl Browser {
             _ => None,
         };
         let console = matches!(request, Request::Console).then(|| self.console_text());
+        let serial = self.begin(&request, cx);
         cx.spawn_in(window, async move |this, cx| {
             let done = match (console, opened) {
                 (Some(console), _) => Ok(Reply::text(console)),
                 (None, Some(already)) => navigated(&this, already, cx).await,
-                (None, None) => act(&this, request, cx).await,
+                (None, None) => act(&this, request, serial, cx).await,
             };
+            let _ = this.update(cx, |this, cx| this.end(serial, cx));
             answer(
                 &reply,
                 done.unwrap_or_else(|error| Reply::failed(format!("{error:#}"))),
@@ -220,9 +222,24 @@ async fn navigated(
     Ok(Reply::text(settled(&page, cx).await))
 }
 
+/// Shows the element the agent is about to use, long enough to be seen.
+async fn aim(
+    this: &WeakEntity<Browser>,
+    page: &Page,
+    node: i64,
+    serial: u64,
+    cx: &mut AsyncWindowContext,
+) -> anyhow::Result<Target> {
+    let target = page.locate(node).await?;
+    this.update(cx, |this, cx| this.aim(serial, target.clone(), cx))?;
+    cx.background_executor().timer(LOOK).await;
+    Ok(target)
+}
+
 async fn act(
     this: &WeakEntity<Browser>,
     request: Request,
+    serial: u64,
     cx: &mut AsyncWindowContext,
 ) -> anyhow::Result<Reply> {
     let page = page(this, cx).await?;
@@ -248,12 +265,18 @@ async fn act(
             let value = page.evaluate(&expression).await?;
             return Ok(Reply::text(format!("{value}\n{CAUTION}")));
         }
-        Request::Click { target } => page.click_node(target).await.map(|()| "Clicked."),
+        Request::Click { target } => {
+            let target = aim(this, &page, target, serial, cx).await?;
+            page.click(&target).await?;
+            this.update(cx, |this, cx| this.clicked(serial, cx))?;
+            Ok("Clicked.")
+        }
         Request::Type {
             target,
             text,
             submit,
         } => {
+            aim(this, &page, target, serial, cx).await?;
             page.fill_node(target, &text).await?;
             if submit {
                 page.press("enter").await?;

@@ -22,6 +22,7 @@ impl Browser {
             .test_support()
             .track_focus(&self.focus)
             .key_context(super::KEY_CONTEXT)
+            .relative()
             .size_full()
             .overflow_hidden()
             .on_any_mouse_down(cx.listener(Self::on_mouse_down))
@@ -38,6 +39,7 @@ impl Browser {
                 )
                 .size_full(),
             )
+            .children(self.render_marks(cx))
     }
 
     /// Lays the page out to fill `bounds`.

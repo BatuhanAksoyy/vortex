@@ -1,6 +1,7 @@
 //! The browser beside the chats: one page per session, drawn by the browser
 //! installed on this machine.
 
+mod activity;
 mod agent;
 mod console_panel;
 mod dialog;
@@ -82,6 +83,7 @@ pub struct Browser {
     console: console_panel::Console,
     picking: picking::Picking,
     agent: agent::AgentUse,
+    activity: activity::Activity,
     /// The length of the text an input method is composing.
     marked: usize,
     /// Opens the page and follows it; dropping it lets go of both.
@@ -138,6 +140,7 @@ impl Browser {
             console: console_panel::Console::default(),
             picking: picking::Picking::default(),
             agent: agent::AgentUse::default(),
+            activity: activity::Activity::default(),
             marked: 0,
             follow: Task::ready(()),
             navigation: Task::ready(()),
@@ -266,6 +269,7 @@ impl Render for Browser {
                     .items_center()
                     .when(phone, |this| this.p_3().bg(theme.muted))
                     .child(self.content(cx))
+                    .children(self.render_activity(cx))
                     .children(self.render_dialog(cx))
                     .children(self.render_site_question(cx))
                     .children(self.render_menu()),
