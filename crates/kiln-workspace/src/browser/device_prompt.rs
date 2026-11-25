@@ -48,6 +48,7 @@ impl Browser {
             open.request = request;
             open
         } else {
+            self.agent.asked += 1;
             let focus = cx.focus_handle();
             // Only where the user is: a page must not take the keyboard from
             // the chat.
@@ -79,6 +80,62 @@ impl Browser {
             self.answer_device(true, window, cx);
         }
         cx.notify();
+    }
+
+    /// The chooser and the devices found so far, for the agent to read.
+    pub(super) fn device_question(&self) -> Option<String> {
+        let open = self.devices.as_ref()?;
+        let found: Vec<String> = (open.request.devices.iter())
+            .map(|device| format!("- “{}” (id {})", shown_name(device), device.id))
+            .collect();
+        let found = if found.is_empty() {
+            "None yet; it keeps looking, so ask again in a moment.".to_owned()
+        } else {
+            found.join("\n")
+        };
+        let site = host(&self.url);
+        Some(format!(
+            "{site} wants to pair with a Bluetooth device. Found so far:\n{found}"
+        ))
+    }
+
+    /// Picks `device`, by id or name, or cancels the chooser.
+    pub(super) fn pick_device_for_agent(
+        &mut self,
+        accept: bool,
+        device: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<String, String> {
+        let open = self
+            .devices
+            .as_mut()
+            .ok_or("No Bluetooth chooser is open.")?;
+        if !accept {
+            self.answer_device(false, window, cx);
+            return Ok("Cancelled.".to_owned());
+        }
+        let wanted = device
+            .ok_or("Name the device to pick with `device`.")?
+            .trim();
+        let devices = &open.request.devices;
+        let by_name = |device: &&Device| shown_name(device).eq_ignore_ascii_case(wanted);
+        let found = (devices.iter().find(|device| device.id == wanted))
+            .or_else(|| devices.iter().find(by_name))
+            .ok_or_else(|| {
+                let listed: Vec<String> = devices
+                    .iter()
+                    .map(|it| format!("“{}” ({})", shown_name(it), it.id))
+                    .collect();
+                format!(
+                    "No device “{wanted}” was found. Listed: {}.",
+                    listed.join(", ")
+                )
+            })?;
+        let picked = format!("Picked {}; the page goes on with it.", shown_name(found));
+        open.chosen = Some(found.id.clone());
+        self.answer_device(true, window, cx);
+        Ok(picked)
     }
 
     /// Gives the page the chosen device, or none.

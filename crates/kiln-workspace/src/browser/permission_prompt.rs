@@ -81,19 +81,53 @@ impl Browser {
             return;
         }
         self.permits.waiting.push((request, origin));
+        self.agent.asked += 1;
         cx.notify();
+    }
+
+    /// The request waiting, for the agent to read.
+    pub(super) fn permission_question(&self) -> Option<String> {
+        let (request, _) = self.permits.waiting.first()?;
+        Some(format!(
+            "{}.",
+            question(host(&self.url), &request.permissions)
+        ))
+    }
+
+    /// The agent's answer, which holds for this request only: what the site
+    /// may use for good is the user's to say.
+    pub(super) fn answer_permission_for_agent(
+        &mut self,
+        allow: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<&'static str, String> {
+        if self.permits.waiting.is_empty() {
+            return Err("No permission request is waiting.".to_owned());
+        }
+        self.settle_permission(allow, false, cx);
+        Ok(if allow {
+            "Allowed, for this request."
+        } else {
+            "Blocked, for this request."
+        })
     }
 
     /// The user's answer about the request asked about first.
     fn decide_permission(&mut self, allow: bool, cx: &mut Context<Self>) {
+        self.settle_permission(allow, true, cx);
+    }
+
+    fn settle_permission(&mut self, allow: bool, keep: bool, cx: &mut Context<Self>) {
         if self.permits.waiting.is_empty() {
             return;
         }
         let (request, origin) = self.permits.waiting.remove(0);
-        let kept = self.site_permissions();
-        kept.decide(&origin, &request.permissions, allow);
-        if let Err(error) = kept.save() {
-            log::warn!("the site's permissions are not kept: {error:#}");
+        if keep {
+            let kept = self.site_permissions();
+            kept.decide(&origin, &request.permissions, allow);
+            if let Err(error) = kept.save() {
+                log::warn!("the site's permissions are not kept: {error:#}");
+            }
         }
         self.permit(request, origin, allow, cx);
         // The answer may cover others waiting.

@@ -51,7 +51,41 @@ impl Browser {
         }
         self.menu = None;
         self.dialog = Some(open);
+        self.agent.asked += 1;
         cx.notify();
+    }
+
+    /// The open dialog, for the agent to read.
+    pub(super) fn dialog_question(&self) -> Option<String> {
+        let open = self.dialog.as_ref()?;
+        let dialog = &open.dialog;
+        Some(match dialog.kind {
+            DialogKind::Alert => format!("An alert: “{}”.", dialog.message),
+            DialogKind::Confirm => format!("A confirm dialog: “{}”.", dialog.message),
+            DialogKind::Prompt => format!(
+                "A prompt: “{}”, suggesting “{}”.",
+                dialog.message, dialog.suggested
+            ),
+            DialogKind::Leave => "The page asks whether to leave it, losing changes.".to_owned(),
+        })
+    }
+
+    /// The agent's answer; a prompt left without `text` takes what it
+    /// suggests.
+    pub(super) fn answer_dialog_for_agent(
+        &mut self,
+        accept: bool,
+        text: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<&'static str, String> {
+        let open = self.dialog.as_ref().ok_or("No dialog is open.")?;
+        let typed = open.answer.read(cx).value().to_string();
+        if let Some(page) = self.page() {
+            page.answer_dialog(accept, text.unwrap_or(&typed));
+        }
+        self.dialog_closed(window, cx);
+        Ok(if accept { "Accepted." } else { "Dismissed." })
     }
 
     /// The page was answered, or went away.

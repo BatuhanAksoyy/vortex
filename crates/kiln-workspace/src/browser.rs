@@ -3,6 +3,7 @@
 
 mod activity;
 mod agent;
+mod agent_questions;
 mod console_panel;
 mod device_prompt;
 mod dialog;

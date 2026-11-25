@@ -26,6 +26,27 @@ pub enum Request {
     Evaluate {
         expression: String,
     },
+    /// What the page waits on the user for.
+    Questions,
+    Answer(Answer),
+}
+
+/// The agent's answer to a question the page asks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Answer {
+    pub question: Question,
+    pub accept: bool,
+    /// A prompt's text.
+    pub text: Option<String>,
+    /// The Bluetooth device to pair, by id or name.
+    pub device: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Question {
+    Dialog,
+    Device,
+    Permission,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,7 +82,7 @@ const SITES: &str = "Pages on this machine (localhost) open freely; for any othe
 
 pub(crate) fn list() -> Value {
     let target = json!({"type": "integer", "description": "The element's `ref` from the latest browser_snapshot"});
-    json!([
+    let mut tools = vec![
         tool(
             "browser_navigate",
             &format!(
@@ -112,7 +133,32 @@ pub(crate) fn list() -> Value {
             &json!({"expression": {"type": "string"}}),
             &["expression"],
         ),
-    ])
+    ];
+    tools.extend(question_tools());
+    Value::Array(tools)
+}
+
+/// For answering what the page asks the user.
+fn question_tools() -> [Value; 2] {
+    [
+        tool(
+            "browser_questions",
+            "What the page waits on the user for: a dialog (alert, confirm, prompt, or leaving the page), the Bluetooth device chooser with the devices found so far, or a request to use the camera, microphone, location, notifications or MIDI. A call that sets one off returns as soon as it is asked.",
+            &json!({}),
+            &[],
+        ),
+        tool(
+            "browser_answer",
+            "Answers a question from browser_questions for the user. `accept` false dismisses a dialog, cancels the chooser, or blocks the request. A prompt takes `text`; pairing takes `device`, an id or a name from the list. A permission answered here holds for that request only.",
+            &json!({
+                "question": {"type": "string", "enum": ["dialog", "device", "permission"]},
+                "accept": {"type": "boolean"},
+                "text": {"type": "string"},
+                "device": {"type": "string"},
+            }),
+            &["question", "accept"],
+        ),
+    ]
 }
 
 fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) -> Value {
@@ -148,7 +194,33 @@ pub(crate) fn parse(name: &str, arguments: &Value) -> Result<Request, String> {
         "browser_evaluate" => Request::Evaluate {
             expression: text("expression")?,
         },
-        _ => return Err(format!("There is no tool named {name}")),
+        _ => return question_call(name, arguments),
+    })
+}
+
+fn question_call(name: &str, arguments: &Value) -> Result<Request, String> {
+    match name {
+        "browser_questions" => Ok(Request::Questions),
+        "browser_answer" => answer(arguments).map(Request::Answer),
+        _ => Err(format!("There is no tool named {name}")),
+    }
+}
+
+fn answer(arguments: &Value) -> Result<Answer, String> {
+    let question = match arguments["question"].as_str() {
+        Some("dialog") => Question::Dialog,
+        Some("device") => Question::Device,
+        Some("permission") => Question::Permission,
+        _ => return Err("`question` must be dialog, device or permission".to_owned()),
+    };
+    let accept = arguments["accept"].as_bool();
+    let accept = accept.ok_or_else(|| "`accept` must be true or false".to_owned())?;
+    let optional = |key: &str| arguments[key].as_str().map(str::to_owned);
+    Ok(Answer {
+        question,
+        accept,
+        text: optional("text"),
+        device: optional("device"),
     })
 }
 
@@ -158,7 +230,10 @@ mod tests {
 
     #[test]
     fn every_listed_tool_can_be_called() {
-        let arguments = json!({"url": "x", "ref": 1, "text": "x", "key": "x", "expression": "x"});
+        let arguments = json!({
+            "url": "x", "ref": 1, "text": "x", "key": "x", "expression": "x",
+            "question": "device", "accept": true,
+        });
         let tools = list();
         for tool in tools.as_array().unwrap() {
             let name = tool["name"].as_str().unwrap();
@@ -175,6 +250,23 @@ mod tests {
             submit: false,
         };
         assert_eq!(typed, Ok(expected));
+        let paired = parse(
+            "browser_answer",
+            &json!({"question": "device", "accept": true, "device": "Kiln Heart"}),
+        );
+        let Ok(Request::Answer(paired)) = paired else {
+            panic!("not an answer");
+        };
+        assert_eq!(
+            (paired.question, paired.device.as_deref()),
+            (Question::Device, Some("Kiln Heart"))
+        );
+        let wrong = parse(
+            "browser_answer",
+            &json!({"question": "file", "accept": true}),
+        )
+        .unwrap_err();
+        assert!(wrong.contains("`question`"), "{wrong}");
         let wrong = parse("browser_click", &json!({"ref": "e3"})).unwrap_err();
         assert!(wrong.contains("`ref`"), "{wrong}");
     }

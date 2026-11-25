@@ -11,7 +11,7 @@ mod tools;
 
 pub use bridge::{Bridge, Call};
 pub use relay::relay;
-pub use tools::{Content, Reply, Request};
+pub use tools::{Answer, Content, Question, Reply, Request};
 
 /// Where `kiln mcp` finds Kiln, and who it speaks for.
 const SOCKET_VAR: &str = "KILN_BRIDGE";

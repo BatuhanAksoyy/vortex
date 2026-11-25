@@ -197,6 +197,8 @@ fn describe(request: &Request) -> (&'static str, String) {
         Request::Screenshot => simple("Taking a screenshot"),
         Request::Console => simple("Reading the console"),
         Request::Evaluate { .. } => simple("Running a script"),
+        Request::Questions => simple("Reading what the page asks"),
+        Request::Answer(_) => simple("Answering the page"),
     }
 }
 
