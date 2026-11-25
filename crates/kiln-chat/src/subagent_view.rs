@@ -6,32 +6,112 @@ use std::{path::Path, time::Duration};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, FontWeight, Hsla, SharedString, TestSupportExt, WeakEntity,
-    component::{ActiveTheme, h_flex, text::TextView, v_flex},
-    div,
+    assets::IconName as Lucide,
+    component::{
+        ActiveTheme, Icon,
+        button::{Button, ButtonVariants as _},
+        h_flex,
+        text::TextView,
+        v_flex,
+    },
+    div, px,
 };
 use kiln_agent::{SubagentEnd, SubagentUsage};
 
 use crate::{
     ChatView,
     agent_state::tokens,
-    entry_view::{EntryContext, sub_line, timeline_row, toggle},
+    entry_view::{EntryContext, sub_line, timeline_row, toggle_card},
     pictures,
-    scale::ScaledText as _,
+    scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
     spinner, tool_format,
-    transcript::{Step, Subagent},
+    transcript::{EntryId, Step, Subagent, Subagents},
 };
 
-pub fn render(agent: &Subagent, context: &EntryContext, cx: &App) -> AnyElement {
-    let theme = cx.theme();
-    let dot = dot(agent.end, cx);
-    let expanded = context.toggled;
-    let header = h_flex()
-        .id(SharedString::from(format!("subagent-{}", context.id)))
+const DOT_SIZE: f32 = 7.;
+/// Centres a dot on the first line of small text.
+const DOT_TOP: f32 = 6.;
+
+/// The card of the subagent the row's call started.
+pub fn render(context: &EntryContext, cx: &App) -> AnyElement {
+    let Some(agent) = context.agents.get(context.id) else {
+        return div().into_any_element();
+    };
+    timeline_row(dot(agent.end, cx), context, cx)
+        .children(card(agent, context, cx))
+        .into_any_element()
+}
+
+/// The card of a subagent among the steps of the one that started it.
+fn inner_card(id: EntryId, context: &EntryContext, cx: &App) -> AnyElement {
+    let Some(agent) = context.agents.get(id) else {
+        return div().into_any_element();
+    };
+    h_flex()
+        .items_start()
+        .gap_2()
+        .child(small_dot(agent.end, cx))
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap_1()
+                .children(card(agent, context, cx)),
+        )
+        .into_any_element()
+}
+
+fn card(agent: &Subagent, context: &EntryContext, cx: &App) -> Vec<AnyElement> {
+    let id = agent.id;
+    let expanded = context.toggled_cards.contains(&id);
+    let status = full_status(agent, context.agents);
+    let status_line = div()
+        .id(SharedString::from(format!("subagent-status-{id}")))
+        .test_support()
+        .aria_label(SharedString::from(status.clone()))
+        .child(sub_line(
+            &status,
+            agent.end == Some(SubagentEnd::Failed),
+            cx,
+        ));
+    let identity = identity(agent).map(|identity| {
+        div()
+            .pl_4()
+            .text_caption()
+            .text_color(cx.theme().muted_foreground)
+            .child(identity)
+            .into_any_element()
+    });
+    let details = expanded.then(|| details(agent, context, cx).into_any_element());
+    [
+        header(agent, expanded, context, cx),
+        status_line.into_any_element(),
+    ]
+    .into_iter()
+    .chain(identity)
+    .chain(details)
+    .collect()
+}
+
+fn header(agent: &Subagent, expanded: bool, context: &EntryContext, cx: &App) -> AnyElement {
+    let id = agent.id;
+    let view = context.view.clone();
+    let open = Button::new(SharedString::from(format!("subagent-open-{id}")))
+        .ghost()
+        .row_icon(Lucide::PanelRightOpen)
+        .tooltip("Open in Agents")
+        .on_click(move |_, window, cx| {
+            // The header's own click expands the card.
+            cx.stop_propagation();
+            let _ = view.update(cx, |view, cx| view.open_agents(Some(id), window, cx));
+        });
+    h_flex()
+        .id(SharedString::from(format!("subagent-{id}")))
         .test_support()
         .aria_label(SharedString::from(agent.description.clone()))
         .gap_2()
         .cursor_pointer()
-        .on_click(toggle(context))
+        .on_click(toggle_card(id, context))
         .child(
             div()
                 .flex_none()
@@ -40,38 +120,26 @@ pub fn render(agent: &Subagent, context: &EntryContext, cx: &App) -> AnyElement 
         )
         .child(div().min_w_0().truncate().child(agent.description.clone()))
         .child(
-            div()
-                .flex_none()
-                .text_caption()
-                .text_color(theme.muted_foreground)
-                .child(if expanded { "▾" } else { "▸" }),
-        );
-    let status = status(agent);
-    timeline_row(dot, context, cx)
-        .child(header)
-        .child(
-            div()
-                .id(SharedString::from(format!(
-                    "subagent-status-{}",
-                    context.id
-                )))
-                .test_support()
-                .aria_label(SharedString::from(status.clone()))
-                .child(sub_line(
-                    &status,
-                    agent.end == Some(SubagentEnd::Failed),
-                    cx,
-                )),
+            Icon::new(if expanded {
+                Lucide::ChevronDown
+            } else {
+                Lucide::ChevronRight
+            })
+            .in_row()
+            .text_color(cx.theme().muted_foreground),
         )
-        .children(identity(agent).map(|identity| {
-            div()
-                .pl_4()
-                .text_caption()
-                .text_color(theme.muted_foreground)
-                .child(identity)
-        }))
-        .when(expanded, |this| this.child(details(agent, context, cx)))
+        .child(div().flex_1())
+        .child(open)
         .into_any_element()
+}
+
+pub fn small_dot(end: Option<SubagentEnd>, cx: &App) -> impl IntoElement + use<> {
+    div()
+        .flex_none()
+        .mt(px(DOT_TOP))
+        .size(px(DOT_SIZE))
+        .rounded_full()
+        .bg(dot(end, cx))
 }
 
 /// Orange while it runs, then the colour of how it ended.
@@ -82,6 +150,26 @@ pub fn dot(end: Option<SubagentEnd>, cx: &App) -> Hsla {
         Some(SubagentEnd::Completed) => theme.success,
         Some(SubagentEnd::Failed) => theme.danger,
         Some(SubagentEnd::Stopped) => theme.muted_foreground,
+    }
+}
+
+/// Its status, and how many subagents are below it.
+pub fn full_status(agent: &Subagent, agents: &Subagents) -> String {
+    let below = agents.below(agent.id);
+    let running = below.iter().filter(|agent| agent.end.is_none()).count();
+    std::iter::once(status(agent))
+        .chain(below_label(below.len(), running))
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// `2 subagents, 1 running`; `None` without any.
+pub fn below_label(total: usize, running: usize) -> Option<String> {
+    let noun = if total == 1 { "subagent" } else { "subagents" };
+    match (total, running) {
+        (0, _) => None,
+        (_, 0) => Some(format!("{total} {noun}")),
+        _ => Some(format!("{total} {noun}, {running} running")),
     }
 }
 
@@ -124,16 +212,24 @@ pub fn identity(agent: &Subagent) -> Option<String> {
 /// Its steps under a line of their own, then its report.
 fn details(agent: &Subagent, context: &EntryContext, cx: &App) -> impl IntoElement + use<> {
     let theme = cx.theme();
-    let steps = agent.steps.iter().enumerate().map(|(index, step)| {
-        let id = SharedString::from(format!("subagent-step-{}-{index}", context.id));
-        step_row(step, id, context.root, context.view, cx)
-    });
+    let inner = |id| inner_card(id, context, cx);
+    let place = StepPlace {
+        root: context.root,
+        chat: context.view,
+        inner: &inner,
+    };
+    let steps: Vec<_> = (agent.steps.iter().enumerate())
+        .map(|(index, step)| {
+            let id = SharedString::from(format!("subagent-step-{}-{index}", agent.id));
+            step_row(step, id, &place, cx)
+        })
+        .collect();
     let report = agent
         .summary
         .clone()
         .filter(|_| agent.end == Some(SubagentEnd::Completed));
     v_flex()
-        .id(("subagent-steps", context.id))
+        .id(("subagent-steps", agent.id))
         .test_support()
         .ml_1()
         .pl_3()
@@ -150,19 +246,21 @@ fn details(agent: &Subagent, context: &EntryContext, cx: &App) -> impl IntoEleme
         })
         .children(steps)
         .children(report.map(|report| {
-            TextView::markdown(("subagent-report", context.id), report).selectable(true)
+            TextView::markdown(("subagent-report", agent.id), report).selectable(true)
         }))
 }
 
-/// One thing the subagent did: its text, a tool call and its outcome, or
-/// a message it was sent.
-pub fn step_row(
-    step: &Step,
-    id: SharedString,
-    root: &Path,
-    chat: &WeakEntity<ChatView>,
-    cx: &App,
-) -> AnyElement {
+/// What a step needs of where it shows.
+pub struct StepPlace<'a> {
+    pub root: &'a Path,
+    pub chat: &'a WeakEntity<ChatView>,
+    /// Draws a subagent the step started.
+    pub inner: &'a dyn Fn(EntryId) -> AnyElement,
+}
+
+/// One thing the subagent did: its text, a tool call and its outcome, a
+/// message it was sent or a subagent it started.
+pub fn step_row(step: &Step, id: SharedString, place: &StepPlace, cx: &App) -> AnyElement {
     let theme = cx.theme();
     match step {
         Step::Text(text) => div()
@@ -170,6 +268,7 @@ pub fn step_row(
             .child(text.clone())
             .into_any_element(),
         Step::Message(message) => message_step(message, id, cx),
+        Step::Subagent(inner) => (place.inner)(*inner),
         Step::Tool { call, result } => {
             let summary = result.as_ref().map(|result| {
                 sub_line(
@@ -182,7 +281,7 @@ pub fn step_row(
                 .as_ref()
                 .filter(|result| !result.pictures.is_empty())
                 .map(|result| {
-                    pictures::gallery(format!("{id}-picture"), &result.pictures, chat, cx)
+                    pictures::gallery(format!("{id}-picture"), &result.pictures, place.chat, cx)
                 });
             v_flex()
                 .id(id)
@@ -202,7 +301,7 @@ pub fn step_row(
                                 .min_w_0()
                                 .truncate()
                                 .font_family(theme.mono_font_family.clone())
-                                .child(tool_format::detail(&call.input, root)),
+                                .child(tool_format::detail(&call.input, place.root)),
                         ),
                 )
                 .children(summary)
@@ -249,6 +348,13 @@ fn message_step(message: &str, id: SharedString, cx: &App) -> AnyElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_card_says_how_many_subagents_are_below_it() {
+        assert_eq!(below_label(0, 0), None);
+        assert_eq!(below_label(1, 0).as_deref(), Some("1 subagent"));
+        assert_eq!(below_label(3, 2).as_deref(), Some("3 subagents, 2 running"));
+    }
 
     #[test]
     fn durations_read_in_seconds_then_minutes() {

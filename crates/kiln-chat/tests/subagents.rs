@@ -30,10 +30,12 @@ mod subagents {
     }
 
     fn change(change: SubagentChange) -> AgentEvent {
-        AgentEvent::Subagent(SubagentEvent {
-            call: "agent".into(),
-            change,
-        })
+        change_of("agent", change)
+    }
+
+    fn change_of(call: &str, change: SubagentChange) -> AgentEvent {
+        let call = call.into();
+        AgentEvent::Subagent(SubagentEvent { call, change })
     }
 
     fn label(harness: &Harness, cx: &mut TestAppContext, id: &'static str) -> String {
@@ -173,6 +175,58 @@ mod subagents {
                 window.find_by_label("Read").visible(),
                 "the card opened on its steps"
             );
+        });
+    }
+
+    /// The subagent of [`started`], card 2, has started one of its own,
+    /// card 3, which made a call.
+    fn nested(cx: &mut TestAppContext) -> Harness {
+        let harness = started(cx);
+        harness.emit(cx, call("inner", Some("agent"), "Agent"));
+        let started = SubagentChange::Started {
+            description: "Count the words".into(),
+            kind: None,
+        };
+        harness.emit(cx, change_of("inner", started));
+        harness.emit(cx, call("grep", Some("inner"), "Grep"));
+        harness
+    }
+
+    #[gpui_kit::test]
+    fn a_subagents_own_subagent_is_a_card_inside_its_card(cx: &mut TestAppContext) {
+        let harness = nested(cx);
+        assert_eq!(
+            label(&harness, cx, "subagent-status-2"),
+            "Starting… · 1 subagent, 1 running"
+        );
+        let has = |cx: &mut TestAppContext, label: &'static str| {
+            harness.with_window(cx, |window, _| window.try_find_by_label(label).is_some())
+        };
+        assert!(!has(cx, "Count the words"), "inside the closed card");
+        harness.with_window(cx, |window, cx| window.click("subagent-2", cx));
+        assert!(has(cx, "Count the words") && !has(cx, "Grep"));
+        harness.with_window(cx, |window, cx| window.click("subagent-3", cx));
+        assert!(has(cx, "Grep") && has(cx, "Read"), "only its own opened");
+        harness.with_window(cx, |window, cx| window.click("subagent-open-3", cx));
+        assert_eq!(label(&harness, cx, "chat-agent-detail"), "Count the words");
+    }
+
+    #[gpui_kit::test]
+    fn the_agents_dialog_lists_subagents_as_a_tree(cx: &mut TestAppContext) {
+        let harness = nested(cx);
+        assert_eq!(label(&harness, cx, "chat-agents"), "2 agents running");
+        harness.with_window(cx, |window, cx| window.click("chat-agents", cx));
+        assert_eq!(label(&harness, cx, "chat-agent-detail"), "Read the note");
+        harness.with_window(cx, |window, cx| window.click("chat-agent-inner-3", cx));
+        assert_eq!(label(&harness, cx, "chat-agent-detail"), "Count the words");
+        harness.with_window(cx, |window, cx| window.click("chat-agent-above-2", cx));
+        assert_eq!(label(&harness, cx, "chat-agent-detail"), "Read the note");
+        harness.with_window(cx, |window, cx| window.press("down", cx));
+        assert_eq!(label(&harness, cx, "chat-agent-detail"), "Count the words");
+        harness.with_window(cx, |window, cx| window.click("chat-agent-reveal", cx));
+        harness.with_window(cx, |window, _| {
+            assert!(window.try_find("chat-agents-dialog").is_none());
+            assert!(window.find_by_label("Grep").visible(), "both cards opened");
         });
     }
 }

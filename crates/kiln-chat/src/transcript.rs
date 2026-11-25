@@ -7,7 +7,8 @@ mod subagent;
 mod thinking;
 mod turn_end;
 
-pub use subagent::{Card, Step, Subagent};
+use subagent::{Holder, Place};
+pub use subagent::{Step, Subagent, Subagents};
 
 use kiln_agent::{
     AgentEvent, BlockKey, Message, PastMessage, PermissionRequest, Picture, ToolCall, TurnOutcome,
@@ -36,12 +37,9 @@ pub enum Entry {
         call: ToolCall,
         result: Option<ToolResult>,
     },
-    /// The call that started a subagent, once the agent reports it running.
-    Subagent {
-        call: ToolCall,
-        result: Option<ToolResult>,
-        agent: Box<Subagent>,
-    },
+    /// The call that started a subagent, once the agent reports it running;
+    /// the subagent has the entry's id.
+    Subagent,
     Notice {
         text: String,
         is_error: bool,
@@ -76,8 +74,9 @@ pub struct Change {
 pub struct Transcript {
     entries: Vec<(EntryId, Entry)>,
     next_id: EntryId,
-    /// The row each tool call shows in; a subagent's calls show in its card.
-    tools: HashMap<String, usize>,
+    /// Where each tool call shows; a subagent's calls show in its card.
+    tools: HashMap<String, Place>,
+    agents: Subagents,
     /// Permission requests awaiting an answer, oldest first. They are shown
     /// above the composer, not as transcript rows.
     pending: Vec<PermissionRequest>,
@@ -280,6 +279,7 @@ impl Transcript {
     fn clear(&mut self) {
         self.entries.clear();
         self.tools.clear();
+        self.agents.clear();
         self.pending.clear();
         self.unclaimed_thinking = 0;
     }
@@ -329,26 +329,35 @@ impl Transcript {
         {
             return change;
         }
-        self.tools.insert(call.id.clone(), self.entries.len());
+        let place = Place {
+            row: self.entries.len(),
+            holder: Holder::Row,
+        };
+        self.tools.insert(call.id.clone(), place);
         self.push(Entry::Tool { call, result: None })
     }
 
     fn finish_tool(&mut self, id: &str, result: ToolResult) -> Change {
-        let Some(&index) = self.tools.get(id) else {
+        let Some(&Place { row, holder }) = self.tools.get(id) else {
             return Change::default();
         };
-        let entry = &mut self.entries[index].1;
-        let changed = match entry {
-            Entry::Tool { call, result: slot } if call.id == id => {
-                *slot = Some(result);
-                true
-            }
-            _ => Self::finish_step(entry, id, result),
+        let changed = match holder {
+            Holder::Row => self.finish_row(row, result),
+            Holder::Step(agent) => self.finish_step(agent, id, result),
+            Holder::Card(agent) => self.finish_call(agent, result),
         };
         Change {
-            updated: changed.then_some(index),
+            updated: changed.then_some(row),
             appended: 0,
         }
+    }
+
+    fn finish_row(&mut self, row: usize, result: ToolResult) -> bool {
+        let Some((_, Entry::Tool { result: slot, .. })) = self.entries.get_mut(row) else {
+            return false;
+        };
+        *slot = Some(result);
+        true
     }
 
     /// Unanswered requests die with their turn: the CLI no longer waits.

@@ -110,6 +110,8 @@ impl ChatView {
             let context = EntryContext {
                 id: 0,
                 toggled: false,
+                toggled_cards: &self.toggled,
+                agents: self.transcript.subagents(),
                 view,
                 root: &self.cwd,
                 width_changes: self.transcript_width.get().1,
@@ -122,6 +124,8 @@ impl ChatView {
         let context = EntryContext {
             id,
             toggled: self.toggled.contains(&id),
+            toggled_cards: &self.toggled,
+            agents: self.transcript.subagents(),
             view,
             root: &self.cwd,
             width_changes: self.transcript_width.get().1,

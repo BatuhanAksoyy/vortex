@@ -7,7 +7,7 @@ use kiln_agent::ToolCall;
 
 use crate::{
     tool_format,
-    transcript::{Entry, ToolResult},
+    transcript::{Entry, Subagent, ToolResult},
 };
 
 /// The byte ranges of `query` in `text`, ignoring case, without overlaps.
@@ -53,26 +53,33 @@ fn match_at(text: &str, start: usize, needle: &[char]) -> Option<usize> {
 /// All of `entry` a search reads: a message's whole text, also the part a
 /// long one hides, a tool's name and what it was called on, and its output
 /// when `tool_output` is set.
-pub fn plain_text(entry: &Entry, tool_output: bool, root: &Path) -> String {
+pub fn plain_text(
+    entry: &Entry,
+    agent: Option<&Subagent>,
+    tool_output: bool,
+    root: &Path,
+) -> String {
     match entry {
         Entry::User(message) => message.text.clone(),
         Entry::Text { text, .. } | Entry::Thinking { text, .. } | Entry::Notice { text, .. } => {
             text.clone()
         }
         Entry::Tool { call, result } => tool_text(call, result.as_ref(), tool_output, root),
-        Entry::Subagent { call, agent, .. } => {
-            let mut text = format!(
-                "{} {}",
-                agent.description,
-                tool_text(call, None, false, root)
-            );
-            if let Some(summary) = &agent.summary {
-                text.push('\n');
-                text.push_str(summary);
-            }
-            text
-        }
+        Entry::Subagent => agent.map_or_default(|agent| subagent_text(agent, root)),
     }
+}
+
+fn subagent_text(agent: &Subagent, root: &Path) -> String {
+    let mut text = format!(
+        "{} {}",
+        agent.description,
+        tool_text(&agent.call, None, false, root)
+    );
+    if let Some(summary) = &agent.summary {
+        text.push('\n');
+        text.push_str(summary);
+    }
+    text
 }
 
 fn tool_text(call: &ToolCall, result: Option<&ToolResult>, output: bool, root: &Path) -> String {

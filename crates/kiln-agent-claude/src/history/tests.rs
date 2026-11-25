@@ -250,7 +250,7 @@ fn followup() -> Vec<PastMessage> {
 
 /// Conversation `s-1` reopened from `session` and the files of `agents`,
 /// each its id, `.meta.json` and conversation, laid out as the CLI does.
-fn reopened(session: &str, agents: &[(&str, &str, &str)]) -> Vec<PastMessage> {
+pub(super) fn reopened(session: &str, agents: &[(&str, &str, &str)]) -> Vec<PastMessage> {
     let dir = tempfile::tempdir().unwrap();
     let stored = dir.path().join("s-1").join("subagents");
     std::fs::create_dir_all(&stored).unwrap();
@@ -263,7 +263,7 @@ fn reopened(session: &str, agents: &[(&str, &str, &str)]) -> Vec<PastMessage> {
 }
 
 /// How each subagent's card ends, by the call that started it.
-fn ends(messages: &[PastMessage]) -> Vec<(String, kiln_agent::SubagentEnd, String)> {
+pub(super) fn ends(messages: &[PastMessage]) -> Vec<(String, kiln_agent::SubagentEnd, String)> {
     messages
         .iter()
         .filter_map(|message| match message {

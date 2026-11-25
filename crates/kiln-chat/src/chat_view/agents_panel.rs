@@ -17,15 +17,11 @@ use crate::{scale::ScaledButton as _, transcript::EntryId};
 impl ChatView {
     /// `None` until the conversation starts a subagent.
     pub(super) fn agents_button(&self, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
-        let total = self.transcript.subagents().count();
+        let agents = self.transcript.subagents();
+        let (total, running) = (agents.len(), agents.running());
         if total == 0 {
             return None;
         }
-        let running = self
-            .transcript
-            .subagents()
-            .filter(|card| card.agent.end.is_none())
-            .count();
         Some(
             Button::new("chat-agents")
                 .ghost()
@@ -38,13 +34,19 @@ impl ChatView {
                     cx.theme().muted_foreground
                 })
                 .tooltip("Subagents")
-                .on_click(cx.listener(|this, _, window, cx| this.open_agents(window, cx))),
+                .on_click(cx.listener(|this, _, window, cx| this.open_agents(None, window, cx))),
         )
     }
 
-    fn open_agents(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Opens the view on subagent `shown`, or the first in its list.
+    pub fn open_agents(
+        &mut self,
+        shown: Option<EntryId>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let chat = cx.entity();
-        let dialog = cx.new(|cx| AgentsDialog::new(&chat, cx));
+        let dialog = cx.new(|cx| AgentsDialog::new(&chat, shown, cx));
         let focus = dialog.read(cx).focus_handle();
         window.focus(&focus, cx);
         self.agents = Some(dialog);
@@ -76,16 +78,14 @@ impl ChatView {
         )
     }
 
-    /// Opens the card of entry `id` and scrolls to it.
+    /// Opens the card of subagent `id`, and those around it, and scrolls to
+    /// their row.
     pub(super) fn reveal_subagent(&mut self, id: EntryId, cx: &mut Context<Self>) {
-        let Some(index) = self
-            .transcript
-            .subagents()
-            .find_map(|card| (card.id == id).then_some(card.index))
-        else {
+        let path = self.transcript.subagents().path(id);
+        let Some(index) = path.first().map(|agent| agent.row) else {
             return;
         };
-        self.toggled.insert(id);
+        self.toggled.extend(path.iter().map(|agent| agent.id));
         self.scroller.update(cx, |scroller, cx| {
             scroller.remeasure(cx);
             scroller.scroll_to_item(index, cx);

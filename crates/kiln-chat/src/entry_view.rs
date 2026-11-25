@@ -3,7 +3,7 @@
 
 mod thinking;
 
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -26,7 +26,7 @@ use crate::{
     scale::{ScaledIcon as _, ScaledText as _},
     spinner, subagent_view,
     tool_format::{self, EditDiff},
-    transcript::{Entry, EntryId, ToolResult},
+    transcript::{Entry, EntryId, Subagents, ToolResult},
 };
 
 /// Vertical centre of the first text line, where the dot sits.
@@ -39,6 +39,9 @@ pub struct EntryContext<'a> {
     pub id: EntryId,
     /// Whether the user toggled this row away from its default.
     pub toggled: bool,
+    /// The cards toggled, also those inside this row's.
+    pub toggled_cards: &'a HashSet<EntryId>,
+    pub agents: &'a Subagents,
     pub view: &'a WeakEntity<ChatView>,
     pub root: &'a Path,
     /// How many times the transcript's width changed; see `width_watch`.
@@ -54,7 +57,7 @@ pub struct EntryContext<'a> {
 pub fn on_timeline(entry: &Entry) -> bool {
     matches!(
         entry,
-        Entry::Text { .. } | Entry::Thinking { .. } | Entry::Tool { .. } | Entry::Subagent { .. }
+        Entry::Text { .. } | Entry::Thinking { .. } | Entry::Tool { .. } | Entry::Subagent
     )
 }
 
@@ -76,7 +79,7 @@ pub fn render(entry: &Entry, context: &EntryContext, cx: &App) -> AnyElement {
             text, tokens, took, ..
         } => thinking::render(text, *tokens, *took, context, cx),
         Entry::Tool { call, result } => tool(call, result.as_ref(), context, cx),
-        Entry::Subagent { agent, .. } => subagent_view::render(agent, context, cx),
+        Entry::Subagent => subagent_view::render(context, cx),
     }
 }
 
@@ -351,8 +354,14 @@ fn open_file(
 pub fn toggle(
     context: &EntryContext,
 ) -> impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut App) + 'static {
+    toggle_card(context.id, context)
+}
+
+pub fn toggle_card(
+    entry: EntryId,
+    context: &EntryContext,
+) -> impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut App) + 'static {
     let view = context.view.clone();
-    let entry = context.id;
     move |_, _, cx| {
         let _ = view.update(cx, |view, cx| view.toggle_expanded(entry, cx));
     }

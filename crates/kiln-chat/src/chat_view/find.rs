@@ -166,7 +166,12 @@ impl ChatView {
         (0..self.transcript.len())
             .filter_map(|row| {
                 let (id, entry) = self.transcript.entry(row)?;
-                let plain = matches::plain_text(entry, tool_output, &self.cwd);
+                let plain = matches::plain_text(
+                    entry,
+                    self.transcript.subagents().get(id),
+                    tool_output,
+                    &self.cwd,
+                );
                 if matches::occurrences(&plain, query).is_empty() {
                     return None;
                 }

@@ -1,34 +1,30 @@
 //! The subagents view, opened over the chat whose button was pressed:
-//! every subagent of the conversation on the left,
-//! running ones first, and on the right the one picked, as a chat of its
-//! own: what it was asked, its messages and tool calls, then its report,
-//! under its model, context and usage. It follows the chat live.
+//! every subagent of the conversation on the left, under the one that
+//! started it, running ones first, and on the right the one picked, as a
+//! chat of its own: what it was asked, its messages and tool calls, then its
+//! report, under its model, context and usage. It follows the chat live.
 
-use std::path::Path;
-
-use gpui_kit::prelude::*;
-use gpui_kit::{
-    AnyElement, App, Context, Entity, FocusHandle, FontWeight, KeyDownEvent, SharedString,
-    Subscription, TestSupportExt, WeakEntity, Window,
-    component::{
-        ActiveTheme, IconName, Sizable,
-        button::{Button, ButtonVariants},
-        h_flex,
-        text::TextView,
-        v_flex,
-    },
-    div, px, relative,
-};
-use kiln_agent::SubagentEnd;
+mod detail;
+mod tree;
 
 use super::ChatView;
 use crate::{
-    agent_state::tokens,
-    literal::literal_markdown,
     scale::{ScaledButton as _, ScaledText as _},
-    subagent_view,
-    transcript::{Card, EntryId},
+    subagent_view::{self, small_dot},
+    transcript::EntryId,
 };
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, Context, Entity, FocusHandle, KeyDownEvent, SharedString, Subscription,
+    TestSupportExt, WeakEntity, Window,
+    component::{
+        ActiveTheme, IconName,
+        button::{Button, ButtonVariants},
+        h_flex, v_flex,
+    },
+    div, px, relative,
+};
+use tree::Row;
 
 const LIST_MAX_WIDTH: f32 = 260.;
 /// The list's share of the dialog's width, below its widest.
@@ -43,11 +39,11 @@ pub struct AgentsDialog {
 }
 
 impl AgentsDialog {
-    pub fn new(chat: &Entity<ChatView>, cx: &mut Context<Self>) -> Self {
+    pub fn new(chat: &Entity<ChatView>, shown: Option<EntryId>, cx: &mut Context<Self>) -> Self {
         Self {
             chat: chat.downgrade(),
             focus: cx.focus_handle(),
-            selected: None,
+            selected: shown,
             _chat_changed: cx.observe(chat, |_, _, cx| cx.notify()),
         }
     }
@@ -69,11 +65,30 @@ impl AgentsDialog {
             .update(cx, |chat, cx| chat.reveal_subagent(id, cx));
     }
 
-    fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if event.keystroke.key == "escape" {
-            self.close(window, cx);
-            cx.stop_propagation();
+    fn show(&mut self, id: EntryId, cx: &mut Context<Self>) {
+        self.selected = Some(id);
+        cx.notify();
+    }
+
+    fn step(&mut self, down: bool, cx: &mut Context<Self>) {
+        let Some(chat) = self.chat.upgrade() else {
+            return;
+        };
+        let rows = tree::rows(chat.read(cx).transcript.subagents());
+        let next = tree::step(&rows, self.selected, down);
+        if let Some(id) = next {
+            self.show(id, cx);
         }
+    }
+
+    fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        match event.keystroke.key.as_str() {
+            "escape" => self.close(window, cx),
+            "down" => self.step(true, cx),
+            "up" => self.step(false, cx),
+            _ => return,
+        }
+        cx.stop_propagation();
     }
 }
 
@@ -107,20 +122,18 @@ impl Render for AgentsDialog {
             return body;
         };
         let chat = chat.read(cx);
-        let mut cards: Vec<Card> = chat.transcript.subagents().collect();
-        cards.reverse();
-        cards.sort_by_key(|card| card.agent.end.is_some());
+        let agents = chat.transcript.subagents();
+        let listed = tree::rows(agents);
         let selected = self
             .selected
-            .and_then(|id| cards.iter().find(|card| card.id == id))
-            .or_else(|| cards.first())
-            .copied();
-        let rows: Vec<AnyElement> = cards
+            .and_then(|id| agents.get(id))
+            .or_else(|| listed.first().map(|row| row.agent));
+        let rows: Vec<AnyElement> = listed
             .iter()
-            .map(|card| list_row(card, selected.map(|card| card.id), cx))
+            .map(|row| list_row(*row, selected.map(|agent| agent.id), cx))
             .collect();
-        let detail = selected.map(|card| detail(card, &chat.cwd, &self.chat, cx));
-        body.child(list(rows, cards.len(), cx)).children(detail)
+        let detail = selected.map(|agent| detail::render(agent, chat, &self.chat, cx));
+        body.child(list(rows, listed.len(), cx)).children(detail)
     }
 }
 
@@ -148,10 +161,20 @@ fn list(rows: Vec<AnyElement>, total: usize, cx: &Context<AgentsDialog>) -> impl
         .children(rows)
 }
 
-fn list_row(card: &Card, selected: Option<EntryId>, cx: &Context<AgentsDialog>) -> AnyElement {
+fn list_row(row: Row, selected: Option<EntryId>, cx: &Context<AgentsDialog>) -> AnyElement {
     let theme = cx.theme();
-    let id = card.id;
-    let agent = card.agent;
+    let Row { agent, depth } = row;
+    let id = agent.id;
+    let indents = (0..depth).map(|_| {
+        // A line down from each one it is below.
+        div()
+            .flex_none()
+            .self_stretch()
+            .w_3()
+            .ml_1()
+            .border_l_1()
+            .border_color(theme.border)
+    });
     h_flex()
         .id(SharedString::from(format!("chat-agent-{id}")))
         .test_support()
@@ -165,10 +188,10 @@ fn list_row(card: &Card, selected: Option<EntryId>, cx: &Context<AgentsDialog>) 
         .when(selected == Some(id), |this| this.bg(theme.secondary))
         .hover(|style| style.bg(theme.secondary))
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.selected = Some(id);
-            cx.notify();
+            this.show(id, cx);
         }))
-        .child(dot(agent.end, cx))
+        .children(indents)
+        .child(small_dot(agent.end, cx))
         .child(
             v_flex()
                 .min_w_0()
@@ -183,143 +206,4 @@ fn list_row(card: &Card, selected: Option<EntryId>, cx: &Context<AgentsDialog>) 
                 ),
         )
         .into_any_element()
-}
-
-fn dot(end: Option<SubagentEnd>, cx: &App) -> impl IntoElement {
-    div()
-        .flex_none()
-        .mt(px(6.))
-        .size(px(7.))
-        .rounded_full()
-        .bg(subagent_view::dot(end, cx))
-}
-
-/// The picked subagent: its facts, then its chat.
-fn detail(
-    card: Card,
-    root: &Path,
-    chat: &WeakEntity<ChatView>,
-    cx: &Context<AgentsDialog>,
-) -> AnyElement {
-    let agent = card.agent;
-    let id = card.id;
-    let header = h_flex()
-        .gap_2()
-        .child(dot(agent.end, cx))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .truncate()
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(agent.description.clone()),
-        )
-        .child(
-            Button::new("chat-agent-reveal")
-                .ghost()
-                .small()
-                .label("Show in chat")
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.show_in_chat(id, window, cx);
-                })),
-        );
-    v_flex()
-        .id("chat-agent-detail")
-        .test_support()
-        .aria_label(SharedString::from(agent.description.clone()))
-        .flex_1()
-        .min_w_0()
-        .h_full()
-        .overflow_y_scroll()
-        .p_3()
-        .gap_3()
-        .child(header.pr_6())
-        .child(facts(card, cx))
-        .child(div().h_px().bg(cx.theme().border))
-        .children(prompt(card, cx))
-        .children(agent.steps.iter().enumerate().map(|(index, step)| {
-            let step_id = SharedString::from(format!("chat-agent-step-{id}-{index}"));
-            subagent_view::step_row(step, step_id, root, chat, cx)
-        }))
-        .children(report(card, cx))
-        .into_any_element()
-}
-
-fn facts(card: Card, cx: &App) -> impl IntoElement {
-    let agent = card.agent;
-    let context = agent.request.map_or_else(
-        || "Not reported yet".to_owned(),
-        |request| {
-            let total = request.cached + request.written + request.uncached;
-            format!(
-                "{} tokens in the last request · {} read from cache",
-                tokens(total),
-                tokens(request.cached)
-            )
-        },
-    );
-    let fact = |name: &'static str, value: String| {
-        h_flex()
-            .id(SharedString::from(format!(
-                "chat-agent-{}",
-                name.to_lowercase()
-            )))
-            .test_support()
-            .aria_label(SharedString::from(value.clone()))
-            .gap_2()
-            .child(
-                div()
-                    .flex_none()
-                    .w(px(72.))
-                    .text_color(cx.theme().muted_foreground)
-                    .child(name),
-            )
-            .child(div().min_w_0().child(value))
-    };
-    let unknown = || "Not reported yet".to_owned();
-    v_flex()
-        .gap_1()
-        .child(fact("Status", subagent_view::status(agent)))
-        .child(fact("Type", agent.kind.clone().unwrap_or_else(unknown)))
-        .child(fact("Model", agent.model.clone().unwrap_or_else(unknown)))
-        .child(fact("Context", context))
-}
-
-/// What the main agent asked it, as the chat's first message.
-fn prompt(card: Card, cx: &App) -> Option<impl IntoElement> {
-    let text = card.call.input.get("prompt")?.as_str()?;
-    let theme = cx.theme();
-    Some(
-        div()
-            .px_3()
-            .py_1p5()
-            .rounded(theme.radius * 1.5)
-            .border_1()
-            .border_color(theme.border)
-            .bg(theme.secondary)
-            .child(
-                TextView::markdown(("chat-agent-prompt", card.id), literal_markdown(text))
-                    .selectable(true),
-            ),
-    )
-}
-
-fn report(card: Card, cx: &App) -> Option<impl IntoElement> {
-    let summary = card.agent.summary.clone()?;
-    let failed = card.agent.end != Some(SubagentEnd::Completed);
-    let theme = cx.theme();
-    Some(
-        v_flex()
-            .gap_1()
-            .pt_1()
-            .border_t_1()
-            .border_color(theme.border)
-            .child(
-                div()
-                    .text_caption()
-                    .text_color(theme.muted_foreground)
-                    .child(if failed { "Why it ended" } else { "Report" }),
-            )
-            .child(TextView::markdown(("chat-agent-report", card.id), summary).selectable(true)),
-    )
 }

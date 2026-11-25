@@ -1,6 +1,8 @@
-//! A subagent as a transcript row: the call that started it turns into a
-//! card that gathers the subagent's progress, report and own steps, which
-//! stay out of the main timeline.
+//! The subagents of a conversation: each call that started one turns into a
+//! card that gathers its progress, report and own steps, which stay out of
+//! the main timeline. One that a subagent started is a step of that one.
+
+use std::collections::{BTreeMap, HashSet};
 
 use kiln_agent::{
     PromptTokens, SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage, ToolCall,
@@ -10,6 +12,15 @@ use super::{Change, Entry, EntryId, ToolResult, Transcript};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Subagent {
+    /// Its card's identity; a subagent's is above its parent's.
+    pub id: EntryId,
+    /// The subagent that started it; `None` for the main agent's.
+    pub parent: Option<EntryId>,
+    /// The timeline row its card, or the card around it, is in.
+    pub row: usize,
+    /// The call that started it, holding what it was asked.
+    pub call: ToolCall,
+    pub result: Option<ToolResult>,
     pub description: String,
     pub kind: Option<String>,
     pub model: Option<String>,
@@ -24,16 +35,6 @@ pub struct Subagent {
     pub steps: Vec<Step>,
 }
 
-/// A subagent card with its place on the timeline.
-#[derive(Clone, Copy)]
-pub struct Card<'a> {
-    pub index: usize,
-    pub id: EntryId,
-    /// The call that started it, holding what it was asked.
-    pub call: &'a ToolCall,
-    pub agent: &'a Subagent,
-}
-
 /// Something the subagent did, in order.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
@@ -44,110 +45,261 @@ pub enum Step {
     Text(String),
     /// A message it was sent after it started, which it runs again to answer.
     Message(String),
+    /// A subagent it started.
+    Subagent(EntryId),
+}
+
+/// Where a tool call shows.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Place {
+    pub row: usize,
+    pub holder: Holder,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Holder {
+    /// The row is the call's own.
+    Row,
+    /// A step of this subagent.
+    Step(EntryId),
+    /// The call started this subagent.
+    Card(EntryId),
+}
+
+/// Every subagent, by id and so in the order they were started, parents
+/// before the subagents they start.
+#[derive(Debug, Default)]
+pub struct Subagents(BTreeMap<EntryId, Subagent>);
+
+impl Subagents {
+    pub fn get(&self, id: EntryId) -> Option<&Subagent> {
+        self.0.get(&id)
+    }
+
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Subagent> {
+        self.0.values()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn running(&self) -> usize {
+        self.iter().filter(|agent| agent.end.is_none()).count()
+    }
+
+    /// Those subagent `id` started, `None` for the main agent's.
+    pub fn children(&self, id: Option<EntryId>) -> impl Iterator<Item = &Subagent> {
+        self.iter().filter(move |agent| agent.parent == id)
+    }
+
+    /// All below subagent `id`, at any depth.
+    pub fn below(&self, id: EntryId) -> Vec<&Subagent> {
+        let mut inside = HashSet::from([id]);
+        self.iter()
+            .filter(|agent| {
+                let below = agent.parent.is_some_and(|parent| inside.contains(&parent));
+                below && inside.insert(agent.id)
+            })
+            .collect()
+    }
+
+    /// Subagent `id` and those above it, the outermost first.
+    pub fn path(&self, id: EntryId) -> Vec<&Subagent> {
+        let above = |agent: &&Subagent| agent.parent.and_then(|parent| self.get(parent));
+        let mut path: Vec<_> = std::iter::successors(self.get(id), above).collect();
+        path.reverse();
+        path
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    fn stop_all(&mut self) {
+        for agent in self.0.values_mut() {
+            agent.end.get_or_insert(SubagentEnd::Stopped);
+        }
+    }
+
+    /// Ends the running ones whose whole chain of calls waits for the main
+    /// agent's turn.
+    fn stop_foreground(&mut self) {
+        let mut waited_for = HashSet::new();
+        for agent in self.0.values_mut() {
+            let background =
+                agent.call.input.get("run_in_background") == Some(&serde_json::Value::Bool(true));
+            let detached = agent
+                .parent
+                .is_some_and(|parent| !waited_for.contains(&parent));
+            if background || detached {
+                continue;
+            }
+            waited_for.insert(agent.id);
+            agent.end.get_or_insert(SubagentEnd::Stopped);
+        }
+    }
 }
 
 impl Transcript {
-    /// The subagent cards, in timeline order.
-    pub fn subagents(&self) -> impl Iterator<Item = Card<'_>> {
-        self.entries
-            .iter()
-            .enumerate()
-            .filter_map(|(index, (id, entry))| match entry {
-                Entry::Subagent { call, agent, .. } => Some(Card {
-                    index,
-                    id: *id,
-                    call,
-                    agent: agent.as_ref(),
-                }),
-                _ => None,
-            })
+    pub fn subagents(&self) -> &Subagents {
+        &self.agents
     }
 
     /// Marks stopped the subagents a turn that was interrupted or failed
     /// ran in the foreground: the CLI ends them with the turn but reports
     /// no end. Ones sent to the background run on and report their own.
     pub(super) fn stop_foreground_subagents(&mut self) {
-        self.stop_subagents(|call| {
-            call.input.get("run_in_background") != Some(&serde_json::Value::Bool(true))
-        });
+        self.agents.stop_foreground();
     }
 
     /// Marks stopped every subagent still running, once the agent's process
     /// is gone and none can report an end.
     pub(super) fn stop_all_subagents(&mut self) {
-        self.stop_subagents(|_| true);
-    }
-
-    fn stop_subagents(&mut self, started_by: impl Fn(&ToolCall) -> bool) {
-        for (_, entry) in &mut self.entries {
-            if let Entry::Subagent { call, agent, .. } = entry
-                && agent.end.is_none()
-                && started_by(call)
-            {
-                agent.end = Some(SubagentEnd::Stopped);
-            }
-        }
+        self.agents.stop_all();
     }
 
     pub(super) fn apply_subagent(&mut self, event: SubagentEvent) -> Change {
-        let Some(&index) = self.tools.get(&event.call) else {
+        let Some(&place) = self.tools.get(&event.call) else {
             return Change::default();
         };
-        let entry = &mut self.entries[index].1;
-        let changed = match (entry, event.change) {
-            (entry @ Entry::Tool { .. }, SubagentChange::Started { description, kind }) => {
-                start(entry, &event.call, description, kind)
+        let changed = match (place.holder, event.change) {
+            (Holder::Card(id), change) => self
+                .agents
+                .0
+                .get_mut(&id)
+                .is_some_and(|agent| agent.apply(change)),
+            (holder, SubagentChange::Started { description, kind }) => {
+                self.start(&event.call, place.row, holder, (description, kind))
             }
-            // A nested subagent's text joins the steps of the card it runs
-            // under; its other reports are its own card's business.
-            (Entry::Subagent { agent, .. }, SubagentChange::Text(text)) => {
-                agent.steps.push(Step::Text(text));
-                true
-            }
-            (Entry::Subagent { call, agent, .. }, change) if call.id == event.call => {
-                agent.apply(change)
-            }
+            // Without a start reported, its words are its caller's.
+            (Holder::Step(id), SubagentChange::Text(text)) => self.add_step(id, Step::Text(text)),
             _ => false,
         };
-        updated(changed, index)
+        updated(changed, place.row)
+    }
+
+    /// Turns call `id`, in its row or among a subagent's steps, into a card.
+    fn start(
+        &mut self,
+        id: &str,
+        row: usize,
+        holder: Holder,
+        (description, kind): (String, Option<String>),
+    ) -> bool {
+        let Some((call, result)) = self.called(id, row, holder) else {
+            return false;
+        };
+        let (card, parent) = match holder {
+            Holder::Step(parent) => {
+                self.next_id += 1;
+                (self.next_id, Some(parent))
+            }
+            _ => (self.entries[row].0, None),
+        };
+        self.replace(id, row, holder, card);
+        let holder = Holder::Card(card);
+        self.tools.insert(id.to_owned(), Place { row, holder });
+        let agent = Subagent {
+            id: card,
+            parent,
+            row,
+            call,
+            result,
+            description,
+            kind,
+            model: None,
+            activity: None,
+            usage: None,
+            request: None,
+            end: None,
+            summary: None,
+            steps: Vec::new(),
+        };
+        self.agents.0.insert(card, agent);
+        true
+    }
+
+    fn called(
+        &self,
+        id: &str,
+        row: usize,
+        holder: Holder,
+    ) -> Option<(ToolCall, Option<ToolResult>)> {
+        if let Holder::Step(agent) = holder {
+            let steps = &self.agents.get(agent)?.steps;
+            return steps.iter().find_map(|step| match step {
+                Step::Tool { call, result } if call.id == id => {
+                    Some((call.clone(), result.clone()))
+                }
+                _ => None,
+            });
+        }
+        match &self.entries.get(row)?.1 {
+            Entry::Tool { call, result } => Some((call.clone(), result.clone())),
+            _ => None,
+        }
+    }
+
+    fn replace(&mut self, id: &str, row: usize, holder: Holder, card: EntryId) {
+        let Holder::Step(agent) = holder else {
+            self.entries[row].1 = Entry::Subagent;
+            return;
+        };
+        let steps = self.agents.0.get_mut(&agent).map(|agent| &mut agent.steps);
+        let call = steps
+            .into_iter()
+            .flatten()
+            .find(|step| matches!(step, Step::Tool { call, .. } if call.id == id));
+        if let Some(step) = call {
+            *step = Step::Subagent(card);
+        }
+    }
+
+    fn add_step(&mut self, id: EntryId, step: Step) -> bool {
+        let agent = self.agents.0.get_mut(&id);
+        agent.map(|agent| agent.steps.push(step)).is_some()
     }
 
     /// A tool call of a subagent goes under its card; `None` when its
     /// parent shows no card, so it is shown as a row of its own.
     pub(super) fn push_step(&mut self, call: ToolCall) -> Option<Change> {
-        let parent = call.parent.as_ref()?;
-        let index = *self.tools.get(parent)?;
-        let Entry::Subagent { agent, .. } = &mut self.entries[index].1 else {
+        let parent = *self.tools.get(call.parent.as_ref()?)?;
+        let (Holder::Card(agent) | Holder::Step(agent)) = parent.holder else {
             return None;
         };
-        self.tools.insert(call.id.clone(), index);
-        agent.steps.push(Step::Tool { call, result: None });
-        Some(updated(true, index))
+        let place = Place {
+            row: parent.row,
+            holder: Holder::Step(agent),
+        };
+        self.tools.insert(call.id.clone(), place);
+        let added = self.add_step(agent, Step::Tool { call, result: None });
+        Some(updated(added, parent.row))
     }
 
-    /// Fills in the result of the card's own call or of one of its steps.
-    pub(super) fn finish_step(entry: &mut Entry, id: &str, result: ToolResult) -> bool {
-        let Entry::Subagent {
-            call,
-            result: own,
-            agent,
-        } = entry
-        else {
+    /// Fills in the result of a subagent's call.
+    pub(super) fn finish_step(&mut self, agent: EntryId, id: &str, result: ToolResult) -> bool {
+        let Some(agent) = self.agents.0.get_mut(&agent) else {
             return false;
         };
-        if call.id == id {
-            if result.is_error && agent.end.is_none() {
-                agent.end = Some(SubagentEnd::Failed);
-                agent.summary = Some(result.output.clone());
-            }
-            *own = Some(result);
-            return true;
-        }
         let step = agent.steps.iter_mut().find_map(|step| match step {
             Step::Tool { call, result } if call.id == id => Some(result),
             _ => None,
         });
         step.map(|slot| *slot = Some(result)).is_some()
+    }
+
+    /// Fills in the result of the call that started a subagent.
+    pub(super) fn finish_call(&mut self, agent: EntryId, result: ToolResult) -> bool {
+        let Some(agent) = self.agents.0.get_mut(&agent) else {
+            return false;
+        };
+        if result.is_error && agent.end.is_none() {
+            agent.end = Some(SubagentEnd::Failed);
+            agent.summary = Some(result.output.clone());
+        }
+        agent.result = Some(result);
+        true
     }
 }
 
@@ -156,6 +308,7 @@ impl Subagent {
         match change {
             SubagentChange::Model(model) if self.model.is_none() => self.model = Some(model),
             SubagentChange::Request(tokens) => self.request = Some(tokens),
+            SubagentChange::Text(text) => self.steps.push(Step::Text(text)),
             SubagentChange::Resumed { message } => {
                 self.steps.push(Step::Message(message));
                 self.end = None;
@@ -181,35 +334,12 @@ impl Subagent {
     }
 }
 
-/// Turns the row of call `id` into its subagent's card.
-fn start(entry: &mut Entry, id: &str, description: String, kind: Option<String>) -> bool {
-    let Entry::Tool { call, result } = entry else {
-        return false;
-    };
-    if call.id != id {
-        return false;
-    }
-    *entry = Entry::Subagent {
-        call: call.clone(),
-        result: result.take(),
-        agent: Box::new(Subagent {
-            description,
-            kind,
-            model: None,
-            activity: None,
-            usage: None,
-            request: None,
-            end: None,
-            summary: None,
-            steps: Vec::new(),
-        }),
-    };
-    true
-}
-
 fn updated(changed: bool, index: usize) -> Change {
     Change {
         updated: changed.then_some(index),
         appended: 0,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -217,7 +217,8 @@ fn following(
             kind: agent.kind.clone(),
         };
         let mut events = vec![subagent::event(agent.call.clone(), started)];
-        events.extend(agent.segments.pop_front().unwrap_or_default());
+        let steps = agent.segments.pop_front().unwrap_or_default();
+        events.extend(expand(steps, by_call, agents));
         return events;
     }
     let to = call.input.get("to").and_then(|to| to.as_str());
@@ -235,7 +236,27 @@ fn following(
         message: message.unwrap_or_default().to_owned(),
     };
     let mut events = vec![subagent::event(agent.call.clone(), resumed)];
-    events.extend(agent.segments.pop_front().unwrap_or_default());
+    let steps = agent.segments.pop_front().unwrap_or_default();
+    events.extend(expand(steps, by_call, agents));
+    events
+}
+
+/// A subagent's steps, each followed by those of the subagent it started or
+/// sent a message.
+fn expand(
+    steps: Vec<AgentEvent>,
+    by_call: &HashMap<String, String>,
+    agents: &mut HashMap<String, StoredAgent>,
+) -> Vec<AgentEvent> {
+    let mut events = Vec::with_capacity(steps.len());
+    for step in steps {
+        let after = match &step {
+            AgentEvent::ToolCall(call) => following(call, by_call, agents),
+            _ => Vec::new(),
+        };
+        events.push(step);
+        events.extend(after);
+    }
     events
 }
 

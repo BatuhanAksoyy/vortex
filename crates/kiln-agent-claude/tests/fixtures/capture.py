@@ -5,6 +5,7 @@ usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
         | running | attach | followup | models | suggestion | thinking | recap
+        | nested
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -67,6 +68,8 @@ lists.
 on past the second's result until the CLI sends the next prompt it
 predicts. The CLI predicts none after a turn that writes much to the prompt
 cache, as a session's first turn does.
+"nested" runs one turn whose subagent starts two subagents of its own, and
+copies its session as "followup" does. Every tool call is allowed.
 "thinking" runs one turn that needs some reasoning, with thinking summaries
 asked for (`--thinking-display summarized`), to record how a summary, its
 token estimates and the turn's thinking tokens arrive.
@@ -97,6 +100,7 @@ PROMPTS = {
     "resume": "What word did I ask you to remember? Reply with that word only.",
     "followup": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
     "subagent": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
+    "nested": "Use the Agent tool once, with subagent_type general-purpose, run_in_background false, description 'Outer' and this prompt: 'Use the Agent tool twice in one message, both with subagent_type general-purpose and run_in_background false, with descriptions Inner A and Inner B, each with the prompt: Read note.txt with the Read tool and reply with its word only. Then reply with both words.' Then reply with only what the agent reported.",
     "suggestion": "Write a Python function that returns the sum of a list of numbers. Reply with only the code.",
     "thinking": "Think step by step: how many times does the letter r appear in 'strawberry raspberry'? Reply with only the number.",
     "recap": "Write a haiku about rust. Reply with only the haiku.",
@@ -124,7 +128,7 @@ if case == "attach":
         note.write("lantern\n")
     with open("picture.png", "wb") as picture:
         picture.write(square_png((0, 0, 255)))
-if case == "subagent":
+if case in ("subagent", "nested"):
     with open("note.txt", "w") as note:
         note.write("lantern\n")
 if case == "followup":
@@ -250,9 +254,9 @@ if case == "running":
     sys.exit(0)
 resumed = first_session() if case == "resume" else None
 proc = subprocess.Popen(
-    BASE + ([] if case in ("followup", "recap") else ["--no-session-persistence"])
+    BASE + ([] if case in ("followup", "recap", "nested") else ["--no-session-persistence"])
     + (["--permission-mode", "plan"] if case == "plan" else [])
-    + (["--forward-subagent-text"] if case in ("subagent", "followup") else [])
+    + (["--forward-subagent-text"] if case in ("subagent", "followup", "nested") else [])
     + (["--prompt-suggestions"] if case == "suggestion" else [])
     + (["--thinking-display", "summarized"] if case == "thinking" else [])
     + (["--resume", resumed] if resumed else []),
@@ -352,7 +356,7 @@ for line in proc.stdout:
     kind = msg.get("type")
     if kind == "control_request" and msg["request"].get("subtype") == "can_use_tool":
         req = msg["request"]
-        if case in ("allow", "plan", "subagent", "attach", "followup"):
+        if case in ("allow", "plan", "subagent", "attach", "followup", "nested"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
         elif case == "questions":
             answers = {}
@@ -508,6 +512,6 @@ def copy_session():
     print(f"no session file for {session_id}")
 
 
-if case in ("followup", "recap"):
+if case in ("followup", "recap", "nested"):
     copy_session()
 print(case, "exit", proc.returncode, "lines", sum(1 for _ in open(out_path)))

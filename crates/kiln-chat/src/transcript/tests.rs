@@ -248,10 +248,8 @@ fn a_subagent_gathers_its_steps_and_report_in_its_card() {
         usage: None,
     }));
     assert_eq!(transcript.len(), 2, "the steps stay in the card");
-    let Some((_, Entry::Subagent { result, agent, .. })) = transcript.entry(1) else {
-        panic!("expected the card");
-    };
-    assert_eq!(result.as_ref(), Some(&launched));
+    let agent = transcript.subagents().get(2).expect("the card");
+    assert_eq!(agent.result.as_ref(), Some(&launched));
     assert_eq!(agent.model.as_deref(), Some("haiku"));
     assert_eq!(agent.end, Some(SubagentEnd::Completed));
     assert_eq!(agent.summary.as_deref(), Some("lantern"));
@@ -299,9 +297,7 @@ fn a_resumed_subagent_runs_again_in_its_card() {
     transcript.apply(subagent(SubagentChange::Resumed {
         message: "And the second word?".into(),
     }));
-    let Some((_, Entry::Subagent { agent, .. })) = transcript.entry(0) else {
-        panic!("expected the card");
-    };
+    let agent = transcript.subagents().get(1).expect("the card");
     assert_eq!(
         (agent.end, agent.summary.as_deref()),
         (None, None),
@@ -313,9 +309,7 @@ fn a_resumed_subagent_runs_again_in_its_card() {
         summary: "moth".into(),
         usage: None,
     }));
-    let Some((_, Entry::Subagent { agent, .. })) = transcript.entry(0) else {
-        panic!("expected the card");
-    };
+    let agent = transcript.subagents().get(1).expect("the card");
     assert_eq!(agent.summary.as_deref(), Some("moth"));
 }
 
@@ -370,13 +364,18 @@ fn an_interruption_stops_the_subagents_it_ran_in_the_foreground() {
         }));
     }
     transcript.apply(AgentEvent::TurnEnded(TurnOutcome::Interrupted));
-    let ends: Vec<_> = transcript.subagents().map(|card| card.agent.end).collect();
+    let ends: Vec<_> = transcript
+        .subagents()
+        .iter()
+        .map(|agent| agent.end)
+        .collect();
     assert_eq!(ends, [Some(SubagentEnd::Stopped), None]);
     transcript.apply(AgentEvent::Exited { error: None });
     assert!(
         transcript
             .subagents()
-            .all(|card| card.agent.end == Some(SubagentEnd::Stopped)),
+            .iter()
+            .all(|agent| agent.end == Some(SubagentEnd::Stopped)),
         "none runs on without the process"
     );
 }
