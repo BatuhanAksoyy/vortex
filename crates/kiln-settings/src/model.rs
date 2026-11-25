@@ -39,6 +39,12 @@ pub struct EditorSettings {
     pub line_numbers: bool,
     pub soft_wrap: bool,
     pub indent_guides: bool,
+    pub minimap: MinimapSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MinimapSettings {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

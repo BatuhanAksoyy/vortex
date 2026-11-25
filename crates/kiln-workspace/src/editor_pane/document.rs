@@ -14,7 +14,7 @@ use gpui_kit::{
         ActiveTheme as _, WindowExt as _,
         diff::{Diff, DiffFile, DiffState},
         h_flex,
-        input::{Editor, EditorState, InputEvent, Rope, TabSize},
+        input::{Editor, EditorState, InputEvent, Position, Rope, TabSize},
         notification::Notification,
     },
     div,
@@ -124,6 +124,12 @@ impl Document {
             .update(cx, |editor, cx| editor.focus(window, cx));
     }
 
+    pub fn go_to_line(&self, line: u32, window: &mut Window, cx: &mut Context<Self>) {
+        self.editor.update(cx, |editor, cx| {
+            editor.set_cursor_position(Position::new(line, 0), window, cx);
+        });
+    }
+
     /// Follows the file to the path it was renamed to.
     pub fn moved_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.title = file_title(&path);
@@ -140,6 +146,8 @@ impl Document {
             editor.set_indent_guides(settings.indent_guides, window, cx);
             editor.set_tab_size(tab_size(&settings), cx);
         });
+        // The minimap is shown by the settings it reads when drawn.
+        cx.notify();
     }
 
     /// Writes the text to disk; whether it was written.
@@ -295,10 +303,11 @@ impl Render for Document {
             .aria_label(format!("Editor {}", self.title))
             .font_family(theme.mono_font_family.clone())
             .text_size(theme.mono_font_size);
+        let minimap = config::settings(cx).editor.minimap.enabled;
         h_flex()
             .size_full()
             .child(div().flex_1().min_w_0().h_full().child(editor))
-            .child(self.minimap.clone())
+            .when(minimap, |this| this.child(self.minimap.clone()))
             .into_any_element()
     }
 }

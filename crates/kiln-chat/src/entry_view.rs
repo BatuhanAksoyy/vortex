@@ -243,7 +243,7 @@ fn tool(
             div()
                 .flex_none()
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(call.name.clone()),
+                .child(tool_format::title(&call.name)),
         )
         .child(
             div()

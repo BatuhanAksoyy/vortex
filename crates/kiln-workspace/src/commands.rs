@@ -17,6 +17,7 @@ actions!(
         ShowChat,
         ShowFiles,
         ShowGit,
+        ShowSearch,
         ToggleSidePanel,
         ToggleBrowser,
         ToggleChanges,
@@ -63,6 +64,9 @@ pub const COMMANDS: &[CommandSpec] = &[
         Box::new(ShowFiles)
     }),
     spec("workbench.view.scm", "Show Changes", || Box::new(ShowGit)),
+    spec("workbench.action.findInFiles", "Search in Files", || {
+        Box::new(ShowSearch)
+    }),
     spec(
         "workbench.action.toggleSidebarVisibility",
         "Toggle Side Panel",
@@ -145,6 +149,7 @@ pub fn register(cx: &mut App) {
     on::<ShowChat>(cx, Workspace::show_chat);
     on::<ShowFiles>(cx, Workspace::show_files);
     on::<ShowGit>(cx, Workspace::show_git);
+    on::<ShowSearch>(cx, Workspace::show_search);
     on::<ToggleSidePanel>(cx, Workspace::toggle_side_panel);
     on::<ToggleBrowser>(cx, Workspace::toggle_browser);
     on::<ToggleChanges>(cx, Workspace::toggle_changes);

@@ -213,7 +213,10 @@ fn describe(request: &PermissionRequest, root: &Path) -> (String, String) {
                 plan.unwrap_or_default().to_owned(),
             )
         }
-        (tool, _) => (format!("Allow Claude to use {tool}?"), detail),
+        (tool, _) => (
+            format!("Allow Claude to use {}?", tool_format::title(tool)),
+            detail,
+        ),
     }
 }
 

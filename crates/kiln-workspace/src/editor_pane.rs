@@ -72,11 +72,23 @@ impl EditorPane {
     }
 
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_at(path, None, window, cx);
+    }
+
+    /// Opens `path` with the cursor at the start of `line`, from 0.
+    pub fn open_at(
+        &mut self,
+        path: PathBuf,
+        line: Option<u32>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let open = self
             .documents()
             .position(|document| document.read(cx).path() == Some(&path));
         if let Some(ix) = open {
             self.activate(ix, window, cx);
+            self.go_to_line(line, window, cx);
             return;
         }
         let read = cx.background_spawn({
@@ -94,6 +106,7 @@ impl EditorPane {
                         text,
                     };
                     this.add_tab(contents, window, cx);
+                    this.go_to_line(line, window, cx);
                 }
                 Err(error) => {
                     let message = format!("Cannot open {}: {error:#}", path.display());
@@ -155,6 +168,12 @@ impl EditorPane {
 
     /// Ignores a stale index: a tab's close button also clicks the tab bar,
     /// which then reports the tab it just removed.
+    fn go_to_line(&self, line: Option<u32>, window: &mut Window, cx: &mut Context<Self>) {
+        if let (Some(line), Some(document)) = (line, self.active_document()) {
+            document.update(cx, |document, cx| document.go_to_line(line, window, cx));
+        }
+    }
+
     fn activate(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(ix) else {
             return;

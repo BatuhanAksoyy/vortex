@@ -7,6 +7,7 @@
   { "key": "ctrl+alt+i", "mac": "ctrl+cmd+i", "command": "workbench.action.chat.open" },
   { "key": "ctrl+shift+e", "mac": "cmd+shift+e", "command": "workbench.view.explorer" },
   { "key": "ctrl+shift+g", "command": "workbench.view.scm" },
+  { "key": "ctrl+shift+f", "mac": "cmd+shift+f", "command": "workbench.action.findInFiles" },
   { "key": "ctrl+b", "mac": "cmd+b", "command": "workbench.action.toggleSidebarVisibility" },
   { "key": "ctrl+,", "mac": "cmd+,", "command": "workbench.action.openSettingsJson" },
   { "key": "ctrl+k ctrl+s", "mac": "cmd+k cmd+s", "command": "workbench.action.openGlobalKeybindingsFile" },

@@ -21,6 +21,7 @@ use crate::{
     files_page::{FilesChanged, FilesPage},
     git_page::{GitPage, GitPageEvent},
     repo_status::{RepoStatus, StatusRead},
+    search_page::SearchPage,
     session_list::{SessionList, SessionListEvent},
 };
 
@@ -44,6 +45,7 @@ pub struct Project {
     editor: Entity<EditorPane>,
     files_page: Entity<FilesPage>,
     git_page: Entity<GitPage>,
+    search_page: Entity<SearchPage>,
     files: Arc<[PathBuf]>,
     /// Lists the files; replaced by the next scan, so a slow one cannot
     /// land after it.
@@ -54,13 +56,14 @@ pub struct Project {
 impl EventEmitter<ProjectEvent> for Project {}
 
 impl Project {
-    pub fn new(root: PathBuf, window: &Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let sessions = cx.new(|_| SessionList::default());
         let repo = cx.new(|_| RepoStatus::new(root.clone()));
         let editor = cx.new(EditorPane::new);
         let files_page =
             cx.new(|cx| FilesPage::new(root.clone(), editor.clone(), repo.clone(), cx));
         let git_page = cx.new(|cx| GitPage::new(repo.clone(), cx));
+        let search_page = cx.new(|cx| SearchPage::new(root.clone(), editor.clone(), window, cx));
         let subscriptions = [
             cx.subscribe(&sessions, |_, _, event, cx| match event {
                 SessionListEvent::Loaded => cx.emit(ProjectEvent::SessionsListed),
@@ -91,6 +94,7 @@ impl Project {
             editor,
             files_page,
             git_page,
+            search_page,
             files: Arc::from([]),
             scan: None,
             _subscriptions: subscriptions,
@@ -119,6 +123,10 @@ impl Project {
 
     pub fn git_page(&self) -> &Entity<GitPage> {
         &self.git_page
+    }
+
+    pub fn search_page(&self) -> &Entity<SearchPage> {
+        &self.search_page
     }
 
     pub fn files(&self) -> Arc<[PathBuf]> {
@@ -165,7 +173,8 @@ impl Project {
         match result {
             Ok((files, tree, truncated)) => {
                 let first = self.files.is_empty();
-                self.files = files;
+                self.files = files.clone();
+                self.search_page.update(cx, |page, _| page.set_files(files));
                 self.files_page
                     .update(cx, |page, cx| page.set_files(tree, cx));
                 if truncated && first {

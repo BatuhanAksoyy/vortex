@@ -4,6 +4,7 @@
 
 mod counts;
 mod lines;
+mod log;
 mod status;
 
 use std::{
@@ -15,6 +16,7 @@ use anyhow::{Context as _, bail};
 
 pub use counts::Counts;
 pub use lines::{LineChange, LineKind, base_text, line_changes, patch};
+pub use log::{Commit, log, show};
 pub use status::{Area, Change, Kind, Status};
 
 /// A diff the parser can read whatever the user's `diff.*` settings are.

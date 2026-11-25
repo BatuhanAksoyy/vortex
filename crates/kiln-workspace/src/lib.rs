@@ -18,6 +18,7 @@ mod project_picker;
 mod recent_projects;
 mod repo_status;
 mod saved_layout;
+mod search_page;
 mod session_list;
 mod side_panel;
 mod workspace;

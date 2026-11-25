@@ -4,6 +4,7 @@
 
 mod changes;
 mod diff_pane;
+mod history;
 
 use std::{collections::HashSet, path::PathBuf};
 
@@ -13,11 +14,11 @@ use gpui_kit::{
     TestSupportExt, Window,
     component::{
         diff::{DiffFile, DiffState},
-        resizable::{h_resizable, resizable_panel},
+        resizable::{h_resizable, resizable_panel, v_resizable},
     },
     div,
 };
-use kiln_git::{Area, Change};
+use kiln_git::{Area, Change, Commit};
 
 use crate::repo_status::{RepoStatus, StatusRead};
 
@@ -41,6 +42,10 @@ pub struct GitPage {
     /// scroll position; `None` while it loads.
     patch: Option<Result<String, String>>,
     diff_load: Option<Task<()>>,
+    commits: Vec<Commit>,
+    /// The commit whose changes the diff shows, instead of a change.
+    picked_commit: Option<String>,
+    log_load: Option<Task<()>>,
     _status_read: Subscription,
 }
 
@@ -59,6 +64,9 @@ impl GitPage {
             diff: cx.new(|cx| DiffState::new([], cx)),
             patch: None,
             diff_load: None,
+            commits: Vec::new(),
+            picked_commit: None,
+            log_load: None,
             _status_read: status_read,
         }
     }
@@ -70,6 +78,10 @@ impl GitPage {
     /// Keeps the change picked after a new reading: the same one, or the
     /// same file in another area, as after staging it.
     fn follow(&mut self, cx: &mut Context<Self>) {
+        self.read_log(cx);
+        if self.picked_commit.is_some() {
+            return;
+        }
         let changes = self.ordered(cx);
         let kept = self.selected.as_ref().and_then(|selected| {
             let same_file = |change: &&Change| change.path == selected.path;
@@ -101,6 +113,7 @@ impl GitPage {
             (Some(old), Some(new)) => old.area == new.area && old.path == new.path,
             (old, new) => old.is_none() && new.is_none(),
         };
+        self.picked_commit = None;
         self.selected.clone_from(&change);
         if !same {
             self.patch = None;
@@ -204,7 +217,11 @@ impl Render for GitPage {
                         .size(window.rem_size() * LIST_WIDTH_REMS)
                         .fixed()
                         .visible(!self.list_hidden)
-                        .children(list),
+                        .children(list.map(|list| {
+                            v_resizable("git-sides")
+                                .child(resizable_panel().child(list))
+                                .child(resizable_panel().child(self.render_history(cx)))
+                        })),
                 )
                 .child(resizable_panel().child(self.render_diff(cx))),
         )

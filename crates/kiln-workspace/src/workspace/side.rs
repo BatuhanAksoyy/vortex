@@ -40,9 +40,16 @@ impl Workspace {
         self.side_panel.open = true;
         self.save_side_panel(cx);
         self.refresh_project(window, cx);
-        if page == Page::Git {
-            let git = project.read(cx).git_page().clone();
-            git.update(cx, |git, cx| git.focus(window, cx));
+        match page {
+            Page::Git => {
+                let git = project.read(cx).git_page().clone();
+                git.update(cx, |git, cx| git.focus(window, cx));
+            }
+            Page::Search => {
+                let search = project.read(cx).search_page().clone();
+                search.update(cx, |search, cx| search.focus_query(window, cx));
+            }
+            Page::Files => {}
         }
         cx.notify();
     }
@@ -82,6 +89,10 @@ impl Workspace {
 
     pub fn show_git(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_page(Page::Git, window, cx);
+    }
+
+    pub fn show_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_page(Page::Search, window, cx);
     }
 
     /// Hides the panel and the bar that opens it, or shows them again.
@@ -135,6 +146,7 @@ impl Workspace {
         match self.side_panel.page {
             Page::Files => files.update(cx, FilesPage::toggle_tree),
             Page::Git => git.update(cx, GitPage::toggle_list),
+            Page::Search => {}
         }
     }
 
@@ -195,6 +207,7 @@ impl Workspace {
         let page = match self.side_panel.page {
             Page::Files => shown.files_page().clone().into_any_element(),
             Page::Git => shown.git_page().clone().into_any_element(),
+            Page::Search => shown.search_page().clone().into_any_element(),
         };
         v_flex()
             .id("side-panel")
@@ -215,6 +228,7 @@ impl Workspace {
         let (title, list) = match self.side_panel.page {
             Page::Files => ("Files", "Show or Hide the Tree"),
             Page::Git => ("Changes", "Show or Hide the List"),
+            Page::Search => ("Search", "Show or Hide the Results"),
         };
         let (icon, resize) = if self.side_maximized {
             (Lucide::Minimize, "Show the Chat")

@@ -76,7 +76,11 @@ pub fn plain_text(entry: &Entry, tool_output: bool, root: &Path) -> String {
 }
 
 fn tool_text(call: &ToolCall, result: Option<&ToolResult>, output: bool, root: &Path) -> String {
-    let mut text = format!("{} {}", call.name, tool_format::detail(&call.input, root));
+    let mut text = format!(
+        "{} {}",
+        tool_format::title(&call.name),
+        tool_format::detail(&call.input, root)
+    );
     if let Some(result) = result.filter(|_| output) {
         text.push('\n');
         text.push_str(&result.output);

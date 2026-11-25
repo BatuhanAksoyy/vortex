@@ -19,7 +19,9 @@
     "tab_size": 4,
     "line_numbers": true,
     "soft_wrap": false,
-    "indent_guides": true
+    "indent_guides": true,
+    // The outline of the whole file beside the editor, to scroll by.
+    "minimap": { "enabled": true }
   },
   "files": {
     // Hidden from the file tree and quick open, in addition to .gitignore rules.

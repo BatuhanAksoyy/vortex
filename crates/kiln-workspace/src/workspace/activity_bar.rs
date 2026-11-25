@@ -25,8 +25,9 @@ const DEFAULT_REM: f32 = 14.;
 const BUTTON_SHARE: f32 = 0.7;
 const ICON_SHARE: f32 = 0.38;
 
-const PAGES: [(Page, &str, Lucide, &str); 2] = [
+const PAGES: [(Page, &str, Lucide, &str); 3] = [
     (Page::Files, "activity-files", Lucide::FolderTree, "Files"),
+    (Page::Search, "activity-search", Lucide::Search, "Search"),
     (Page::Git, "activity-git", Lucide::GitBranch, "Changes"),
 ];
 

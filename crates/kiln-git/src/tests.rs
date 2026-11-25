@@ -202,3 +202,16 @@ fn reads_a_files_text_in_the_last_commit() {
     assert_eq!(crate::base_text(&path), Some(committed));
     assert_eq!(crate::base_text(&dir.path().join("none.txt")), None);
 }
+
+#[test]
+fn the_log_lists_commits_and_shows_what_each_changed() {
+    let dir = repository();
+    let root = dir.path();
+    let commits = crate::log(root, 10).expect("log");
+    let first = commits.last().expect("a commit");
+    let patch = crate::show(root, &first.id).expect("show");
+    assert!(patch.contains("+++ b/kept.txt"), "{patch}");
+    let empty = tempfile::tempdir().expect("temp dir");
+    run(empty.path(), &["init", "-q"]);
+    assert_eq!(crate::log(empty.path(), 10).expect("log"), []);
+}

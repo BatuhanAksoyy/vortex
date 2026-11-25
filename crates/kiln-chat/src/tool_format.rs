@@ -18,7 +18,32 @@ const DETAIL_KEYS: &[&str] = &[
     "prompt",
     // SendMessage: what the message asks.
     "summary",
+    // Typing into a page, pressing a key and running a script there.
+    "text",
+    "key",
+    "expression",
 ];
+
+/// How a tool is named in its row: MCP tools, which the CLI calls
+/// `mcp__<server>__<tool>`, by their own words, as `Browser Click`.
+pub fn title(tool: &str) -> String {
+    let Some(name) = tool
+        .strip_prefix("mcp__")
+        .and_then(|rest| rest.split_once("__"))
+    else {
+        return tool.to_owned();
+    };
+    let words = name.1.split(['_', '-']).filter(|word| !word.is_empty());
+    let words: Vec<String> = words
+        .map(|word| {
+            let mut letters = word.chars();
+            letters.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(letters).collect()
+            })
+        })
+        .collect();
+    words.join(" ")
+}
 
 /// The argument shown after the tool name, e.g. `npm test` for Bash. Paths
 /// inside `root` are shown relative to it.
@@ -136,6 +161,14 @@ fn plural(count: usize, noun: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn mcp_tools_are_named_by_their_own_words() {
+        assert_eq!(title("mcp__kiln__browser_press_key"), "Browser Press Key");
+        assert_eq!(title("mcp__github__list-issues"), "List Issues");
+        assert_eq!(title("Bash"), "Bash");
+        assert_eq!(title("mcp__odd"), "mcp__odd");
+    }
 
     #[test]
     fn detail_picks_the_meaningful_argument() {

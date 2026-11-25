@@ -16,6 +16,7 @@ pub enum Page {
     #[default]
     Files,
     Git,
+    Search,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

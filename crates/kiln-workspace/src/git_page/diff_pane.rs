@@ -28,7 +28,11 @@ impl GitPage {
                 .id("git-diff")
                 .test_support()
                 .size_full()
-                .child(Diff::new(&self.diff).header_visible(false).size_full())
+                .child(
+                    Diff::new(&self.diff)
+                        .header_visible(self.picked_commit.is_some())
+                        .size_full(),
+                )
                 .into_any_element(),
         };
         v_flex()
@@ -38,6 +42,7 @@ impl GitPage {
                     .as_ref()
                     .map(|change| self.toolbar(change, cx)),
             )
+            .children(self.commit_bar(cx))
             .child(div().flex_1().min_h_0().child(body))
     }
 
@@ -49,7 +54,7 @@ impl GitPage {
                 return Some("This folder is not in a git repository.".to_owned());
             }
             Some(Err(error)) => return Some(format!("Cannot read the repository: {error}")),
-            Some(Ok(_)) if self.selected.is_none() => {
+            Some(Ok(_)) if self.selected.is_none() && self.picked_commit.is_none() => {
                 return Some("Nothing has changed since the last commit.".to_owned());
             }
             Some(Ok(_)) => {}
