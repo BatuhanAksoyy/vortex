@@ -54,6 +54,7 @@ impl Workspace {
         );
         let chat = cx.new(|cx| ChatView::new(backend, accounts, root, window, cx));
         let panel = cx.new(|cx| ChatPanel::new(chat.clone(), project.clone(), window, cx));
+        self.give_tools(&panel, cx);
         let weak = panel.downgrade();
         let subscriptions = [
             cx.subscribe_in(&panel, window, |this, panel, event, window, cx| {

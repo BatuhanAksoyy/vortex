@@ -8,6 +8,7 @@ mod message;
 mod past;
 mod permission;
 mod subagent;
+mod tools;
 
 pub use effort::{Effort, PromptTokens};
 pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
@@ -15,6 +16,7 @@ pub use message::{Message, Picture};
 pub use past::{PastMessage, PastSession};
 pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Remember, RuleScope};
 pub use subagent::{SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage};
+pub use tools::ToolServer;
 
 use std::{
     future::Future,
@@ -43,6 +45,8 @@ pub struct SessionSpec {
     /// Continues `resume` as a new conversation of its own, leaving the
     /// stored one as it was.
     pub fork: bool,
+    /// Kiln's tools; the agent uses them without asking, Kiln asks instead.
+    pub tools: Option<ToolServer>,
 }
 
 pub trait AgentBackend {

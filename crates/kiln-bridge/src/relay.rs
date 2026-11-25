@@ -1,0 +1,43 @@
+//! `kiln mcp`: the agent's end of the bridge.
+
+use std::io::{self, BufRead as _, BufReader, Read, Write};
+
+use anyhow::Context as _;
+
+use crate::{SOCKET_VAR, TOKEN_VAR};
+
+/// Hands the agent's lines to Kiln and Kiln's back, until either ends.
+pub fn relay() -> anyhow::Result<()> {
+    let socket = std::env::var_os(SOCKET_VAR).context("not started by Kiln")?;
+    let token = std::env::var(TOKEN_VAR).context("not started by Kiln")?;
+    let stream = std::os::unix::net::UnixStream::connect(&socket)
+        .with_context(|| format!("cannot reach Kiln at {}", socket.display()))?;
+    let mut to_kiln = stream.try_clone()?;
+    writeln!(to_kiln, "{token}")?;
+    std::thread::spawn(move || {
+        let _ = pass_lines(io::stdin().lock(), &mut to_kiln);
+        let _ = to_kiln.shutdown(std::net::Shutdown::Write);
+    });
+    pass_lines(stream, &mut io::stdout().lock())
+}
+
+/// Line by line, so each message goes as soon as it is whole.
+fn pass_lines(from: impl Read, to: &mut impl Write) -> anyhow::Result<()> {
+    for line in BufReader::new(from).lines() {
+        writeln!(to, "{}", line?)?;
+        to.flush()?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lines_pass_whole() {
+        let mut out = Vec::new();
+        pass_lines(&b"{\"a\":1}\n{\"b\":2}"[..], &mut out).unwrap();
+        assert_eq!(out, b"{\"a\":1}\n{\"b\":2}\n");
+    }
+}

@@ -89,7 +89,7 @@ impl Workspace {
         cx.notify();
     }
 
-    fn new_browser(
+    pub(super) fn new_browser(
         &self,
         chat: &Entity<ChatPanel>,
         window: &mut Window,

@@ -11,6 +11,7 @@ env_logger.workspace = true
 gpui-kit.workspace = true
 kiln-accounts.workspace = true
 kiln-agent-claude.workspace = true
+kiln-bridge.workspace = true
 kiln-workspace.workspace = true
 log.workspace = true
 

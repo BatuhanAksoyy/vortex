@@ -36,6 +36,7 @@ use crate::{
 
 mod actions;
 mod activity_bar;
+mod agent_tools;
 mod browsers;
 mod chats;
 mod layout;
@@ -64,6 +65,7 @@ pub struct Workspace {
     /// The sessions' browsers, by chat, and where they keep their data.
     browsers: Vec<(EntityId, Entity<Browser>)>,
     browser_profile: Option<PathBuf>,
+    agent_tools: Option<agent_tools::AgentTools>,
     /// Whether the side panel fills the window; not kept across restarts.
     side_maximized: bool,
     /// Where the side panel's state is kept.
@@ -146,6 +148,7 @@ impl Workspace {
             side_panel: SidePanel::default(),
             browsers: Vec::new(),
             browser_profile: None,
+            agent_tools: None,
             side_maximized: false,
             side_panel_file: None,
             side_panel_save: None,
@@ -171,6 +174,7 @@ impl Workspace {
         self.side_panel = SidePanel::load(&side_panel);
         self.side_panel_file = Some(side_panel);
         self.browser_profile = Some(path.with_file_name("browser"));
+        self.agent_tools = path.parent().and_then(agent_tools::AgentTools::start);
         let projects = path.with_file_name("projects.json");
         let layouts = LayoutFile::new(path);
         self.recent = RecentProjects::load(projects, || layouts.projects());

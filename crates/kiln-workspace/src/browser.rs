@@ -1,6 +1,7 @@
 //! The browser beside the chats: one page per session, drawn by the browser
 //! installed on this machine.
 
+mod agent;
 mod console_panel;
 mod dialog;
 mod downloads;
@@ -11,6 +12,7 @@ mod menus;
 mod page_view;
 mod picking;
 mod requests;
+mod site_question;
 mod toolbar;
 
 use std::{path::PathBuf, sync::Arc};
@@ -79,6 +81,7 @@ pub struct Browser {
     downloads: Vec<downloads::Download>,
     console: console_panel::Console,
     picking: picking::Picking,
+    agent: agent::AgentUse,
     /// The length of the text an input method is composing.
     marked: usize,
     /// Opens the page and follows it; dropping it lets go of both.
@@ -134,6 +137,7 @@ impl Browser {
             downloads: Vec::new(),
             console: console_panel::Console::default(),
             picking: picking::Picking::default(),
+            agent: agent::AgentUse::default(),
             marked: 0,
             follow: Task::ready(()),
             navigation: Task::ready(()),
@@ -263,6 +267,7 @@ impl Render for Browser {
                     .when(phone, |this| this.p_3().bg(theme.muted))
                     .child(self.content(cx))
                     .children(self.render_dialog(cx))
+                    .children(self.render_site_question(cx))
                     .children(self.render_menu()),
             )
             .children(self.render_console(cx))

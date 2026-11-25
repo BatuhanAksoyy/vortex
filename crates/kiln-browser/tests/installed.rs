@@ -74,7 +74,17 @@ mod installed {
             Modifiers::CONTROL
         };
         page.key_down(&key("a", false, select));
-        assert_eq!(page.selection().await.unwrap(), "kğ");
+        // Keys are sent without waiting, so a busy Chrome may still be
+        // typing when the selection is first read.
+        let mut selection = String::new();
+        for _ in 0..40 {
+            selection = page.selection().await.unwrap();
+            if selection == "kğ" {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(selection, "kğ");
     }
 
     fn click(page: &Page, x: f32, y: f32) {
@@ -164,6 +174,34 @@ mod installed {
         choose_and_answer(page, events).await;
         hand_over(page, events, file).await;
         pick_and_read(page, events).await;
+        read_and_act(page).await;
+    }
+
+    async fn read_and_act(page: &Page) {
+        let value = "document.querySelector('input').value";
+        assert_eq!(
+            page.evaluate(&format!("{value} = 'old'; 1 + 1"))
+                .await
+                .unwrap(),
+            "2"
+        );
+        assert_eq!(
+            page.evaluate("Promise.resolve({a: 1})").await.unwrap(),
+            r#"{"a":1}"#
+        );
+        assert!(page.evaluate("throw new Error('no')").await.is_err());
+        let outline = page.snapshot().await.unwrap();
+        assert!(outline.contains("- combobox"), "{outline}");
+        let field = outline
+            .lines()
+            .find(|line| line.contains("- textbox"))
+            .unwrap();
+        let target = field.split("[ref=").nth(1).unwrap().trim_end_matches(']');
+        let target = target.parse().unwrap();
+        page.click_node(target).await.unwrap();
+        page.fill_node(target, "new").await.unwrap();
+        assert_eq!(page.evaluate(value).await.unwrap(), "new");
+        assert!(page.loaded().await);
     }
 
     async fn drive(chrome: &Chrome, file: &Path) {

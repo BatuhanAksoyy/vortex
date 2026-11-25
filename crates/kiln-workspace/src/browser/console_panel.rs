@@ -53,6 +53,10 @@ impl Console {
         self.lines.clear();
     }
 
+    pub fn entries(&self) -> impl Iterator<Item = &ConsoleEntry> {
+        self.lines.iter().map(|line| &line.entry)
+    }
+
     pub fn errors(&self) -> impl Iterator<Item = &ConsoleEntry> {
         let entries = self.lines.iter().map(|line| &line.entry);
         entries.filter(|entry| entry.level == Level::Error)

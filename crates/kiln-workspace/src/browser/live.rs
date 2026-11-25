@@ -58,7 +58,7 @@ impl Browser {
         cx.notify();
     }
 
-    fn open(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
         let Some(profile) = self.profile.clone() else {
             self.fail("There is no folder to keep the browser's data in.", cx);
             return;

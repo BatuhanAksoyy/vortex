@@ -16,7 +16,9 @@ use kiln_agent::{
 };
 use serde_json::Value;
 
-use crate::{cli_edit::CliEditor, control, history, outgoing, sign_in, translate::Translator};
+use crate::{
+    cli_edit::CliEditor, control, history, outgoing, sign_in, tool_server, translate::Translator,
+};
 
 pub(crate) const ARGS: &[&str] = &[
     "-p",
@@ -103,6 +105,9 @@ impl AgentBackend for ClaudeBackend {
             if spec.fork {
                 command.arg("--fork-session");
             }
+        }
+        if let Some(server) = &spec.tools {
+            command.args(tool_server::args(server));
         }
         let resumed = spec
             .resume

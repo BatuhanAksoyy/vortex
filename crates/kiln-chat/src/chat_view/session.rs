@@ -5,7 +5,7 @@ use gpui_kit::prelude::*;
 use std::time::SystemTime;
 
 use gpui_kit::{Context, Window};
-use kiln_agent::{AgentEvent, Effort, PermissionMode, SessionCommand, SessionSpec};
+use kiln_agent::{AgentEvent, Effort, PermissionMode, SessionCommand, SessionSpec, ToolServer};
 
 use super::{ChatView, LiveSession};
 
@@ -13,6 +13,12 @@ const USAGE_POLL: std::time::Duration = std::time::Duration::from_mins(5);
 use crate::agent_state::{AgentState, next_mode};
 
 impl ChatView {
+    /// Gives the chat's agent Kiln's tools from its next process on; call it
+    /// before the first, which starts once the chat is made.
+    pub fn set_tools(&mut self, server: ToolServer) {
+        self.agent.tools = Some(server);
+    }
+
     pub fn set_model(&mut self, id: &str, cx: &mut Context<Self>) {
         self.agent.choose_model(id);
         self.send_command(SessionCommand::SetModel(id.to_owned()));
@@ -179,6 +185,7 @@ impl ChatView {
             effort: self.agent.start_effort(),
             resume: self.conversation.as_ref().map(|stored| stored.id.clone()),
             fork: self.conversation.as_ref().is_some_and(|stored| stored.fork),
+            tools: self.agent.tools.clone(),
         })?;
         let events = session.events;
         let events_task = cx.spawn_in(window, async move |this, cx| {

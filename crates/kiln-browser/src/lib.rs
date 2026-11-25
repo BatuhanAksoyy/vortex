@@ -4,6 +4,7 @@
 //! mouse and keyboard. No UI dependencies.
 
 mod address;
+mod agent;
 mod chrome;
 mod console;
 mod dialog;

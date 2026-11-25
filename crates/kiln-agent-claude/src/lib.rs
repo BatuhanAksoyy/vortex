@@ -17,6 +17,7 @@ mod skills;
 mod stream;
 mod subagent;
 mod system;
+mod tool_server;
 mod translate;
 mod usage;
 mod wire;

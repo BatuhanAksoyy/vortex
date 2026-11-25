@@ -7,7 +7,7 @@ use std::{collections::HashMap, time::SystemTime};
 
 use kiln_agent::{
     Account, AgentEvent, ContextUsage, Effort, Limited, ModelOption, PermissionMode,
-    SessionCommand, SlashCommand, Usage,
+    SessionCommand, SlashCommand, ToolServer, Usage,
 };
 
 use crate::prompt_cache::PromptCache;
@@ -45,6 +45,8 @@ pub struct AgentState {
     /// account id; `None` is the usual sign-in.
     left_accounts: HashMap<Option<String>, (Usage, Option<SystemTime>)>,
     commands: Vec<SlashCommand>,
+    /// Kiln's tools, given to every process the chat starts.
+    pub tools: Option<ToolServer>,
 }
 
 impl AgentState {

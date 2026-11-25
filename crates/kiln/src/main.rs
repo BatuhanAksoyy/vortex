@@ -8,6 +8,17 @@ use kiln_agent_claude::ClaudeBackend;
 use kiln_workspace::Workspace;
 
 fn main() {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|first| first == "mcp")
+    {
+        // An agent's tool server; its standard streams are the protocol's.
+        if let Err(error) = kiln_bridge::relay() {
+            log::error!("{error:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let folder = project_folder();
 

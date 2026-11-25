@@ -4051,6 +4051,7 @@ dependencies = [
  "gpui-kit",
  "kiln-accounts",
  "kiln-agent-claude",
+ "kiln-bridge",
  "kiln-workspace",
  "log",
 ]
@@ -4090,6 +4091,19 @@ dependencies = [
  "kiln-agent",
  "log",
  "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "kiln-bridge"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "base64 0.22.1",
+ "kiln-agent",
+ "log",
  "serde_json",
  "tempfile",
 ]
@@ -4195,6 +4209,7 @@ dependencies = [
  "jiff 0.2.46",
  "kiln-accounts",
  "kiln-agent",
+ "kiln-bridge",
  "kiln-browser",
  "kiln-chat",
  "kiln-file-icons",

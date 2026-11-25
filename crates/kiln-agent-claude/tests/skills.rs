@@ -130,6 +130,7 @@ mod live {
             effort: None,
             resume: None,
             fork: false,
+            tools: None,
         };
         let kiln_agent::Session {
             pid: _,

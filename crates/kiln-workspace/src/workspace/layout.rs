@@ -19,6 +19,7 @@ impl Workspace {
     /// Opens the layout kept for the window once its conversations are
     /// listed, then the folder Kiln was started in.
     pub(super) fn start_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.serve_agent_tools(window, cx);
         let folder = self.first_folder.clone();
         let kept = self.layouts.as_ref();
         let pane = kept.and_then(|file| file.load(folder.as_deref()));
