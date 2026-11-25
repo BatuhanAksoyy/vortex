@@ -14,6 +14,7 @@ use gpui_kit::{
     div,
 };
 use kiln_browser::{ConsoleEntry, Level};
+use kiln_chat::scale::ScaledText as _;
 
 use super::Browser;
 
@@ -75,7 +76,7 @@ impl Browser {
             .overflow_y_scroll()
             .track_scroll(&self.console.scroll)
             .font_family(theme.mono_font_family.clone())
-            .text_xs()
+            .text_caption()
             .when(lines.is_empty(), |list| list.child(empty(errors_only, cx)))
             .children(lines);
         list.into_any_element()
@@ -88,7 +89,7 @@ impl Browser {
             .child(
                 Button::new("browser-console-errors")
                     .ghost()
-                    .xsmall()
+                    .small()
                     .label("Errors Only")
                     .selected(self.console.errors_only)
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -99,7 +100,7 @@ impl Browser {
             .child(
                 Button::new("browser-console-attach")
                     .ghost()
-                    .xsmall()
+                    .small()
                     .label("Attach Errors")
                     .tooltip("Attach the errors to the message")
                     .disabled(no_errors)
@@ -108,7 +109,7 @@ impl Browser {
             .child(
                 Button::new("browser-console-clear")
                     .ghost()
-                    .xsmall()
+                    .small()
                     .label("Clear")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.console.clear();

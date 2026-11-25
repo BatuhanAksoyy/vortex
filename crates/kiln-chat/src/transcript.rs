@@ -5,6 +5,7 @@ use std::{collections::HashMap, time::Duration};
 
 mod subagent;
 mod thinking;
+mod turn_end;
 
 pub use subagent::{Card, Step, Subagent};
 
@@ -238,6 +239,7 @@ impl Transcript {
                 self.status = Status::Running;
                 Change::default()
             }
+            AgentEvent::TurnTook { .. } | AgentEvent::Recap(_) => self.sum_up(event),
             AgentEvent::TurnEnded(outcome) => self.end_turn(outcome),
             AgentEvent::Exited { error } => self.exit(error),
             _ => Change::default(),

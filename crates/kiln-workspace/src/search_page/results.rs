@@ -15,6 +15,7 @@ use gpui_kit::{
     },
     div, uniform_list,
 };
+use kiln_chat::scale::{ScaledButton as _, ScaledText as _};
 use kiln_project::MAX_HITS;
 
 use super::{Row, SearchPage};
@@ -45,11 +46,11 @@ impl SearchPage {
                     .p_2()
                     .border_b_1()
                     .border_color(theme.border)
-                    .child(div().flex_1().child(Input::new(&self.query).small()))
+                    .child(div().flex_1().child(Input::new(&self.query).small().h_7()))
                     .child(
                         Button::new("search-match-case")
                             .ghost()
-                            .small()
+                            .control()
                             .label("Aa")
                             .tooltip("Match Case")
                             .selected(self.match_case)
@@ -80,7 +81,7 @@ impl SearchPage {
             .flex_none()
             .px_3()
             .py_1()
-            .text_xs()
+            .text_caption()
             .text_color(cx.theme().muted_foreground)
             .child(text)
     }
@@ -119,13 +120,13 @@ impl SearchPage {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child(folder.to_owned()),
             )
             .child(
                 div()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child(count.to_string()),
             )
@@ -159,7 +160,7 @@ impl SearchPage {
             .child(
                 div()
                     .flex_none()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child((found.line + 1).to_string()),
             )

@@ -13,7 +13,7 @@ use gpui_kit::{
 use kiln_agent::SlashCommand;
 
 use super::ChatView;
-use crate::slash;
+use crate::{scale::ScaledText as _, slash};
 
 const MENU_MAX_HEIGHT: f32 = 280.;
 /// Some hints spell out every flag; the description deserves the room.
@@ -157,7 +157,7 @@ impl ChatView {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child(command.description.clone()),
             )

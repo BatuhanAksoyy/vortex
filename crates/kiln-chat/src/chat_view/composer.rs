@@ -8,7 +8,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, AnyElement, Context, Focusable, Hsla, SharedString, TestSupportExt, WeakEntity, Window,
     component::{
-        ActiveTheme, Icon, IconName, Sizable,
+        ActiveTheme, Icon, IconName,
         button::{Button, ButtonVariants},
         h_flex,
         input::{OutdentInline, Textarea},
@@ -19,14 +19,15 @@ use gpui_kit::{
 };
 use kiln_agent::{Effort, ModelOption, PermissionMode};
 
-use super::{ChatView, header::reset_label};
+use super::ChatView;
 use crate::{
     agent_state::{self, MENU_MODES},
+    clock,
+    scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
     spinner,
     transcript::Status,
 };
 
-const SEND_BUTTON_SIZE: f32 = 28.;
 const MENU_WIDTH: f32 = 280.;
 
 impl ChatView {
@@ -83,17 +84,17 @@ impl ChatView {
             .flex_wrap()
             .gap_1()
             .child(Self::attach_button(cx))
+            .child(self.skills_button(cx))
+            .child(self.hooks_button(cx))
             .child(self.mode_menu(view))
             .children(self.model_menu(view))
-            .children(self.effort_menu(view))
-            .child(self.skills_button(cx))
-            .child(self.hooks_button(cx));
+            .children(self.effort_menu(view));
         h_flex()
             .items_end()
             .gap_1()
-            .pl_1()
+            .pl_2()
             .pr_1p5()
-            .py_1()
+            .py_1p5()
             .border_t_1()
             .border_color(cx.theme().border)
             .child(choices)
@@ -116,9 +117,10 @@ impl ChatView {
         let view = view.clone();
         Button::new("chat-mode")
             .ghost()
-            .small()
-            .icon(Icon::new(gpui_kit::assets::IconName::Pencil))
-            .label(agent_state::mode_label(current))
+            .control_labelled(
+                Icon::new(gpui_kit::assets::IconName::Pencil),
+                agent_state::mode_label(current),
+            )
             .tooltip("Change mode (Shift+Tab)")
             .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
                 MENU_MODES
@@ -138,7 +140,8 @@ impl ChatView {
         Some(
             Button::new("chat-model")
                 .ghost()
-                .small()
+                .control()
+                .px_1p5()
                 .label(label)
                 .tooltip("Change model")
                 .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
@@ -162,9 +165,10 @@ impl ChatView {
         Some(
             Button::new("chat-effort")
                 .ghost()
-                .small()
-                .icon(Icon::new(gpui_kit::assets::IconName::Gauge))
-                .label(agent_state::effort_label(current))
+                .control_labelled(
+                    Icon::new(gpui_kit::assets::IconName::Gauge),
+                    agent_state::effort_label(current),
+                )
                 .tooltip("Change effort")
                 .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
                     efforts
@@ -201,7 +205,10 @@ impl ChatView {
         let now = SystemTime::now();
         let limited = self.agent.limit_at(now)?;
         let text = match limited.until {
-            Some(until) => format!("Usage limit reached · resets {}", reset_label(until, now)),
+            Some(until) => format!(
+                "Usage limit reached · resets {}",
+                clock::reset_label(until, now)
+            ),
             None => "Usage limit reached".to_owned(),
         };
         Some(
@@ -301,7 +308,7 @@ pub(super) fn option_row(
         .py_1()
         .child(name)
         .when(!description.is_empty(), |this| {
-            this.child(div().text_xs().text_color(muted).child(description))
+            this.child(div().text_caption().text_color(muted).child(description))
         })
 }
 
@@ -317,9 +324,9 @@ fn round_button(
         .flex()
         .items_center()
         .justify_center()
-        .size(px(SEND_BUTTON_SIZE))
+        .size_7()
         .rounded(cx.theme().radius)
         .bg(background)
         .cursor_pointer()
-        .child(Icon::new(icon).small().text_color(white()))
+        .child(Icon::new(icon).in_control().text_color(white()))
 }

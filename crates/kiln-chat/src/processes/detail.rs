@@ -7,7 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Context, FontWeight, SharedString, TestSupportExt,
     component::{
-        ActiveTheme, IconName, Sizable as _,
+        ActiveTheme, IconName,
         button::{Button, ButtonVariants as _},
         h_flex, v_flex,
     },
@@ -19,6 +19,7 @@ use super::{
     cells::stop_button,
     rows::{Row, cpu, duration, memory},
 };
+use crate::scale::{ScaledButton as _, ScaledText as _};
 
 const DETAIL_REMS: f32 = 22.0;
 const LABEL_REMS: f32 = 7.0;
@@ -63,7 +64,7 @@ pub(super) fn render(
     let name = program(&process.command);
     let action = if row.is_agent() {
         div()
-            .text_xs()
+            .text_caption()
             .text_color(theme.muted_foreground)
             .child("This is the chat's agent. Close its tab to stop it.")
             .into_any_element()
@@ -93,8 +94,7 @@ pub(super) fn render(
 fn close_button(cx: &Context<ProcessesDialog>) -> Button {
     Button::new("process-detail-close")
         .ghost()
-        .xsmall()
-        .icon(IconName::Close)
+        .row_icon(IconName::Close)
         .tooltip("Close details")
         .on_click(cx.listener(|page, _, _, cx| page.close_details(cx)))
 }
@@ -155,7 +155,7 @@ fn command(text: &str, cx: &App) -> impl IntoElement {
         .gap_1()
         .child(
             div()
-                .text_xs()
+                .text_caption()
                 .text_color(theme.muted_foreground)
                 .child("Command line"),
         )
@@ -168,7 +168,7 @@ fn command(text: &str, cx: &App) -> impl IntoElement {
                 .rounded(theme.radius)
                 .bg(theme.secondary)
                 .overflow_hidden()
-                .text_xs()
+                .text_caption()
                 .font_family(theme.mono_font_family.clone())
                 .child(text.to_owned()),
         )

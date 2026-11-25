@@ -4,12 +4,13 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, Context, FontWeight, TestSupportExt,
     component::{
-        ActiveTheme, Sizable as _,
+        ActiveTheme,
         button::{Button, ButtonVariants as _},
         h_flex, v_flex,
     },
     div, px,
 };
+use kiln_chat::scale::ScaledButton as _;
 
 use super::Browser;
 
@@ -24,14 +25,14 @@ impl Browser {
             .gap_2()
             .child(
                 Button::new("browser-site-deny")
-                    .small()
+                    .control()
                     .label("Don't Allow")
                     .on_click(cx.listener(|this, _, window, cx| this.decide(false, window, cx))),
             )
             .child(
                 Button::new("browser-site-allow")
                     .primary()
-                    .small()
+                    .control()
                     .label("Allow")
                     .on_click(cx.listener(|this, _, window, cx| this.decide(true, window, cx))),
             );

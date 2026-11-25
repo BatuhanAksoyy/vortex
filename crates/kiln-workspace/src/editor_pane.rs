@@ -14,7 +14,7 @@ use gpui_kit::{
     assets::IconName as Lucide,
     base::Selectable as _,
     component::{
-        ActiveTheme, Disableable as _, IconName, Sizable, WindowExt,
+        ActiveTheme, Disableable as _, IconName, WindowExt,
         button::{Button, ButtonVariants},
         h_flex,
         notification::Notification,
@@ -23,6 +23,7 @@ use gpui_kit::{
     },
     div,
 };
+use kiln_chat::scale::ScaledButton as _;
 
 use crate::file_icon;
 use document::{Contents, Document, file_title, read_text};
@@ -270,8 +271,7 @@ impl EditorPane {
         h_flex().px_2().child(
             Button::new("editor-toggle-changes")
                 .ghost()
-                .small()
-                .icon(Lucide::FileDiff)
+                .control_icon(Lucide::FileDiff)
                 .selected(shown)
                 .disabled(!changed)
                 .tooltip(tooltip)
@@ -304,9 +304,8 @@ fn render_tab(tab: &EditorTab, cx: &Context<EditorPane>) -> Tab {
         .prefix(div().pl_2().child(icon))
         .suffix(
             Button::new(("close-editor-tab", tab.id))
-                .icon(IconName::Close)
                 .ghost()
-                .xsmall()
+                .row_icon(IconName::Close)
                 .on_click(cx.listener(move |this, _, window, cx| {
                     cx.stop_propagation();
                     this.close(&closed, window, cx);

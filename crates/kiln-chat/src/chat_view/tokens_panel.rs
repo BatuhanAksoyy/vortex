@@ -5,7 +5,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, App, Context, SharedString, TestSupportExt,
     component::{
-        ActiveTheme, Sizable,
+        ActiveTheme,
         button::{Button, ButtonVariants},
         h_flex,
         popover::Popover,
@@ -16,7 +16,10 @@ use gpui_kit::{
 use kiln_agent::SpentTokens;
 
 use super::{ChatView, StripPanel};
-use crate::agent_state::tokens;
+use crate::{
+    agent_state::tokens,
+    scale::{ScaledButton as _, ScaledText as _},
+};
 
 const PANEL_WIDTH: f32 = 300.;
 
@@ -27,7 +30,8 @@ impl ChatView {
         let view = cx.entity().downgrade();
         let trigger = Button::new("chat-tokens")
             .ghost()
-            .small()
+            .control()
+            .px_1p5()
             .label(format!("{} tokens", tokens(spent.total())))
             .text_color(cx.theme().muted_foreground)
             .tooltip("Tokens spent in this conversation");
@@ -68,7 +72,7 @@ fn panel(spent: SpentTokens, cx: &App) -> impl IntoElement + use<> {
         .child(row("Read from cache", spent.cached))
         .child(
             div()
-                .text_xs()
+                .text_caption()
                 .text_color(theme.muted_foreground)
                 .child("Every request sends the conversation again, mostly read from the cache. Subagents are added when the turn ends."),
         )

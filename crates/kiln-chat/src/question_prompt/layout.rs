@@ -16,7 +16,10 @@ use gpui_kit::{
 use kiln_agent::Question;
 
 use super::QuestionPrompt;
-use crate::spinner;
+use crate::{
+    scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
+    spinner,
+};
 
 impl QuestionPrompt {
     pub(super) fn render_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -60,9 +63,8 @@ impl QuestionPrompt {
             .child(div().flex_1())
             .child(
                 Button::new("question-close")
-                    .icon(IconName::Close)
                     .ghost()
-                    .xsmall()
+                    .row_icon(IconName::Close)
                     .tooltip("Decline to answer")
                     .on_click(cx.listener(|this, _, _, cx| this.decline(cx))),
             )
@@ -180,7 +182,7 @@ fn option_text(label: &str, description: &str, cx: &App) -> impl IntoElement + u
         .when(!description.is_empty(), |this| {
             this.child(
                 div()
-                    .text_xs()
+                    .text_caption()
                     .text_color(cx.theme().muted_foreground)
                     .child(description.to_owned()),
             )
@@ -207,7 +209,7 @@ fn indicator(multi: bool, picked: bool, cx: &App) -> impl IntoElement + use<> {
         mark.rounded(px(3.)).when(picked, |this| {
             this.bg(spinner::accent()).child(
                 Icon::new(IconName::Check)
-                    .xsmall()
+                    .in_row()
                     .text_color(theme.primary_foreground),
             )
         })

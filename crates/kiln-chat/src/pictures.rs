@@ -14,7 +14,7 @@ use gpui_kit::{
 };
 use kiln_agent::Picture;
 
-use crate::chat_view::ChatView;
+use crate::{chat_view::ChatView, scale::ScaledText as _};
 
 /// How large a picture shows in the transcript; it keeps its proportions
 /// within these bounds.
@@ -65,7 +65,7 @@ pub fn gallery(
                     div()
                         .px_2()
                         .py_1()
-                        .text_xs()
+                        .text_caption()
                         .text_color(theme.muted_foreground)
                         .child(picture.media_type.clone())
                         .into_any_element()

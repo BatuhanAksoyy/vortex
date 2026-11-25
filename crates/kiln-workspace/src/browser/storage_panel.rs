@@ -12,6 +12,7 @@ use gpui_kit::{
     div, px,
 };
 use kiln_browser::{Cookie, Database, Page, StoreEntries};
+use kiln_chat::scale::{ScaledButton as _, ScaledText as _};
 
 use super::{Browser, site_permissions::origin, tools_panel::Tool};
 
@@ -120,14 +121,14 @@ impl Browser {
             .child(
                 Button::new("browser-storage-refresh")
                     .ghost()
-                    .xsmall()
+                    .small()
                     .label("Refresh")
                     .on_click(cx.listener(|this, _, _, cx| this.read_storage(cx))),
             )
             .child(
                 Button::new("browser-storage-clear")
                     .ghost()
-                    .xsmall()
+                    .small()
                     .label("Clear Site Data")
                     .tooltip("Remove the site's cookies, storage, databases and caches")
                     .on_click(cx.listener(|this, _, _, cx| this.clear_site(cx))),
@@ -144,7 +145,7 @@ impl Browser {
         h_flex()
             .size_full()
             .items_start()
-            .text_xs()
+            .text_caption()
             .child(self.places(cx))
             .child(
                 v_flex()
@@ -315,8 +316,7 @@ fn kept_row(key: &str, value: String, removable: bool, cx: &Context<Browser>) ->
             row.child(
                 Button::new(SharedString::from(format!("browser-kept-remove-{key}")))
                     .ghost()
-                    .xsmall()
-                    .icon(IconName::Close)
+                    .row_icon(IconName::Close)
                     .tooltip("Remove")
                     .on_click(
                         cx.listener(move |this, _, _, cx| this.remove_kept(removed.clone(), cx)),

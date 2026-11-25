@@ -15,7 +15,9 @@ use crate::{
     ChatView,
     agent_state::tokens,
     entry_view::{EntryContext, sub_line, timeline_row, toggle},
-    pictures, spinner, tool_format,
+    pictures,
+    scale::ScaledText as _,
+    spinner, tool_format,
     transcript::{Step, Subagent},
 };
 
@@ -40,7 +42,7 @@ pub fn render(agent: &Subagent, context: &EntryContext, cx: &App) -> AnyElement 
         .child(
             div()
                 .flex_none()
-                .text_xs()
+                .text_caption()
                 .text_color(theme.muted_foreground)
                 .child(if expanded { "▾" } else { "▸" }),
         );
@@ -64,7 +66,7 @@ pub fn render(agent: &Subagent, context: &EntryContext, cx: &App) -> AnyElement 
         .children(identity(agent).map(|identity| {
             div()
                 .pl_4()
-                .text_xs()
+                .text_caption()
                 .text_color(theme.muted_foreground)
                 .child(identity)
         }))
@@ -236,7 +238,7 @@ fn message_step(message: &str, id: SharedString, cx: &App) -> AnyElement {
         .bg(theme.secondary)
         .child(
             div()
-                .text_xs()
+                .text_caption()
                 .text_color(theme.muted_foreground)
                 .child("Message from Claude"),
         )

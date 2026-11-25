@@ -7,13 +7,14 @@ use gpui_kit::{
     assets::IconName as Lucide,
     base::Selectable as _,
     component::{
-        ActiveTheme, Disableable as _, Sizable as _,
+        ActiveTheme, Disableable as _,
         button::{Button, ButtonVariants as _},
         diff::{Diff, DiffFile, DiffMode},
         h_flex, v_flex,
     },
     div,
 };
+use kiln_chat::scale::{ScaledButton as _, ScaledText as _};
 use kiln_git::{Area, Change};
 
 use super::{GitPage, changes::line_counts};
@@ -100,7 +101,7 @@ impl GitPage {
             .child(
                 div()
                     .flex_none()
-                    .text_xs()
+                    .text_caption()
                     .text_color(kind_color(change.kind, theme))
                     .child(state),
             )
@@ -111,8 +112,7 @@ impl GitPage {
             .child(
                 Button::new("git-open-file")
                     .ghost()
-                    .small()
-                    .icon(Lucide::ExternalLink)
+                    .control_icon(Lucide::ExternalLink)
                     .tooltip("Open in Files (Enter)")
                     .disabled(self.openable(cx).is_none())
                     .on_click(cx.listener(|this, _, _, cx| this.open_selected(cx))),
@@ -131,7 +131,7 @@ impl GitPage {
                 let diff = self.diff.clone();
                 Button::new(id)
                     .ghost()
-                    .small()
+                    .control()
                     .label(label)
                     .selected(shown == mode)
                     .on_click(cx.listener(move |_, _, _, cx| {
@@ -149,8 +149,7 @@ impl GitPage {
         let step = |id, icon, tooltip, forward| {
             Button::new(id)
                 .ghost()
-                .small()
-                .icon(icon)
+                .control_icon(icon)
                 .tooltip(tooltip)
                 .on_click(cx.listener(move |this, _, _, cx| this.step(forward, cx)))
         };
@@ -159,7 +158,7 @@ impl GitPage {
         h_flex()
             .flex_none()
             .gap_1()
-            .text_xs()
+            .text_caption()
             .text_color(cx.theme().muted_foreground)
             .children(place)
             .child(

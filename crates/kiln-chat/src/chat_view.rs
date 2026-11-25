@@ -22,6 +22,7 @@ mod menu_keys;
 mod native;
 mod picture_viewer;
 mod processes_page;
+mod recap;
 mod session;
 mod skills;
 mod skills_panel;
@@ -114,6 +115,7 @@ pub struct ChatView {
     /// The message the agent predicts the user sends next, offered in the
     /// empty composer.
     suggestion: Option<String>,
+    recap: recap::RecapWatch,
     find: Option<find::Find>,
     /// The sent message Up last put in the box, by its place from the
     /// newest, while the box still holds it unchanged.
@@ -152,10 +154,8 @@ impl ChatView {
     ) -> Self {
         let composer = composer_box::new_composer(window, cx);
         let subscription = Self::follow_composer(&composer, window, cx);
-        let accounts_changed = cx.observe_in(&accounts, window, |this, _, window, cx| {
-            this.adopt_added_account(window, cx);
-            cx.notify();
-        });
+        let accounts_changed = Self::follow_accounts(&accounts, window, cx);
+        let activation = cx.observe_window_activation(window, Self::watch_for_recap);
         let process_meter = crate::processes::ProcessMeter::for_chat(cx.entity().downgrade(), cx);
         let meter_opened = process_meter
             .as_ref()
@@ -183,6 +183,7 @@ impl ChatView {
             transcript_width: Rc::default(),
             composer,
             suggestion: None,
+            recap: recap::RecapWatch::default(),
             find: None,
             recalled: None,
             slash: SlashMenu::default(),
@@ -200,7 +201,7 @@ impl ChatView {
             limit_timer: None,
             cache_timer: None,
             _usage_poll: cx.spawn(Self::poll_usage),
-            _subscriptions: [subscription, accounts_changed]
+            _subscriptions: [subscription, accounts_changed, activation]
                 .into_iter()
                 .chain(meter_opened)
                 .collect(),
@@ -214,6 +215,17 @@ impl ChatView {
         });
         view.recall_usage(cx);
         view
+    }
+
+    fn follow_accounts(
+        accounts: &Entity<Accounts>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Subscription {
+        cx.observe_in(accounts, window, |this, _, window, cx| {
+            this.adopt_added_account(window, cx);
+            cx.notify();
+        })
     }
 
     #[must_use]
@@ -236,6 +248,7 @@ impl ChatView {
         self.find = None;
         self.agent.reset_context();
         self.drop_suggestion(window, cx);
+        self.recap = recap::RecapWatch::default();
         self.scroller
             .update(cx, |scroller, cx| scroller.reset(1, cx));
         self.sync_prompt(window, cx);

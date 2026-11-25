@@ -96,6 +96,9 @@ pub enum SessionCommand {
         decision: Decision,
     },
     Interrupt,
+    /// Asks for an [`AgentEvent::Recap`], as no turn of the conversation.
+    /// None comes when the user turned recaps off in the agent.
+    Recap,
     /// Switches the model for the following turns.
     SetModel(String),
     SetMode(PermissionMode),
@@ -329,6 +332,14 @@ pub enum AgentEvent {
     /// The agent started over with an empty conversation, e.g. on `/clear`.
     ConversationReset,
     TurnEnded(TurnOutcome),
+    /// How long the turn now ending took; not sent for a slash command the
+    /// agent ran itself. `ended_at` is set for a stored turn.
+    TurnTook {
+        duration: Duration,
+        ended_at: Option<SystemTime>,
+    },
+    /// Where the conversation stands, for a user coming back to it.
+    Recap(String),
     /// The message the user is likely to send next, predicted after a turn
     /// ends. None comes when the next step is not obvious.
     PromptSuggestion(String),

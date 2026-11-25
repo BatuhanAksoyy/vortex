@@ -16,6 +16,7 @@ use gpui_kit::{
 };
 
 use super::super::ChatView;
+use crate::scale::{ScaledButton as _, ScaledText as _};
 
 const INPUT_REMS: f32 = 16.0;
 
@@ -55,7 +56,7 @@ impl ChatView {
                         .aria_label(SharedString::from(count.clone()))
                         .flex_1()
                         .px_1()
-                        .text_xs()
+                        .text_caption()
                         .text_color(theme.muted_foreground)
                         .child(count),
                 )
@@ -74,23 +75,22 @@ impl ChatView {
 /// Whether tool output is searched, the way through the matches, and
 /// closing; `none` when nothing matches.
 fn find_buttons(tool_output: bool, none: bool, cx: &Context<ChatView>) -> Vec<Button> {
-    let button =
-        |id: &'static str, tooltip: &'static str| Button::new(id).ghost().xsmall().tooltip(tooltip);
+    let button = |id: &'static str, tooltip: &'static str| Button::new(id).ghost().tooltip(tooltip);
     vec![
         button("chat-find-output", "Search tool output")
-            .icon(Lucide::SquareTerminal)
+            .row_icon(Lucide::SquareTerminal)
             .selected(tool_output)
             .on_click(cx.listener(|this, _, _, cx| this.toggle_find_output(cx))),
         button("chat-find-previous", "Previous match (Shift+Enter)")
-            .icon(Lucide::ChevronUp)
+            .row_icon(Lucide::ChevronUp)
             .disabled(none)
             .on_click(cx.listener(|this, _, _, cx| this.find_previous(cx))),
         button("chat-find-next", "Next match (Enter)")
-            .icon(Lucide::ChevronDown)
+            .row_icon(Lucide::ChevronDown)
             .disabled(none)
             .on_click(cx.listener(|this, _, _, cx| this.find_next(cx))),
         button("chat-find-close", "Close (Escape)")
-            .icon(IconName::Close)
+            .row_icon(IconName::Close)
             .on_click(cx.listener(|this, _, window, cx| this.close_find(window, cx))),
     ]
 }

@@ -18,7 +18,10 @@ use gpui_kit::{
 use kiln_agent::{HookEvent, HookScope};
 
 use super::{ChatView, composer::option_row, hooks::HookForm};
-use crate::hook_list::scope_label;
+use crate::{
+    hook_list::scope_label,
+    scale::{ScaledButton as _, ScaledText as _},
+};
 
 pub(super) type EventSelect = SelectState<SearchableVec<EventChoice>>;
 pub(super) type ScopeSelect = SelectState<SearchableVec<ScopeChoice>>;
@@ -117,7 +120,7 @@ pub(super) fn render(
     let muted = cx.theme().muted_foreground;
     let help = |text: &str| {
         div()
-            .text_xs()
+            .text_caption()
             .text_color(muted)
             .child(text.to_owned())
             .into_any_element()
@@ -170,7 +173,7 @@ fn actions(editing: bool, busy: bool, view: &WeakEntity<ChatView>) -> impl IntoE
         .child(
             Button::new("hook-cancel")
                 .ghost()
-                .small()
+                .control()
                 .label("Cancel")
                 .on_click(move |_, _, cx| {
                     let _ = cancel.update(cx, ChatView::close_hook_form);
@@ -179,7 +182,7 @@ fn actions(editing: bool, busy: bool, view: &WeakEntity<ChatView>) -> impl IntoE
         .child(
             Button::new("hook-save")
                 .primary()
-                .small()
+                .control()
                 .label(if editing { "Save" } else { "Add hook" })
                 .disabled(busy)
                 .on_click(move |_, window, cx| {
@@ -192,7 +195,7 @@ fn actions(editing: bool, busy: bool, view: &WeakEntity<ChatView>) -> impl IntoE
 fn field(label: &'static str, control: AnyElement, help: Option<AnyElement>) -> impl IntoElement {
     v_flex()
         .gap_1()
-        .child(div().text_xs().child(label))
+        .child(div().text_caption().child(label))
         .child(control)
         .children(help)
 }

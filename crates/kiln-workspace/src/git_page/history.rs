@@ -9,6 +9,7 @@ use gpui_kit::{
     component::{ActiveTheme, h_flex, v_flex},
     div,
 };
+use kiln_chat::scale::ScaledText as _;
 use kiln_git::Commit;
 
 use super::GitPage;
@@ -147,7 +148,7 @@ impl GitPage {
             .child(div().text_sm().truncate().child(commit.subject.clone()))
             .child(
                 div()
-                    .text_xs()
+                    .text_caption()
                     .truncate()
                     .text_color(theme.muted_foreground)
                     .child(about),
@@ -182,7 +183,7 @@ impl GitPage {
                 .child(
                     div()
                         .flex_none()
-                        .text_xs()
+                        .text_caption()
                         .text_color(theme.muted_foreground)
                         .child(format!(
                             "{} · {} · {when}",

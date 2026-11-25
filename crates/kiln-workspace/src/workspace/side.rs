@@ -7,7 +7,7 @@ use gpui_kit::{
     AnyElement, App, Context, Entity, FontWeight, Pixels, TestSupportExt, Window,
     assets::IconName as Lucide,
     component::{
-        ActiveTheme, IconName, Sizable as _,
+        ActiveTheme, IconName,
         button::{Button, ButtonVariants as _},
         h_flex,
         resizable::{ResizableState, h_resizable, resizable_panel},
@@ -15,6 +15,7 @@ use gpui_kit::{
     },
     div, px,
 };
+use kiln_chat::scale::{BAR_HEIGHT, ScaledButton as _};
 
 use super::Workspace;
 use crate::{
@@ -235,17 +236,17 @@ impl Workspace {
         } else {
             (Lucide::Maximize, "Fill the Window")
         };
-        let button = |id, tooltip| Button::new(id).ghost().small().tooltip(tooltip);
+        let button = |id, tooltip| Button::new(id).ghost().tooltip(tooltip);
         h_flex()
             .flex_none()
             .gap_1()
             .px_2()
-            .py_1()
+            .h(BAR_HEIGHT)
             .border_b_1()
             .border_color(theme.border)
             .child(
                 button("side-toggle-list", list)
-                    .icon(Lucide::PanelLeft)
+                    .control_icon(Lucide::PanelLeft)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_list(cx))),
             )
             .child(div().font_weight(FontWeight::SEMIBOLD).child(title))
@@ -267,12 +268,12 @@ impl Workspace {
             )
             .child(
                 button("side-maximize", resize)
-                    .icon(icon)
+                    .control_icon(icon)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_maximized(cx))),
             )
             .child(
                 button("side-close", "Close Panel")
-                    .icon(IconName::Close)
+                    .control_icon(IconName::Close)
                     .on_click(cx.listener(|this, _, window, cx| this.close_side(window, cx))),
             )
     }

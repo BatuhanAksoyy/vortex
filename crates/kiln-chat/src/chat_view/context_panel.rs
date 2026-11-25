@@ -6,7 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, Context, Hsla, TestSupportExt,
     component::{
-        ActiveTheme, Sizable,
+        ActiveTheme,
         button::{Button, ButtonVariants},
         h_flex,
         popover::Popover,
@@ -17,7 +17,10 @@ use gpui_kit::{
 use kiln_agent::{ContextCategory, ContextKind, ContextUsage};
 
 use super::{ChatView, StripPanel};
-use crate::agent_state::tokens;
+use crate::{
+    agent_state::tokens,
+    scale::{ScaledButton as _, ScaledText as _},
+};
 
 const PANEL_WIDTH: f32 = 300.;
 
@@ -29,7 +32,8 @@ impl ChatView {
         let view = cx.entity().downgrade();
         let trigger = Button::new("chat-context")
             .ghost()
-            .small()
+            .control()
+            .px_1p5()
             .label(format!("{percent}%"))
             .text_color(color)
             .tooltip("Context usage");
@@ -96,7 +100,7 @@ fn context_panel(
             this.child(
                 div()
                     .pt_1()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child("Loaded on demand, not counted"),
             )

@@ -23,6 +23,7 @@ mod layout;
 use crate::{
     permission_prompt::Answered,
     question_form::{Picked, QuestionForm},
+    scale::ScaledText as _,
     spinner,
 };
 
@@ -216,7 +217,7 @@ impl Render for QuestionPrompt {
             .child(submit)
             .child(
                 div()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child("Esc to cancel"),
             )

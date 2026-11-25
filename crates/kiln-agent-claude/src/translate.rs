@@ -5,14 +5,16 @@ use std::collections::HashMap;
 
 use kiln_agent::{
     AgentEvent, BlockKey, HookEdit, PermissionRequest, Remember, SessionCommand, SkillState,
-    ToolCall, TurnOutcome,
+    ToolCall,
 };
 use serde_json::Value;
 
 use crate::{
     ask,
     control::{self, Asked},
-    hooks, outgoing, skills, stream, subagent, system, usage,
+    hooks, outgoing,
+    recap::Recaps,
+    skills, stream, subagent, system, turn_end, usage,
     wire::{self, Line},
 };
 
@@ -25,6 +27,7 @@ pub struct Translator {
     /// Each skill's other names, from the last skills reply.
     skill_handles: HashMap<String, Value>,
     tasks: subagent::Tasks,
+    recaps: Recaps,
 }
 
 /// An open permission request: the tool input, echoed back on allow, and the
@@ -54,6 +57,7 @@ impl Translator {
     pub fn on_command(&mut self, command: SessionCommand) -> Option<Value> {
         match command {
             SessionCommand::Send(message) => Some(outgoing::user_message(&message)),
+            SessionCommand::Recap => self.recaps.ask(),
             SessionCommand::Interrupt => Some(outgoing::interrupt(&self.request_id("interrupt"))),
             SessionCommand::SetModel(_)
             | SessionCommand::SetMode(_)
@@ -160,14 +164,13 @@ impl Translator {
         match line {
             Line::System(system) => system::events(system, &mut self.tasks),
             Line::StreamEvent(event) => stream::event(event).into_iter().collect(),
-            Line::Assistant(message) => assistant_events(message),
+            Line::Assistant(message) => match self.recaps.output(&message) {
+                Some(recap) => vec![recap],
+                None => assistant_events(message),
+            },
             Line::User(message) => tool_results(message),
             Line::ConversationReset { trigger } => system::conversation_reset(&trigger),
-            Line::TurnResult(result) => usage::spent(&result.model_usage)
-                .map(AgentEvent::SpentTokens)
-                .into_iter()
-                .chain([AgentEvent::TurnEnded(outcome(result))])
-                .collect(),
+            Line::TurnResult(result) => turn_end::events(result, self.recaps.ends()),
             line => self.on_single(line).into_iter().collect(),
         }
     }
@@ -195,6 +198,10 @@ impl Translator {
                     let listed = skills::from_reply(response)?;
                     self.skill_handles = listed.handles;
                     Some(AgentEvent::Skills(listed.skills))
+                }
+                Asked::Settings => {
+                    self.recaps.follow(&response);
+                    control::on_success(Asked::Settings, response)
                 }
                 asked => control::on_success(asked, response),
             },
@@ -337,20 +344,6 @@ pub(crate) fn tool_results(message: wire::User) -> Vec<AgentEvent> {
             wire::UserBlock::Other => None,
         })
         .collect()
-}
-
-fn outcome(result: wire::TurnResult) -> TurnOutcome {
-    if result.subtype == "success" && !result.is_error {
-        return TurnOutcome::Completed;
-    }
-    if result
-        .terminal_reason
-        .as_deref()
-        .is_some_and(|reason| reason.starts_with("aborted"))
-    {
-        return TurnOutcome::Interrupted;
-    }
-    TurnOutcome::Failed(result.result.unwrap_or(result.subtype))
 }
 
 /// The CLI suggests several updates per request. A saved rule is what "don't

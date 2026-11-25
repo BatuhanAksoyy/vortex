@@ -170,7 +170,7 @@ impl Browser {
             .text_color(theme.popover_foreground)
             .shadow_md()
             .text_sm()
-            .when(!doing.done, |line| line.child(Spinner::new().xsmall()))
+            .when(!doing.done, |line| line.child(Spinner::new().small()))
             .child(div().flex_none().text_color(theme.primary).child("Claude"))
             .child(div().min_w_0().truncate().child(doing.what.clone()));
         let foot = div()

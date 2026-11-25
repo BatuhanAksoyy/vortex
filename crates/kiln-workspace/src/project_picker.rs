@@ -9,12 +9,13 @@ use gpui_kit::{
     SharedString, TestSupportExt, Window,
     assets::IconName as Lucide,
     component::{
-        ActiveTheme, Icon, IconName, Sizable as _,
+        ActiveTheme, Icon, IconName,
         button::{Button, ButtonVariants as _},
         h_flex, v_flex,
     },
     div, rems,
 };
+use kiln_chat::scale::{ScaledButton as _, ScaledText as _};
 
 use crate::project::folder_name;
 
@@ -73,8 +74,7 @@ impl ProjectPicker {
         let close = self.current.is_some().then(|| {
             Button::new("projects-close")
                 .ghost()
-                .small()
-                .icon(IconName::Close)
+                .control_icon(IconName::Close)
                 .tooltip("Close")
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(ProjectPickerEvent::Close)))
         });
@@ -94,9 +94,7 @@ impl ProjectPicker {
             .child(
                 Button::new("projects-browse")
                     .primary()
-                    .small()
-                    .icon(Lucide::FolderOpen)
-                    .label("Open Folder…")
+                    .control_labelled(Lucide::FolderOpen, "Open Folder…")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(ProjectPickerEvent::Browse))),
             )
             .children(close)
@@ -127,7 +125,7 @@ impl ProjectPicker {
                 v_flex().flex_1().min_w_0().child(name).child(
                     div()
                         .truncate()
-                        .text_xs()
+                        .text_caption()
                         .text_color(theme.muted_foreground)
                         .child(folder.display().to_string()),
                 ),
@@ -136,7 +134,7 @@ impl ProjectPicker {
                 this.child(
                     div()
                         .flex_none()
-                        .text_xs()
+                        .text_caption()
                         .text_color(theme.muted_foreground)
                         .child("This session"),
                 )

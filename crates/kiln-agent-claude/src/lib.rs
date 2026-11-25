@@ -11,6 +11,7 @@ mod history;
 mod hooks;
 mod outgoing;
 mod picture;
+mod recap;
 mod session;
 mod sign_in;
 mod skills;
@@ -19,6 +20,7 @@ mod subagent;
 mod system;
 mod tool_server;
 mod translate;
+mod turn_end;
 mod usage;
 mod wire;
 

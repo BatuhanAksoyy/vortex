@@ -19,7 +19,10 @@ use gpui_kit::{
 };
 
 use super::ChatView;
-use crate::transcript::Status;
+use crate::{
+    scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
+    transcript::Status,
+};
 
 const PANEL_WIDTH: f32 = 280.;
 const TRIGGER_MAX_WIDTH: f32 = 240.;
@@ -48,7 +51,8 @@ impl ChatView {
         let shown = self.shown_accounts(cx);
         let trigger = Button::new("chat-account")
             .ghost()
-            .xsmall()
+            .control()
+            .px_1p5()
             .max_w(px(TRIGGER_MAX_WIDTH))
             .label(self.current_account_label(cx))
             .tooltip("Accounts");
@@ -101,7 +105,7 @@ impl ChatView {
         Some(
             Button::new("chat-limit-continue")
                 .primary()
-                .xsmall()
+                .small()
                 .label(format!("Continue with {}", account.email))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.switch_account(&id, window, cx);
@@ -185,7 +189,7 @@ fn account_row(
         .py_0p5()
         .rounded(theme.radius)
         .child(div().flex_none().w(px(16.)).when(current, |this| {
-            this.child(Icon::new(IconName::Check).small())
+            this.child(Icon::new(IconName::Check).in_row())
         }))
         .child(
             v_flex()
@@ -195,7 +199,7 @@ fn account_row(
                 .child(
                     div()
                         .truncate()
-                        .text_xs()
+                        .text_caption()
                         .text_color(theme.muted_foreground)
                         .child(row.detail.clone()),
                 ),
@@ -224,15 +228,16 @@ fn add_control(signing_in: bool, view: &WeakEntity<ChatView>, cx: &App) -> gpui_
         return h_flex()
             .gap_2()
             .justify_between()
-            .child(message(
+            .child(div().flex_1().min_w_0().child(message(
                 "chat-account-waiting",
                 "Finish signing in in your browser.",
                 cx.theme().muted_foreground,
-            ))
+            )))
             .child(
                 Button::new("chat-account-cancel")
                     .ghost()
-                    .xsmall()
+                    .small()
+                    .flex_none()
                     .label("Cancel")
                     .on_click(move |_, _, cx| {
                         let _ = view.update(cx, ChatView::cancel_sign_in);
@@ -242,9 +247,7 @@ fn add_control(signing_in: bool, view: &WeakEntity<ChatView>, cx: &App) -> gpui_
     }
     Button::new("chat-account-add")
         .ghost()
-        .xsmall()
-        .icon(Icon::new(IconName::Plus))
-        .label("Add account")
+        .row_labelled(Icon::new(IconName::Plus), "Add account")
         .on_click(move |_, _, cx| {
             let _ = view.update(cx, ChatView::add_account);
         })
@@ -257,7 +260,7 @@ fn message(id: &'static str, text: &str, color: Hsla) -> impl IntoElement + use<
         .id(id)
         .test_support()
         .aria_label(SharedString::from(text.to_owned()))
-        .text_xs()
+        .text_caption()
         .text_color(color)
         .child(text.to_owned())
 }

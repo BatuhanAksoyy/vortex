@@ -6,7 +6,7 @@ use gpui_kit::{
     AnyElement, App, Context, FontWeight, SharedString, TestSupportExt,
     assets::IconName as Lucide,
     component::{
-        ActiveTheme, Icon, Sizable as _, Theme,
+        ActiveTheme, Icon, Theme,
         button::{Button, ButtonVariants as _},
         h_flex,
         tooltip::Tooltip,
@@ -14,6 +14,7 @@ use gpui_kit::{
     },
     div,
 };
+use kiln_chat::scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _};
 use kiln_git::{Area, Change, Counts, Status};
 
 use super::GitPage;
@@ -88,7 +89,7 @@ impl GitPage {
             .child(
                 h_flex()
                     .gap_2()
-                    .child(Icon::new(Lucide::GitBranch).small())
+                    .child(Icon::new(Lucide::GitBranch).in_row())
                     .child(
                         div()
                             .id("git-branch")
@@ -104,8 +105,7 @@ impl GitPage {
                     .child(
                         Button::new("git-refresh")
                             .ghost()
-                            .small()
-                            .icon(Lucide::RefreshCw)
+                            .control_icon(Lucide::RefreshCw)
                             .tooltip("Refresh")
                             .on_click(move |_, _, cx| repo.update(cx, RepoStatus::refresh)),
                     ),
@@ -181,7 +181,7 @@ impl GitPage {
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_section(area, cx)))
             .child(
                 Icon::new(chevron)
-                    .xsmall()
+                    .in_row()
                     .text_color(theme.muted_foreground),
             )
             .child(
@@ -192,7 +192,7 @@ impl GitPage {
             )
             .child(
                 div()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child(count.to_string()),
             )
@@ -240,7 +240,7 @@ impl GitPage {
                     .flex_none()
                     .w_5()
                     .text_center()
-                    .text_xs()
+                    .text_caption()
                     .font_weight(FontWeight::BOLD)
                     .rounded(theme.radius)
                     .bg(color.opacity(0.15))
@@ -260,7 +260,7 @@ impl GitPage {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child(folder.to_owned()),
             )
@@ -284,7 +284,7 @@ fn more(hidden: usize, cx: &App) -> AnyElement {
         .flex_none()
         .px_3()
         .py_1()
-        .text_xs()
+        .text_caption()
         .text_color(cx.theme().muted_foreground)
         .child(format!("{hidden} more not shown"))
         .into_any_element()
@@ -301,7 +301,7 @@ fn distance(status: &Status, theme: &Theme) -> Option<impl IntoElement + use<>> 
         div()
             .id("git-distance")
             .flex_none()
-            .text_xs()
+            .text_caption()
             .text_color(theme.muted_foreground)
             .tooltip(|window, cx| {
                 Tooltip::new("Commits to push (↑) and to pull (↓)").build(window, cx)
@@ -325,7 +325,7 @@ fn totals(status: &Status, theme: &Theme) -> impl IntoElement + use<> {
     }
     h_flex()
         .gap_2()
-        .text_xs()
+        .text_caption()
         .text_color(theme.muted_foreground)
         .child(text)
         .child(line_counts(total, theme))
@@ -339,7 +339,7 @@ pub(super) fn line_counts(counts: Counts, theme: &Theme) -> impl IntoElement + u
     h_flex()
         .flex_none()
         .gap_1()
-        .text_xs()
+        .text_caption()
         .children(side("+", counts.added, theme.success))
         .children(side("−", counts.removed, theme.danger))
 }

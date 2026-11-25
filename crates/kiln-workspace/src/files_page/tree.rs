@@ -7,7 +7,7 @@ use gpui_kit::{
     App, ClipboardItem, Context, FontWeight, SharedString, TestSupportExt, WeakEntity, Window,
     assets::IconName as Lucide,
     component::{
-        ActiveTheme, Icon, Sizable as _, h_flex,
+        ActiveTheme, Icon, h_flex,
         list::ListItem,
         menu::{PopupMenu, PopupMenuItem},
         tooltip::Tooltip,
@@ -15,6 +15,7 @@ use gpui_kit::{
     },
     div, px,
 };
+use kiln_chat::scale::{ScaledIcon as _, ScaledText as _};
 use kiln_git::Kind;
 
 use super::FilesPage;
@@ -114,7 +115,7 @@ fn row(entry: &TreeEntry, folder: bool, mark: Option<Kind>, cx: &App) -> ListIte
                 .gap_1p5()
                 .child(
                     div().flex_none().size_4().children(
-                        chevron.map(|chevron| Icon::new(chevron).small().text_color(muted)),
+                        chevron.map(|chevron| Icon::new(chevron).in_row().text_color(muted)),
                     ),
                 )
                 .child(icon)
@@ -144,7 +145,7 @@ fn mark_view(id: &str, kind: Kind, folder: bool) -> impl Styled + IntoElement + 
         .test_support()
         .flex_none()
         .pl_2()
-        .text_xs()
+        .text_caption()
         .font_weight(FontWeight::SEMIBOLD)
         .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx))
         .child(mark)

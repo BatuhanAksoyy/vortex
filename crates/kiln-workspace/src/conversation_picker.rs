@@ -18,6 +18,7 @@ use gpui_kit::{
     div, rems,
 };
 use kiln_agent::PastSession;
+use kiln_chat::scale::{ScaledButton as _, ScaledText as _};
 
 use crate::session_list::{SessionList, day_group, heading, stamp};
 
@@ -113,8 +114,7 @@ impl ConversationPicker {
             .child(
                 Button::new("conversations-close")
                     .ghost()
-                    .xsmall()
-                    .icon(IconName::Close)
+                    .row_icon(IconName::Close)
                     .tooltip("Close")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(ConversationPickerEvent::Close))),
             )
@@ -193,7 +193,7 @@ impl Render for ConversationPicker {
                 .aria_label(SharedString::from(note.clone()))
                 .px_2()
                 .pt_3()
-                .text_xs()
+                .text_caption()
                 .text_color(theme.muted_foreground)
                 .child(note)
         });

@@ -15,6 +15,7 @@ use gpui_kit::{
     },
     div, px,
 };
+use kiln_chat::scale::ScaledButton as _;
 
 use super::Workspace;
 use crate::side_panel::{DEFAULT_BAR, Page};
@@ -53,8 +54,7 @@ impl Workspace {
         };
         let toggle = Button::new("toggle-side-panel")
             .ghost()
-            .small()
-            .icon(icon)
+            .control_icon(icon)
             .tooltip(tooltip)
             .on_click(cx.listener(|this, _, window, cx| this.toggle_side_panel(window, cx)));
         Some(toggle)

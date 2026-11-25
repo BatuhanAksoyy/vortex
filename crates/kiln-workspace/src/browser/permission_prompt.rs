@@ -7,7 +7,7 @@ use gpui_kit::{
     AnyElement, App, Context, FontWeight, SharedString, TestSupportExt, WeakEntity, Window,
     assets::IconName as Lucide,
     component::{
-        ActiveTheme, Sizable as _, WindowExt,
+        ActiveTheme, WindowExt,
         button::{Button, ButtonVariants as _},
         h_flex,
         notification::Notification,
@@ -17,6 +17,7 @@ use gpui_kit::{
     div, px,
 };
 use kiln_browser::{Page, Permission, PermissionRequest};
+use kiln_chat::scale::ScaledButton as _;
 
 use super::{
     Browser,
@@ -190,14 +191,14 @@ impl Browser {
             .gap_2()
             .child(
                 Button::new("browser-permission-block")
-                    .small()
+                    .control()
                     .label("Block")
                     .on_click(cx.listener(|this, _, _, cx| this.decide_permission(false, cx))),
             )
             .child(
                 Button::new("browser-permission-allow")
                     .primary()
-                    .small()
+                    .control()
                     .label("Allow")
                     .on_click(cx.listener(|this, _, _, cx| this.decide_permission(true, cx))),
             );
@@ -251,8 +252,7 @@ impl Browser {
         let this = cx.entity().downgrade();
         let trigger = Button::new("browser-site-permissions")
             .ghost()
-            .small()
-            .icon(Lucide::Lock)
+            .control_icon(Lucide::Lock)
             .tooltip("Site Permissions");
         Some(
             Popover::new("browser-site-permissions-popover")
@@ -291,7 +291,7 @@ fn site_permissions_panel(
         .children(rows)
         .child(
             Button::new("browser-site-permissions-reset")
-                .small()
+                .control()
                 .label("Ask Again Next Time")
                 .on_click(move |_, _, cx| {
                     let _ = this.update(cx, Browser::forget_site);

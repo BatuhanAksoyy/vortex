@@ -188,11 +188,17 @@ pub struct Assistant {
     /// Set on the output of a slash command the CLI ran itself; that output
     /// is never streamed.
     #[serde(default)]
-    pub local_command_run: Option<Value>,
+    pub local_command_run: Option<CommandRun>,
     /// On the message that holds a thinking block: how long the model
     /// thought.
     #[serde(default)]
     pub thinking_duration_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommandRun {
+    #[serde(default)]
+    pub command: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -363,6 +369,11 @@ pub struct TurnResult {
     /// Set on turns the API refused, which still end with `success`.
     #[serde(default)]
     pub is_error: bool,
+    #[serde(default)]
+    pub duration_ms: u64,
+    /// Zero for a slash command the CLI ran itself.
+    #[serde(default)]
+    pub num_turns: u64,
     /// What the conversation spent so far, by model.
     #[serde(default, rename = "modelUsage")]
     pub model_usage: HashMap<String, ModelUsage>,

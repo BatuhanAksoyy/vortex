@@ -13,7 +13,10 @@ use gpui_kit::{
     div, px, uniform_list,
 };
 use kiln_browser::{Body, NetworkEvent, NetworkLog, NetworkRequest};
-use kiln_chat::format_memory;
+use kiln_chat::{
+    format_memory,
+    scale::{ScaledButton as _, ScaledText as _},
+};
 
 use super::{Browser, tools_panel::Tool};
 
@@ -83,14 +86,14 @@ impl Browser {
             .gap_2()
             .child(
                 div()
-                    .text_xs()
+                    .text_caption()
                     .text_color(cx.theme().muted_foreground)
                     .child(summary),
             )
             .child(
                 Button::new("browser-network-clear")
                     .ghost()
-                    .xsmall()
+                    .small()
                     .label("Clear")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.clear_network();
@@ -117,7 +120,7 @@ impl Browser {
             .flex_1()
             .min_w_0()
             .h_full()
-            .text_xs()
+            .text_caption()
             .child(heading(compact, theme))
             .when(count == 0, |list| {
                 list.child(
@@ -206,8 +209,7 @@ impl Browser {
                 h_flex().justify_end().p_1().child(
                     Button::new("browser-request-close")
                         .ghost()
-                        .xsmall()
-                        .icon(IconName::Close)
+                        .row_icon(IconName::Close)
                         .tooltip("Close Details")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.network.chosen = None;
@@ -224,7 +226,7 @@ impl Browser {
                     .gap_1()
                     .px_2()
                     .pb_2()
-                    .text_xs()
+                    .text_caption()
                     .children(parts),
             )
             .into_any_element()

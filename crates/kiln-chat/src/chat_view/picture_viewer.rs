@@ -6,7 +6,7 @@ use gpui_kit::{
     AnyElement, Context, FocusHandle, Focusable as _, KeyDownEvent, ObjectFit, TestSupportExt,
     Window, anchored,
     component::{
-        ActiveTheme, IconName, Sizable,
+        ActiveTheme, IconName,
         button::{Button, ButtonVariants},
     },
     deferred, div, img, point, px,
@@ -14,7 +14,7 @@ use gpui_kit::{
 use kiln_agent::Picture;
 
 use super::ChatView;
-use crate::pictures;
+use crate::{pictures, scale::ScaledButton as _};
 
 pub(super) struct PictureViewer {
     shown: Option<Picture>,
@@ -126,8 +126,7 @@ impl ChatView {
             .child(
                 Button::new("chat-picture-close")
                     .ghost()
-                    .small()
-                    .icon(IconName::Close)
+                    .control_icon(IconName::Close)
                     .tooltip("Close")
                     .on_click(cx.listener(|this, _, window, cx| {
                         cx.stop_propagation();

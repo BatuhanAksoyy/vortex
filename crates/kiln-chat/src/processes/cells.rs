@@ -82,7 +82,7 @@ pub(super) fn chat_heading(rows: &[Row], cx: &App) -> AnyElement {
 pub(super) fn stop_button(id: impl Into<SharedString>, pid: u32) -> Button {
     Button::new(id.into())
         .ghost()
-        .xsmall()
+        .small()
         .label("Stop")
         .tooltip("Stop it and everything it started")
         .on_click(move |_: &ClickEvent, _, cx| {

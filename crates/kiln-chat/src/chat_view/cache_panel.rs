@@ -9,7 +9,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, App, AsyncApp, Context, SharedString, TestSupportExt, WeakEntity,
     component::{
-        ActiveTheme, Sizable,
+        ActiveTheme,
         button::{Button, ButtonVariants},
         h_flex,
         popover::Popover,
@@ -19,8 +19,12 @@ use gpui_kit::{
 };
 use kiln_agent::PromptTokens;
 
-use super::{ChatView, StripPanel, header::reset_label};
-use crate::agent_state::tokens;
+use super::{ChatView, StripPanel};
+use crate::{
+    agent_state::tokens,
+    clock,
+    scale::{ScaledButton as _, ScaledText as _},
+};
 
 const PANEL_WIDTH: f32 = 300.;
 
@@ -51,7 +55,8 @@ impl ChatView {
             .is_some_and(|until| until <= now);
         let trigger = Button::new("chat-cache")
             .ghost()
-            .small()
+            .control()
+            .px_1p5()
             .label(button_label(shown.as_ref(), now))
             .text_color(if expired {
                 cx.theme().warning
@@ -148,7 +153,7 @@ fn panel(shown: Option<&CacheShown>, cx: &App) -> impl IntoElement + use<> {
                 .id("chat-cache-empty")
                 .test_support()
                 .aria_label(SharedString::from(EMPTY))
-                .text_xs()
+                .text_caption()
                 .text_color(muted)
                 .child(EMPTY),
         );
@@ -171,12 +176,12 @@ fn panel(shown: Option<&CacheShown>, cx: &App) -> impl IntoElement + use<> {
             .id("chat-cache-status")
             .test_support()
             .aria_label(SharedString::from(status.clone()))
-            .text_xs()
+            .text_caption()
             .text_color(muted)
             .child(status)
     }))
     .child(div().h_px().bg(cx.theme().border))
-    .child(div().text_xs().text_color(muted).child("Last request"))
+    .child(div().text_caption().text_color(muted).child("Last request"))
     .child(row("Read from cache", shown.last.cached))
     .child(row("Written to cache", shown.last.written))
     .child(row("Not cached", shown.last.uncached))
@@ -184,7 +189,7 @@ fn panel(shown: Option<&CacheShown>, cx: &App) -> impl IntoElement + use<> {
 
 fn status(shown: &CacheShown, now: SystemTime) -> Option<String> {
     let until = shown.warm_until?;
-    let at = reset_label(until, now);
+    let at = clock::reset_label(until, now);
     if until <= now {
         return Some(format!(
             "Expired at {at} · the next message writes the prompt to the cache again"

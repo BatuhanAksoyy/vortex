@@ -19,7 +19,7 @@ use gpui_kit::{
 use kiln_agent::{Message, Picture, SessionCommand};
 
 use super::{ChatEvent, ChatView};
-use crate::{pictures, slash, transcript::Status};
+use crate::{pictures, scale::ScaledButton as _, slash, transcript::Status};
 
 /// The largest picture sent as one; a larger one goes as a file, which the
 /// agent reads itself.
@@ -141,8 +141,7 @@ impl ChatView {
     pub(super) fn attach_button(cx: &Context<Self>) -> impl IntoElement + use<> {
         Button::new("chat-attach")
             .ghost()
-            .small()
-            .icon(Icon::new(gpui_kit::assets::IconName::Paperclip))
+            .control_icon(Icon::new(gpui_kit::assets::IconName::Paperclip))
             .tooltip("Attach files or pictures")
             .on_click(cx.listener(|_, _, window, cx| Self::pick_files(window, cx)))
     }

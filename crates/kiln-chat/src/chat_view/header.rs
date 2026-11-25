@@ -7,7 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, Context, Hsla, TestSupportExt, WeakEntity,
     component::{
-        ActiveTheme, Icon, IconName, Sizable,
+        ActiveTheme, Icon, IconName,
         button::{Button, ButtonVariants},
         h_flex,
         popover::Popover,
@@ -18,6 +18,10 @@ use gpui_kit::{
 use kiln_agent::{Usage, UsageWindow};
 
 use super::{ChatView, StripPanel};
+use crate::{
+    clock,
+    scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
+};
 
 const USAGE_PANEL_WIDTH: f32 = 260.;
 
@@ -26,9 +30,11 @@ impl ChatView {
         let theme = cx.theme();
         let title = self.title().unwrap_or("New conversation").to_owned();
         h_flex()
-            .gap_2()
-            .px_3()
-            .py_2()
+            .gap_1()
+            // So the project's icon starts where the transcript does.
+            .pl_5()
+            .pr_3()
+            .py_1p5()
             .border_b_1()
             .border_color(theme.border)
             .child(self.project_button(cx))
@@ -56,7 +62,7 @@ impl ChatView {
                         .child(div().min_w_0().truncate().child(title))
                         .child(
                             Icon::new(gpui_kit::assets::IconName::ChevronDown)
-                                .xsmall()
+                                .in_row()
                                 .text_color(theme.muted_foreground),
                         ),
                 ),
@@ -71,15 +77,11 @@ impl ChatView {
                 cx,
             ))
             .child(
-                div()
-                    .id("chat-new")
-                    .test_support()
-                    .aria_label("New conversation")
-                    .p_1()
-                    .rounded(theme.radius)
-                    .cursor_pointer()
-                    .hover(|style| style.bg(gpui_kit::black().opacity(0.08)))
-                    .child(Icon::new(IconName::Plus).small())
+                Button::new("chat-new")
+                    .ghost()
+                    .control_icon(IconName::Plus)
+                    .accessibility_label("New conversation")
+                    .tooltip("New conversation")
                     .on_click(cx.listener(|this, _, window, cx| this.new_conversation(window, cx))),
             )
     }
@@ -91,10 +93,11 @@ impl ChatView {
         let name = self.cwd.file_name().unwrap_or(self.cwd.as_os_str());
         Button::new("chat-project")
             .ghost()
-            .small()
+            .control_labelled(
+                gpui_kit::assets::IconName::FolderOpen,
+                name.to_string_lossy().into_owned(),
+            )
             .flex_none()
-            .icon(gpui_kit::assets::IconName::FolderOpen)
-            .label(name.to_string_lossy().into_owned())
             .tooltip(self.cwd.display().to_string())
             .on_click(cx.listener(|_, _, _, cx| cx.emit(super::ChatEvent::PickProject)))
     }
@@ -120,7 +123,8 @@ fn usage_meter(
     };
     let trigger = Button::new("chat-usage")
         .ghost()
-        .xsmall()
+        .control()
+        .px_1p5()
         .label(label)
         .text_color(color)
         .tooltip("Plan usage");
@@ -140,7 +144,7 @@ fn usage_panel(
     cx: &gpui_kit::App,
 ) -> impl IntoElement + use<> {
     let now = SystemTime::now();
-    let updated = updated.map(|at| format!("Updated {}", reset_label(at, now)));
+    let updated = updated.map(|at| format!("Updated {}", clock::reset_label(at, now)));
     v_flex()
         .id("chat-usage-panel")
         .test_support()
@@ -166,7 +170,7 @@ fn usage_panel(
             div()
                 .id("chat-usage-updated")
                 .test_support()
-                .text_xs()
+                .text_caption()
                 .text_color(cx.theme().muted_foreground)
                 .child(text)
         }))
@@ -182,7 +186,7 @@ fn usage_row(
     let color = level_color(window.percent, cx);
     let resets = window
         .resets_at
-        .map(|at| format!("Resets {}", reset_label(at, now)));
+        .map(|at| format!("Resets {}", clock::reset_label(at, now)));
     v_flex()
         .gap_1()
         .text_sm()
@@ -209,7 +213,7 @@ fn usage_row(
         )
         .children(resets.map(|text| {
             div()
-                .text_xs()
+                .text_caption()
                 .text_color(theme.muted_foreground)
                 .child(text)
         }))
@@ -220,35 +224,5 @@ fn level_color(percent: u8, cx: &gpui_kit::App) -> Hsla {
         0..80 => cx.theme().muted_foreground,
         80..100 => cx.theme().warning,
         _ => cx.theme().danger,
-    }
-}
-
-/// "15:00" today, "Mon 11:00" on another day, in local time.
-pub(super) fn reset_label(at: SystemTime, now: SystemTime) -> String {
-    let local = |time: SystemTime| {
-        jiff::Timestamp::try_from(time)
-            .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
-            .to_zoned(jiff::tz::TimeZone::system())
-    };
-    let (at, now) = (local(at), local(now));
-    if at.date() == now.date() {
-        at.strftime("%H:%M").to_string()
-    } else {
-        at.strftime("%a %H:%M").to_string()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::*;
-
-    #[test]
-    fn a_reset_on_another_day_names_the_day() {
-        let now = SystemTime::now();
-        assert_eq!(reset_label(now, now).len(), "15:00".len());
-        let next_week = now + Duration::from_hours(72);
-        assert!(reset_label(next_week, now).contains(' '));
     }
 }

@@ -9,7 +9,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Div, Entity, FontWeight, Hsla, SharedString, TestSupportExt, WeakEntity,
     component::{
-        ActiveTheme, Icon, IconName, Sizable, h_flex,
+        ActiveTheme, Icon, IconName, h_flex,
         text::{TextView, TextViewState},
         tooltip::Tooltip,
         v_flex,
@@ -22,7 +22,9 @@ use crate::{
     chat_view::ChatView,
     code_block::{self, CodeLine, LineKind},
     literal::literal_markdown,
-    pictures, spinner, subagent_view,
+    pictures,
+    scale::{ScaledIcon as _, ScaledText as _},
+    spinner, subagent_view,
     tool_format::{self, EditDiff},
     transcript::{Entry, EntryId, ToolResult},
 };
@@ -118,7 +120,7 @@ fn show_more(lines: usize, context: &EntryContext, cx: &App) -> impl IntoElement
         .test_support()
         .aria_label(SharedString::from(label.clone()))
         .pt_1()
-        .text_xs()
+        .text_caption()
         .text_color(cx.theme().muted_foreground)
         .cursor_pointer()
         .child(label)
@@ -313,7 +315,7 @@ fn attached_file(path: &Path, cx: &App) -> impl IntoElement + use<> {
         .gap_1()
         .text_sm()
         .text_color(cx.theme().muted_foreground)
-        .child(Icon::new(IconName::File).small())
+        .child(Icon::new(IconName::File).in_row())
         .child(name)
 }
 

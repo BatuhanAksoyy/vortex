@@ -23,7 +23,10 @@ use super::{
     detail,
     rows::{self, Order, Row, Sort, cpu, memory},
 };
-use crate::ChatView;
+use crate::{
+    ChatView,
+    scale::{ScaledButton as _, ScaledText as _},
+};
 
 const INDENT_REMS: f32 = 1.0;
 const SEARCH_REMS: f32 = 16.0;
@@ -183,7 +186,7 @@ impl ProcessesDialog {
                             .id("processes-summary")
                             .test_support()
                             .aria_label(SharedString::from(summary.clone()))
-                            .text_xs()
+                            .text_caption()
                             .text_color(theme.muted_foreground)
                             .child(summary),
                     ),
@@ -198,8 +201,7 @@ impl ProcessesDialog {
             .child(
                 Button::new("processes-close")
                     .ghost()
-                    .xsmall()
-                    .icon(IconName::Close)
+                    .row_icon(IconName::Close)
                     .tooltip("Close")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(ProcessesDialogEvent::Close))),
             )

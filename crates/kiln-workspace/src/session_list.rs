@@ -14,6 +14,7 @@ use gpui_kit::{
     div,
 };
 use kiln_agent::{PastSession, Pending};
+use kiln_chat::scale::ScaledText as _;
 
 pub enum SessionListEvent {
     /// A listing finished, or failed.
@@ -109,7 +110,7 @@ pub fn stamp(
     h_flex()
         .flex_none()
         .gap_1()
-        .text_xs()
+        .text_caption()
         .text_color(theme.muted_foreground)
         .when(running, |this| {
             this.child(
@@ -147,7 +148,7 @@ pub fn heading(text: &'static str, cx: &App) -> impl IntoElement + use<> {
         .px_2()
         .pt_3()
         .pb_1()
-        .text_xs()
+        .text_caption()
         .font_weight(FontWeight::MEDIUM)
         .text_color(cx.theme().muted_foreground)
         .child(text)

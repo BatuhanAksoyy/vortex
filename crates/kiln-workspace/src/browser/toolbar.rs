@@ -13,6 +13,7 @@ use gpui_kit::{
     },
     div, px,
 };
+use kiln_chat::scale::{BAR_HEIGHT, ScaledButton as _};
 
 use super::{Browser, BrowserEvent, Device};
 
@@ -27,7 +28,7 @@ impl Browser {
             .justify_end()
             .gap_1()
             .px_2()
-            .py_1()
+            .min_h(BAR_HEIGHT)
             .border_b_1()
             .border_color(cx.theme().border)
             .child(
@@ -35,7 +36,7 @@ impl Browser {
                     div()
                         .flex_1()
                         .min_w(px(MIN_ADDRESS))
-                        .child(Input::new(&self.address).small()),
+                        .child(Input::new(&self.address).small().h_7()),
                 ),
             )
             .child(self.tools(cx))
@@ -123,6 +124,6 @@ impl Browser {
 }
 
 fn button(id: &'static str, icon: impl Into<Icon>, tooltip: &'static str) -> Button {
-    let button = Button::new(id).ghost().small();
-    button.icon(icon).tooltip(tooltip)
+    let button = Button::new(id).ghost();
+    button.control_icon(icon).tooltip(tooltip)
 }

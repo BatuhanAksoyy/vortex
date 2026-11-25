@@ -15,6 +15,7 @@ use gpui_kit::{
     },
     px,
 };
+use kiln_chat::scale::ScaledButton as _;
 
 use super::Browser;
 
@@ -63,12 +64,11 @@ impl Browser {
         };
         Button::new("browser-console")
             .ghost()
-            .small()
-            .icon(Lucide::Terminal)
+            .control_icon(Lucide::Terminal)
             .tooltip(tooltip)
             .selected(self.tools.open)
             .when(errors > 0, |button| {
-                button.label(SharedString::from(errors.to_string()))
+                button.child(SharedString::from(errors.to_string()))
             })
             .when(errors > 0, |button| button.text_color(cx.theme().danger))
             .on_click(cx.listener(|this, _, _, cx| {
@@ -154,8 +154,7 @@ impl Browser {
 fn close_button(cx: &Context<Browser>) -> impl IntoElement + use<> {
     Button::new("browser-tools-close")
         .ghost()
-        .xsmall()
-        .icon(IconName::Close)
+        .row_icon(IconName::Close)
         .tooltip("Close Developer Tools")
         .on_click(cx.listener(|this, _, _, cx| this.set_tools_open(false, cx)))
 }

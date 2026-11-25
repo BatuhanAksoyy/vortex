@@ -16,7 +16,7 @@ use gpui_kit::{
     Subscription, TestSupportExt, Window,
     assets::IconName as Lucide,
     component::{
-        ActiveTheme, Sizable as _, Size,
+        ActiveTheme,
         button::{Button, ButtonVariants as _},
         h_flex,
         resizable::{h_resizable, resizable_panel},
@@ -25,13 +25,12 @@ use gpui_kit::{
     },
     div,
 };
+use kiln_chat::scale::ScaledButton as _;
 use kiln_project::TreeNode;
 
 use crate::{editor_pane::EditorPane, repo_status::RepoStatus};
 
 const TREE_WIDTH_REMS: f32 = 15.0;
-/// The header's buttons, in text sizes.
-const ACTION_SIZE: f32 = 1.85;
 
 /// The project's files need listing again.
 pub struct FilesChanged;
@@ -184,10 +183,9 @@ impl FilesPage {
 
     fn header(&self, cx: &Context<Self>) -> impl IntoElement {
         let name = self.root.file_name().unwrap_or(self.root.as_os_str());
-        let size = Size::Size(cx.theme().font_size * ACTION_SIZE);
         let button = |id, icon, tooltip| {
-            let button = Button::new(id).ghost().with_size(size);
-            button.icon(icon).tooltip(tooltip)
+            let button = Button::new(id).ghost();
+            button.control_icon(icon).tooltip(tooltip)
         };
         h_flex()
             .id("files-header")

@@ -7,7 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, App, Context, Hsla, SharedString, TestSupportExt, WeakEntity,
     component::{
-        ActiveTheme, Disableable, Icon, Sizable,
+        ActiveTheme, Disableable, Icon,
         button::{Button, ButtonVariants},
         h_flex,
         popover::Popover,
@@ -22,7 +22,10 @@ use super::{
     ChatView, StripPanel,
     hook_form::{self, FormShown},
 };
-use crate::hook_list::scope_label;
+use crate::{
+    hook_list::scope_label,
+    scale::{ScaledButton as _, ScaledText as _},
+};
 
 const PANEL_WIDTH: f32 = 320.;
 const LIST_MAX_HEIGHT: f32 = 360.;
@@ -58,8 +61,7 @@ impl ChatView {
         };
         let trigger = Button::new("chat-hooks")
             .ghost()
-            .small()
-            .icon(Icon::new(gpui_kit::assets::IconName::FishingHook))
+            .control_icon(Icon::new(gpui_kit::assets::IconName::FishingHook))
             .tooltip("Hooks");
         let opener = view.clone();
         Popover::new("chat-hooks-popover")
@@ -153,9 +155,7 @@ fn header(
             this.child(
                 Button::new("hook-add")
                     .ghost()
-                    .xsmall()
-                    .icon(Icon::new(gpui_kit::assets::IconName::Plus))
-                    .label("Add")
+                    .row_labelled(Icon::new(gpui_kit::assets::IconName::Plus), "Add")
                     .disabled(shown.busy)
                     .on_click(move |_, window, cx| {
                         let _ = view.update(cx, |view, cx| view.open_hook_form(window, cx));
@@ -163,7 +163,12 @@ fn header(
             )
         })
         .when(!can_add && shown.form.is_none() && count > 0, |this| {
-            this.child(div().text_xs().text_color(muted).child(count.to_string()))
+            this.child(
+                div()
+                    .text_caption()
+                    .text_color(muted)
+                    .child(count.to_string()),
+            )
         })
 }
 
@@ -199,7 +204,7 @@ fn message(id: &'static str, text: &str, color: Hsla) -> impl IntoElement + use<
         .id(id)
         .test_support()
         .aria_label(SharedString::from(text.to_owned()))
-        .text_xs()
+        .text_caption()
         .text_color(color)
         .child(text.to_owned())
 }
@@ -225,7 +230,7 @@ fn group(
                 .test_support()
                 .aria_label(label.clone())
                 .pt_1()
-                .text_xs()
+                .text_caption()
                 .text_color(cx.theme().muted_foreground)
                 .child(label)
                 .when_some(summary, |this, summary| {
@@ -258,7 +263,7 @@ fn hook_row(
                 .child(
                     div()
                         .truncate()
-                        .text_xs()
+                        .text_caption()
                         .font_family(theme.mono_font_family.clone())
                         .when(hook.disabled, |this| {
                             this.text_color(theme.muted_foreground)
@@ -271,7 +276,7 @@ fn hook_row(
                         .test_support()
                         .aria_label(SharedString::from(detail.clone()))
                         .truncate()
-                        .text_xs()
+                        .text_caption()
                         .text_color(theme.muted_foreground)
                         .child(detail),
                 ),
@@ -315,8 +320,7 @@ fn row_actions(
             this.child(
                 Button::new(SharedString::from(format!("hook-edit-{key}")))
                     .ghost()
-                    .xsmall()
-                    .icon(Icon::new(gpui_kit::assets::IconName::Pencil))
+                    .row_icon(Icon::new(gpui_kit::assets::IconName::Pencil))
                     .tooltip("Edit hook")
                     .disabled(busy)
                     .on_click(move |_, window, cx| {
@@ -328,8 +332,7 @@ fn row_actions(
         .child(
             Button::new(SharedString::from(format!("hook-remove-{key}")))
                 .ghost()
-                .xsmall()
-                .icon(Icon::new(gpui_kit::assets::IconName::Trash))
+                .row_icon(Icon::new(gpui_kit::assets::IconName::Trash))
                 .tooltip("Remove hook")
                 .disabled(busy)
                 .on_click(move |_, _, cx| {

@@ -125,6 +125,8 @@ impl ChatView {
         self.transcript = Transcript::default();
         self.toggled.clear();
         self.agent.reset_context();
+        self.drop_suggestion(window, cx);
+        self.recap = super::recap::RecapWatch::default();
         self.scroller
             .update(cx, |scroller, cx| scroller.reset(1, cx));
         let load = self.backend.past_messages(&self.cwd, id);

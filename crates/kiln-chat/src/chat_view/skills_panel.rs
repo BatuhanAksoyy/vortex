@@ -19,7 +19,10 @@ use gpui_kit::{
 use kiln_agent::{Skill, SkillLock, SkillState};
 
 use super::{ChatView, StripPanel, composer::option_row};
-use crate::agent_state::tokens;
+use crate::{
+    agent_state::tokens,
+    scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
+};
 
 const PANEL_WIDTH: f32 = 320.;
 const LIST_MAX_HEIGHT: f32 = 360.;
@@ -51,8 +54,7 @@ impl ChatView {
         };
         let trigger = Button::new("chat-skills")
             .ghost()
-            .small()
-            .icon(Icon::new(gpui_kit::assets::IconName::Puzzle))
+            .control_icon(Icon::new(gpui_kit::assets::IconName::Puzzle))
             .tooltip("Skills");
         let opener = view.clone();
         Popover::new("chat-skills-popover")
@@ -85,7 +87,12 @@ fn panel(shown: &Shown, view: &WeakEntity<ChatView>, cx: &App) -> impl IntoEleme
                 .justify_between()
                 .child("Skills")
                 .when(count > 0, |this| {
-                    this.child(div().text_xs().text_color(muted).child(count.to_string()))
+                    this.child(
+                        div()
+                            .text_caption()
+                            .text_color(muted)
+                            .child(count.to_string()),
+                    )
                 }),
         )
         .children(
@@ -122,7 +129,7 @@ fn message(id: &'static str, text: &str, color: Hsla) -> impl IntoElement + use<
         .id(id)
         .test_support()
         .aria_label(SharedString::from(text.to_owned()))
-        .text_xs()
+        .text_caption()
         .text_color(color)
         .child(text.to_owned())
 }
@@ -143,7 +150,7 @@ fn source_group(
                 .aria_label(SharedString::from(source_label(source)))
                 .px_1()
                 .pt_1()
-                .text_xs()
+                .text_caption()
                 .text_color(cx.theme().muted_foreground)
                 .child(source_label(source)),
         )
@@ -187,7 +194,7 @@ fn skill_row(
                 .child(
                     div()
                         .truncate()
-                        .text_xs()
+                        .text_caption()
                         .text_color(theme.muted_foreground)
                         .child(detail),
                 ),
@@ -209,9 +216,9 @@ fn state_control(
             .flex_none()
             .gap_1()
             .px_1()
-            .text_xs()
+            .text_caption()
             .text_color(muted)
-            .child(Icon::new(gpui_kit::assets::IconName::Lock).xsmall())
+            .child(Icon::new(gpui_kit::assets::IconName::Lock).in_row())
             .child(state_label(skill.state))
             .tooltip(move |window, cx| Tooltip::new(lock_reason(lock)).build(window, cx))
             .into_any_element();
@@ -220,7 +227,7 @@ fn state_control(
     let (name, current, view) = (skill.name.clone(), skill.state, view.clone());
     Button::new(SharedString::from(format!("skill-state-{}", skill.name)))
         .ghost()
-        .xsmall()
+        .small()
         .flex_none()
         .label(if this_saving {
             "Saving…"

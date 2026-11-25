@@ -36,6 +36,7 @@ enum Stored {
     Attachment {
         attachment: Attachment,
     },
+    System(super::notes::Note),
     #[serde(other)]
     Other,
 }
@@ -111,10 +112,15 @@ pub fn messages(text: &str) -> Vec<PastMessage> {
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect();
-    conversation(&lines)
-        .into_iter()
-        .filter_map(|line| Stored::deserialize(line).ok())
-        .flat_map(shown)
+    let chain = conversation(&lines);
+    let before = std::iter::once(None).chain(chain.iter().copied().map(Some));
+    before
+        .zip(&chain)
+        .flat_map(|(before, &line)| match Stored::deserialize(line) {
+            Ok(Stored::System(note)) => note.shown(before).into_iter().collect(),
+            Ok(stored) => shown(stored),
+            Err(_) => Vec::new(),
+        })
         .collect()
 }
 
@@ -149,7 +155,7 @@ fn conversation(lines: &[Value]) -> Vec<&Value> {
         .iter()
         .filter_map(|line| Some((field(line, "uuid")?, line)))
         .collect();
-    let mut next = lines.iter().rev().find(|line| is_main_message(line));
+    let mut next = lines.iter().rev().find(|line| ends_chain(line));
     let mut seen = HashSet::new();
     let mut chain = Vec::new();
     while let Some(line) = next.filter(|line| seen.insert(field(line, "uuid"))) {
@@ -159,6 +165,11 @@ fn conversation(lines: &[Value]) -> Vec<&Value> {
     }
     chain.reverse();
     chain
+}
+
+/// A message, or a note the CLI adds after the last one.
+fn ends_chain(line: &Value) -> bool {
+    is_main_message(line) || super::notes::is_note(line)
 }
 
 fn is_main_message(line: &Value) -> bool {
@@ -185,7 +196,9 @@ fn shown(line: Stored) -> Vec<PastMessage> {
             .and_then(super::subagents::report)
             .into_iter()
             .collect(),
-        Stored::User { .. } | Stored::Attachment { .. } | Stored::Other => Vec::new(),
+        Stored::User { .. } | Stored::Attachment { .. } | Stored::System(_) | Stored::Other => {
+            Vec::new()
+        }
     }
 }
 
@@ -252,6 +265,10 @@ fn typed(text: &str) -> Option<PastMessage> {
         return super::subagents::report(text);
     }
     if let Some(name) = tagged(text, "command-name") {
+        // What it wrote is shown instead.
+        if name == super::notes::RECAP {
+            return None;
+        }
         let command = match tagged(text, "command-args").filter(|args| !args.is_empty()) {
             Some(args) => format!("{name} {args}"),
             None => name.to_owned(),

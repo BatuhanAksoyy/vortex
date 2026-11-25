@@ -14,6 +14,7 @@ use gpui_kit::{
     div, px,
 };
 use kiln_browser::{Dialog, DialogKind};
+use kiln_chat::scale::ScaledButton as _;
 
 use super::Browser;
 
@@ -204,13 +205,13 @@ impl OpenDialog {
         };
         let refuse = no.map(|label| {
             Button::new("browser-dialog-no")
-                .small()
+                .control()
                 .label(label)
                 .on_click(cx.listener(|this, _, window, cx| this.answer(false, window, cx)))
         });
         let accept = Button::new("browser-dialog-yes")
             .primary()
-            .small()
+            .control()
             .label(yes)
             .on_click(cx.listener(|this, _, window, cx| this.answer(true, window, cx)));
         h_flex()

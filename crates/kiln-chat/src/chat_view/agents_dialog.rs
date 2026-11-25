@@ -25,6 +25,7 @@ use super::ChatView;
 use crate::{
     agent_state::tokens,
     literal::literal_markdown,
+    scale::{ScaledButton as _, ScaledText as _},
     subagent_view,
     transcript::{Card, EntryId},
 };
@@ -97,8 +98,7 @@ impl Render for AgentsDialog {
                 div().absolute().top_2().right_2().child(
                     Button::new("chat-agents-close")
                         .ghost()
-                        .xsmall()
-                        .icon(IconName::Close)
+                        .row_icon(IconName::Close)
                         .tooltip("Close")
                         .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
                 ),
@@ -141,7 +141,7 @@ fn list(rows: Vec<AnyElement>, total: usize, cx: &Context<AgentsDialog>) -> impl
             div()
                 .px_1p5()
                 .pb_1()
-                .text_xs()
+                .text_caption()
                 .text_color(theme.muted_foreground)
                 .child(format!("Subagents · {total}")),
         )
@@ -176,7 +176,7 @@ fn list_row(card: &Card, selected: Option<EntryId>, cx: &Context<AgentsDialog>) 
                 .child(div().truncate().child(agent.description.clone()))
                 .child(
                     div()
-                        .text_xs()
+                        .text_caption()
                         .truncate()
                         .text_color(theme.muted_foreground)
                         .child(subagent_view::status(agent)),
@@ -217,7 +217,7 @@ fn detail(
         .child(
             Button::new("chat-agent-reveal")
                 .ghost()
-                .xsmall()
+                .small()
                 .label("Show in chat")
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.show_in_chat(id, window, cx);
@@ -316,7 +316,7 @@ fn report(card: Card, cx: &App) -> Option<impl IntoElement> {
             .border_color(theme.border)
             .child(
                 div()
-                    .text_xs()
+                    .text_caption()
                     .text_color(theme.muted_foreground)
                     .child(if failed { "Why it ended" } else { "Report" }),
             )

@@ -5,14 +5,14 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Context, Focusable as _, Window,
     component::{
-        ActiveTheme, Sizable,
+        ActiveTheme,
         button::{Button, ButtonVariants},
     },
     div,
 };
 
 use super::{ChatView, agents_dialog::AgentsDialog};
-use crate::transcript::EntryId;
+use crate::{scale::ScaledButton as _, transcript::EntryId};
 
 impl ChatView {
     /// `None` until the conversation starts a subagent.
@@ -29,7 +29,8 @@ impl ChatView {
         Some(
             Button::new("chat-agents")
                 .ghost()
-                .small()
+                .control()
+                .px_1p5()
                 .label(button_label(running, total))
                 .text_color(if running > 0 {
                     crate::spinner::accent()

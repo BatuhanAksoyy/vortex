@@ -5,7 +5,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, Context, ScrollHandle, SharedString, Window,
-    component::{ActiveTheme, Icon, IconName, Sizable, v_flex},
+    component::{ActiveTheme, Icon, IconName, v_flex},
     div,
 };
 use kiln_agent::{ModelOption, SessionCommand};
@@ -14,7 +14,10 @@ use super::{
     ChatView, StripPanel,
     slash_menu::{menu_row, menu_surface, wrap},
 };
-use crate::slash::NativeCommand;
+use crate::{
+    scale::{ScaledIcon as _, ScaledText as _},
+    slash::NativeCommand,
+};
 
 /// The model picker's chosen row.
 #[derive(Default)]
@@ -158,7 +161,7 @@ impl ChatView {
         let title = div()
             .px_2()
             .py_1()
-            .text_xs()
+            .text_caption()
             .text_color(cx.theme().muted_foreground)
             .child("Switch model");
         Some(
@@ -185,14 +188,14 @@ impl ChatView {
                     this.child(
                         div()
                             .truncate()
-                            .text_xs()
+                            .text_caption()
                             .text_color(muted)
                             .child(option.description.clone()),
                     )
                 },
             ))
             .when(checked, |this| {
-                this.child(Icon::new(IconName::Check).small())
+                this.child(Icon::new(IconName::Check).in_row())
             })
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.model_picker = None;

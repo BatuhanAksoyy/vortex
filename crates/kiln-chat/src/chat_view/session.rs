@@ -270,6 +270,7 @@ impl ChatView {
         self.update_hooks(&event, cx);
         let exited = matches!(event, AgentEvent::Exited { .. });
         let turn_ended = matches!(event, AgentEvent::TurnEnded(_));
+        let turn_ran = self.status() == crate::transcript::Status::Running;
         self.update_suggestion(&event, window, cx);
         if event == AgentEvent::ConversationReset {
             self.toggled.clear();
@@ -282,6 +283,7 @@ impl ChatView {
         }
         self.sync_prompt(window, cx);
         if turn_ended {
+            self.recap_due(turn_ran, window, cx);
             self.adopt_added_account(window, cx);
         }
     }

@@ -8,14 +8,14 @@ use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString, Subscription,
     TestSupportExt as _, Window,
     component::{
-        ActiveTheme, Icon, Sizable as _,
+        ActiveTheme, Icon,
         button::{Button, ButtonVariants as _},
         dock::{BasePanel, Panel, PanelEvent},
         h_flex, v_flex,
     },
     div,
 };
-use kiln_chat::{ChatEvent, ChatView, Status};
+use kiln_chat::{ChatEvent, ChatView, Status, scale::ScaledButton as _};
 
 use crate::{
     conversation_picker::{ConversationPicker, ConversationPickerEvent},
@@ -215,18 +215,16 @@ impl Panel for ChatPanel {
                 .child(
                     Button::new("chat-new-tab")
                         .ghost()
-                        .small()
+                        .control_icon(Icon::new(gpui_kit::assets::IconName::Plus))
                         .tab_stop(false)
-                        .icon(Icon::new(gpui_kit::assets::IconName::Plus))
                         .tooltip("New session")
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::NewTab))),
                 )
                 .child(
                     Button::new("chat-split-right")
                         .ghost()
-                        .small()
+                        .control_icon(Icon::new(gpui_kit::assets::IconName::Columns2))
                         .tab_stop(false)
-                        .icon(Icon::new(gpui_kit::assets::IconName::Columns2))
                         .tooltip("Split right")
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::SplitRight))),
                 ),

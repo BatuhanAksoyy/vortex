@@ -17,6 +17,7 @@ use gpui_kit::{
     div, px,
 };
 use kiln_browser::{Device, DeviceRequest, NativeCall};
+use kiln_chat::scale::{ScaledButton as _, ScaledIcon as _};
 use kiln_devices::{Found, Kind};
 
 use super::{Browser, site_permissions::host};
@@ -306,7 +307,7 @@ impl Browser {
                 .py_2()
                 .text_sm()
                 .text_color(theme.muted_foreground)
-                .child(Spinner::new().xsmall())
+                .child(Spinner::new().small())
                 .child("Looking for Bluetooth devices…")
                 .into_any_element();
         }
@@ -345,7 +346,7 @@ impl Browser {
             .on_click(cx.listener(move |this, click, window, cx| {
                 this.choose_device(id.clone(), click, window, cx);
             }))
-            .child(Icon::new(icon).small().text_color(theme.muted_foreground))
+            .child(Icon::new(icon).in_row().text_color(theme.muted_foreground))
             .child(div().min_w_0().truncate().child(name))
             .into_any_element()
     }
@@ -353,24 +354,20 @@ impl Browser {
 
 fn device_buttons(open: &DevicePrompt, cx: &Context<Browser>) -> impl IntoElement + use<> {
     let chosen = open.chosen.is_some();
-    let verb = if open.native.is_some() {
-        "Connect"
-    } else {
-        "Pair"
-    };
+    let verb = open.native.as_ref().map_or("Pair", |_| "Connect");
     h_flex()
         .justify_end()
         .gap_2()
         .child(
             Button::new("browser-device-cancel")
-                .small()
+                .control()
                 .label("Cancel")
                 .on_click(cx.listener(|this, _, window, cx| this.answer_device(false, window, cx))),
         )
         .child(
             Button::new("browser-device-pair")
                 .primary()
-                .small()
+                .control()
                 .label(verb)
                 .disabled(!chosen)
                 .on_click(cx.listener(|this, _, window, cx| this.answer_device(true, window, cx))),

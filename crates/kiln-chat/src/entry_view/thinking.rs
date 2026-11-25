@@ -6,6 +6,8 @@ use std::time::Duration;
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, TestSupportExt, component::ActiveTheme, div};
 
+use crate::clock;
+
 use super::{EntryContext, timeline_row, toggle};
 
 pub(super) fn render(
@@ -44,21 +46,12 @@ pub(super) fn render(
 fn label(tokens: u64, took: Option<Duration>) -> String {
     let time = took.map_or_else(
         || "Thinking".to_owned(),
-        |took| format!("Thought for {}", seconds(took)),
+        |took| format!("Thought for {}", clock::took(took)),
     );
     if tokens == 0 {
         return time;
     }
     format!("{time} · ~{tokens} tokens")
-}
-
-fn seconds(took: Duration) -> String {
-    let secs = took.as_secs();
-    match secs {
-        0..10 => format!("{:.1}s", took.as_secs_f64()),
-        10..60 => format!("{secs}s"),
-        _ => format!("{}m {}s", secs / 60, secs % 60),
-    }
 }
 
 #[cfg(test)]

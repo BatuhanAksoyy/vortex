@@ -16,6 +16,7 @@ use gpui_kit::{
     div, px,
 };
 use kiln_browser::{DownloadProgress, DownloadState};
+use kiln_chat::scale::{ScaledButton as _, ScaledIcon as _};
 
 use super::Browser;
 
@@ -156,7 +157,7 @@ fn render_download(download: &Download, cx: &Context<Browser>) -> AnyElement {
         .text_sm()
         .child(
             Icon::new(Lucide::Download)
-                .xsmall()
+                .in_row()
                 .text_color(theme.muted_foreground),
         )
         .child(
@@ -170,8 +171,7 @@ fn render_download(download: &Download, cx: &Context<Browser>) -> AnyElement {
         .child(
             Button::new(id("forget"))
                 .ghost()
-                .xsmall()
-                .icon(IconName::Close)
+                .row_icon(IconName::Close)
                 .tooltip(tooltip)
                 .on_click(cx.listener(move |this, _, _, cx| this.forget_download(&forget, cx))),
         )
@@ -196,7 +196,7 @@ fn reveal(id: SharedString, path: &Path) -> AnyElement {
     };
     Button::new(id)
         .ghost()
-        .xsmall()
+        .small()
         .label(label)
         .on_click(move |_, _, cx| cx.reveal_path(&path))
         .into_any_element()

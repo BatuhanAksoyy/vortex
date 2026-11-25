@@ -4,6 +4,7 @@
 
 mod cache;
 mod messages;
+mod notes;
 mod running;
 mod subagents;
 

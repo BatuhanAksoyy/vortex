@@ -4,7 +4,7 @@
 usage: capture.py <case> <out.jsonl>
   case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
-        | running | attach | followup | models | suggestion | thinking
+        | running | attach | followup | models | suggestion | thinking | recap
 
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
@@ -70,6 +70,9 @@ cache, as a session's first turn does.
 "thinking" runs one turn that needs some reasoning, with thinking summaries
 asked for (`--thinking-display summarized`), to record how a summary, its
 token estimates and the turn's thinking tokens arrive.
+"recap" runs one tiny turn, then the `/recap` command, whose output is a
+summary of the conversation the model writes. It keeps its session and
+copies it beside the output as `<out>-session.jsonl`.
 "running" sends no prompt, so it spends no usage: it starts a process and
 copies the record the CLI keeps of it under `<config>/sessions/` while it
 runs, which tells other clients the conversation is open.
@@ -96,6 +99,7 @@ PROMPTS = {
     "subagent": "Use the Agent tool once, with subagent_type general-purpose, description 'Read the note' and the prompt 'Read the file note.txt with the Read tool and reply with its first word only.' Then reply with only the word the agent reported.",
     "suggestion": "Write a Python function that returns the sum of a list of numbers. Reply with only the code.",
     "thinking": "Think step by step: how many times does the letter r appear in 'strawberry raspberry'? Reply with only the number.",
+    "recap": "Write a haiku about rust. Reply with only the haiku.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -246,7 +250,7 @@ if case == "running":
     sys.exit(0)
 resumed = first_session() if case == "resume" else None
 proc = subprocess.Popen(
-    BASE + ([] if case == "followup" else ["--no-session-persistence"])
+    BASE + ([] if case in ("followup", "recap") else ["--no-session-persistence"])
     + (["--permission-mode", "plan"] if case == "plan" else [])
     + (["--forward-subagent-text"] if case in ("subagent", "followup") else [])
     + (["--prompt-suggestions"] if case == "suggestion" else [])
@@ -451,6 +455,11 @@ for line in proc.stdout:
             send({"type": "user", "message": {"role": "user", "content": FOLLOWUP},
                   "parent_tool_use_id": None, "session_id": ""})
             continue
+    if kind == "result" and case == "recap" and not interrupted:
+        interrupted = True
+        send({"type": "user", "message": {"role": "user", "content": "/recap"},
+              "parent_tool_use_id": None, "session_id": ""})
+        continue
     # The prediction comes after the turn's result.
     if kind == "result" and case == "suggestion" and not interrupted:
         interrupted = True
@@ -499,6 +508,6 @@ def copy_session():
     print(f"no session file for {session_id}")
 
 
-if case == "followup":
+if case in ("followup", "recap"):
     copy_session()
 print(case, "exit", proc.returncode, "lines", sum(1 for _ in open(out_path)))

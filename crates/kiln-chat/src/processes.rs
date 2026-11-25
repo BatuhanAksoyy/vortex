@@ -21,7 +21,7 @@ use gpui_kit::{
 };
 use kiln_services::ProcessInfo;
 
-use crate::ChatView;
+use crate::{ChatView, scale::ScaledText as _};
 pub use dialog::{ProcessesDialog, ProcessesDialogEvent};
 use rows::{cpu, memory};
 
@@ -155,8 +155,10 @@ impl Render for ProcessMeter {
         };
         Button::new(id)
             .ghost()
-            .xsmall()
-            .label(label)
+            .small()
+            .px_1p5()
+            .accessibility_label(label.clone())
+            .child(div().text_caption().child(label))
             .text_color(cx.theme().muted_foreground)
             .tooltip(tooltip)
             .on_click(cx.listener(|_, _, _, cx| cx.emit(ProcessMeterEvent::Open)))

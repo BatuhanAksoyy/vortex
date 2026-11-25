@@ -6,12 +6,12 @@ use gpui_kit::{
     assets::IconName as Lucide,
     base::Selectable as _,
     component::{
-        Sizable as _,
         button::{Button, ButtonVariants as _},
         resizable::{ResizableState, h_resizable, resizable_panel},
     },
     px,
 };
+use kiln_chat::scale::ScaledButton as _;
 
 use super::{
     Workspace, chats,
@@ -149,8 +149,7 @@ impl Workspace {
         let open = self.side_panel.browser_open;
         let toggle = Button::new("toggle-browser")
             .ghost()
-            .small()
-            .icon(Lucide::Globe)
+            .control_icon(Lucide::Globe)
             .selected(open)
             .tooltip(if open { "Hide Browser" } else { "Show Browser" })
             .on_click(cx.listener(|this, _, window, cx| this.toggle_browser(window, cx)));
