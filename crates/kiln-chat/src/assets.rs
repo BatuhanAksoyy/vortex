@@ -11,6 +11,7 @@ gpui_kit::assets::icon_assets!(
         ArrowLeft,
         ArrowRight,
         Bluetooth,
+        Cable,
         Camera,
         Columns2,
         CopyMinus,
@@ -39,6 +40,7 @@ gpui_kit::assets::icon_assets!(
         RefreshCw,
         Smartphone,
         Terminal,
+        Usb,
         Trash
     ]
 );

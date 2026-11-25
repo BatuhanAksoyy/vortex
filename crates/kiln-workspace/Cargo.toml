@@ -17,6 +17,7 @@ kiln-agent.workspace = true
 kiln-bridge.workspace = true
 kiln-browser.workspace = true
 kiln-chat.workspace = true
+kiln-devices.workspace = true
 kiln-file-icons.workspace = true
 kiln-git.workspace = true
 kiln-keymap.workspace = true

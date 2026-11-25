@@ -20,6 +20,7 @@ impl Browser {
             | PageEvent::DialogClosed
             | PageEvent::DeviceRequest(_)
             | PageEvent::Permission(_)
+            | PageEvent::NativeCall(_)
             | PageEvent::Notification { .. } => {
                 self.on_question(event, window, cx);
             }
@@ -49,6 +50,7 @@ impl Browser {
             PageEvent::Notification { title, body } => {
                 self.show_notification(&title, &body, window, cx);
             }
+            PageEvent::NativeCall(call) => self.on_native(call, window, cx),
             _ => {}
         }
     }

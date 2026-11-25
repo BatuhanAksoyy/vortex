@@ -79,6 +79,16 @@ mod tests {
         assert!(first.is_first() && !second.is_first());
         assert_eq!(second.path(), dir.path().join("browser-2"));
         drop(first);
-        assert!(Profile::claim(&path).unwrap().is_first());
+        // A browser another test starts holds a copy of the lock between
+        // fork and exec, which keeps it a moment longer.
+        let again = (0..100).find_map(|_| {
+            let claim = Profile::claim(&path).unwrap();
+            if claim.is_first() {
+                return Some(claim);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            None
+        });
+        assert!(again.is_some());
     }
 }

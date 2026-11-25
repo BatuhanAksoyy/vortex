@@ -17,7 +17,7 @@ use crate::{
     guest,
     input::{MouseInput, Wheel},
     keys::Key,
-    permission,
+    native, permission,
     transport::Transport,
 };
 
@@ -139,6 +139,9 @@ impl Page {
         // In the page's own world: that is where it calls what needs leave.
         page.send("Runtime.addBinding", &json!({"name": permission::BINDING}));
         let script = json!({"source": permission::SOURCE});
+        page.send("Page.addScriptToEvaluateOnNewDocument", &script);
+        page.send("Runtime.addBinding", &json!({"name": native::BINDING}));
+        let script = json!({"source": native::SOURCE});
         page.send("Page.addScriptToEvaluateOnNewDocument", &script);
         // A window without focus draws no caret and hides menus on hover.
         page.send(

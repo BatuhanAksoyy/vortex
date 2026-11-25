@@ -9,6 +9,7 @@ use crate::{
     dialog::{self, Dialog},
     download::{self, DownloadProgress},
     guest::{self, MenuTarget, Select},
+    native::{self, NativeCall},
     network::{self, NetworkEvent},
     permission::{self, PermissionRequest},
 };
@@ -53,6 +54,8 @@ pub enum PageEvent {
     DeviceRequest(DeviceRequest),
     /// The page needs the user's leave to go on.
     Permission(PermissionRequest),
+    /// The page calls `WebUSB`, `WebHID` or Web Serial, and waits.
+    NativeCall(NativeCall),
     /// The page shows a notification.
     Notification {
         title: String,
@@ -88,7 +91,9 @@ pub(crate) fn parse(method: &str, params: &Value, main: &str) -> Option<PageEven
 /// What the page asks for or hands over.
 fn request(method: &str, params: &Value) -> Option<PageEvent> {
     match method {
-        "Runtime.bindingCalled" => guest::parse(params).or_else(|| permission::parse(params)),
+        "Runtime.bindingCalled" => guest::parse(params)
+            .or_else(|| permission::parse(params))
+            .or_else(|| native::parse(params)),
         "Page.javascriptDialogOpening" => Some(PageEvent::Dialog(dialog::parse(params))),
         "Page.javascriptDialogClosed" => Some(PageEvent::DialogClosed),
         "Page.fileChooserOpened" => Some(PageEvent::ChooseFiles {

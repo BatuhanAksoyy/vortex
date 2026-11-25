@@ -108,7 +108,8 @@ impl Browser {
         self.loading = false;
         self.menu = None;
         self.dialog = None;
-        self.devices = None;
+        self.drop_device_prompt();
+        self.close_devices();
         self.drop_permission_requests();
         self.picking.on = false;
         self.unpainted.clear();
@@ -159,6 +160,8 @@ impl Browser {
         self.state = State::PutAway;
         self.menu = None;
         self.dialog = None;
+        self.drop_device_prompt();
+        self.close_devices();
         self.picking.on = false;
         if let Some((old, _)) = self.picture.take() {
             cx.drop_image(old, Some(window));
@@ -170,7 +173,8 @@ impl Browser {
             PageEvent::Opened => {
                 self.menu = None;
                 // The document that asked is gone.
-                self.devices = None;
+                self.drop_device_prompt();
+                self.close_devices();
                 self.drop_permission_requests();
                 self.set_picking(false, cx);
                 if self.shown {

@@ -17,6 +17,7 @@ kiln-agent-claude = { path = "crates/kiln-agent-claude" }
 kiln-bridge = { path = "crates/kiln-bridge" }
 kiln-browser = { path = "crates/kiln-browser" }
 kiln-chat = { path = "crates/kiln-chat" }
+kiln-devices = { path = "crates/kiln-devices" }
 kiln-file-icons = { path = "crates/kiln-file-icons" }
 kiln-git = { path = "crates/kiln-git" }
 kiln-keymap = { path = "crates/kiln-keymap" }
@@ -36,11 +37,14 @@ ignore = "0.4.34"
 log = "0.4.35"
 env_logger = "0.11.11"
 futures = "0.3.34"
+hidapi = { version = "2.6.7", default-features = false, features = ["linux-native-basic-udev", "macos-shared-device", "windows-native"] }
 notify = "8.2.2"
+nusb = "0.2.9"
 nucleo-matcher = "0.3.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 serde_json_lenient = "0.2.4"
+serialport = { version = "4.10.1", default-features = false, features = ["usbportinfo-interface"] }
 similar = "2.7.0"
 sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }
 tempfile = "3"

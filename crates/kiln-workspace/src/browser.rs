@@ -8,10 +8,12 @@ mod console_panel;
 mod device_prompt;
 mod dialog;
 mod downloads;
+mod hardware;
 mod host;
 mod keyboard;
 mod live;
 mod menus;
+mod native_chooser;
 mod network_panel;
 mod page_view;
 mod permission_prompt;
@@ -90,6 +92,7 @@ pub struct Browser {
     /// The page waits on the user choosing a device.
     devices: Option<device_prompt::DevicePrompt>,
     permits: permission_prompt::Permits,
+    hardware: hardware::Hardware,
     downloads: Vec<downloads::Download>,
     console: console_panel::Console,
     tools: tools_panel::Tools,
@@ -153,6 +156,7 @@ impl Browser {
             dialog: None,
             devices: None,
             permits: permission_prompt::Permits::default(),
+            hardware: hardware::Hardware::default(),
             downloads: Vec::new(),
             console: console_panel::Console::default(),
             tools: tools_panel::Tools::default(),

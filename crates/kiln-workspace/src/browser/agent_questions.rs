@@ -1,5 +1,5 @@
 //! The agent reading and answering what the page asks the user: a dialog,
-//! the Bluetooth chooser, a permission request. An action of the agent's
+//! a device chooser, a permission request. An action of the agent's
 //! that sets one off returns once it is asked, since the page waits.
 
 use std::pin::pin;

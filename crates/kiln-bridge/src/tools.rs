@@ -38,7 +38,7 @@ pub struct Answer {
     pub accept: bool,
     /// A prompt's text.
     pub text: Option<String>,
-    /// The Bluetooth device to pair, by id or name.
+    /// The device to pair or connect to, by id or name.
     pub device: Option<String>,
 }
 
@@ -143,13 +143,13 @@ fn question_tools() -> [Value; 2] {
     [
         tool(
             "browser_questions",
-            "What the page waits on the user for: a dialog (alert, confirm, prompt, or leaving the page), the Bluetooth device chooser with the devices found so far, or a request to use the camera, microphone, location, notifications or MIDI. A call that sets one off returns as soon as it is asked.",
+            "What the page waits on the user for: a dialog (alert, confirm, prompt, or leaving the page), the chooser for a Bluetooth, USB, HID or serial device with the devices found, or a request to use the camera, microphone, location, notifications or MIDI. A call that sets one off returns as soon as it is asked.",
             &json!({}),
             &[],
         ),
         tool(
             "browser_answer",
-            "Answers a question from browser_questions for the user. `accept` false dismisses a dialog, cancels the chooser, or blocks the request. A prompt takes `text`; pairing takes `device`, an id or a name from the list. A permission answered here holds for that request only.",
+            "Answers a question from browser_questions for the user. `accept` false dismisses a dialog, cancels the chooser, or blocks the request. A prompt takes `text`; a chooser takes `device`, an id or a name from the list. A permission answered here holds for that request only.",
             &json!({
                 "question": {"type": "string", "enum": ["dialog", "device", "permission"]},
                 "accept": {"type": "boolean"},
