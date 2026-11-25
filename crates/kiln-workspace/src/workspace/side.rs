@@ -71,7 +71,6 @@ impl Workspace {
 
     fn close_side(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.side_panel.open = false;
-        self.side_maximized = false;
         self.save_side_panel(cx);
         self.focus_active_chat(window, cx);
         cx.notify();
@@ -79,9 +78,17 @@ impl Workspace {
 
     /// Focuses the chat, making room for it when the panel covers it.
     pub fn show_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.side_maximized = false;
+        self.uncover_chats();
         self.focus_active_chat(window, cx);
         cx.notify();
+    }
+
+    /// Makes room beside the panel if it fills the window. A closed one
+    /// covers nothing and reopens as it was.
+    pub(super) fn uncover_chats(&mut self) {
+        if self.side_open() {
+            self.side_maximized = false;
+        }
     }
 
     pub fn show_files(&mut self, window: &mut Window, cx: &mut Context<Self>) {

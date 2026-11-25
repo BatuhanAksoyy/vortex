@@ -111,7 +111,7 @@ impl Workspace {
         if active && !self.side_panel.browser_open {
             // So the user sees what the agent does; the keyboard stays put.
             self.side_panel.browser_open = true;
-            self.side_maximized = false;
+            self.uncover_chats();
             self.save_side_panel(cx);
             self.sync_browser(window, cx);
         }

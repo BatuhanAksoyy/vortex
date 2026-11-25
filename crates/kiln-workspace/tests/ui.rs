@@ -143,6 +143,29 @@ mod workspace {
     }
 
     #[gpui_kit::test]
+    fn a_panel_closed_while_it_fills_the_window_reopens_filling_it(cx: &mut TestAppContext) {
+        let dir = project();
+        let (window, workspace) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        let show_chat = |cx: &mut TestAppContext| {
+            cx.update_window(window, |_, window, cx| {
+                workspace.update(cx, |workspace, cx| workspace.show_chat(window, cx));
+            })
+            .expect("window");
+        };
+        click(cx, window, "activity-git");
+        click(cx, window, "side-maximize");
+        click(cx, window, "side-close");
+        assert!(has(cx, window, "chat"));
+        show_chat(cx);
+        click(cx, window, "activity-git");
+        assert!(has(cx, window, "side-panel"));
+        assert!(!has(cx, window, "chat"), "it fills the window again");
+        show_chat(cx);
+        assert!(has(cx, window, "chat"), "the open panel makes room");
+    }
+
+    #[gpui_kit::test]
     fn the_file_tree_opens_a_file(cx: &mut TestAppContext) {
         let dir = project();
         let root = std::fs::canonicalize(dir.path()).expect("canonical root");

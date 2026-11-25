@@ -66,7 +66,7 @@ pub struct Workspace {
     browsers: Vec<(EntityId, Entity<Browser>)>,
     browser_profile: Option<PathBuf>,
     agent_tools: Option<agent_tools::AgentTools>,
-    /// Whether the side panel fills the window; not kept across restarts.
+    /// Whether the side panel fills the window while open; not kept across restarts.
     side_maximized: bool,
     /// Where the side panel's state is kept.
     side_panel_file: Option<PathBuf>,
