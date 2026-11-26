@@ -93,16 +93,7 @@ impl GitPage {
                 h_flex()
                     .gap_2()
                     .child(Icon::new(Lucide::GitBranch).in_row())
-                    .child(
-                        div()
-                            .id("git-branch")
-                            .test_support()
-                            .aria_label(SharedString::from(branch.to_owned()))
-                            .min_w_0()
-                            .truncate()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(branch.to_owned()),
-                    )
+                    .child(self.render_branch_menu(branch, cx))
                     .children(status.and_then(|status| distance(status, theme)))
                     .child(div().flex_1())
                     .child(
@@ -113,6 +104,7 @@ impl GitPage {
                             .on_click(move |_, _, cx| repo.update(cx, RepoStatus::refresh)),
                     ),
             )
+            .children(self.render_new_branch(cx))
             .children(status.map(|status| totals(status, theme)))
     }
 

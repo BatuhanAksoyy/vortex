@@ -272,3 +272,25 @@ fn unstages_before_the_first_commit() {
     let status = status(dir.path()).expect("status");
     assert_eq!(status.changes[0].area, Area::Untracked);
 }
+
+#[test]
+fn creates_and_switches_branches_keeping_changes() {
+    let dir = repository();
+    let root = dir.path();
+    fs::write(root.join("kept.txt"), "edited\n").expect("write");
+    super::create_branch(root, "feature/x").expect("create");
+    let names = |root| -> Vec<(String, bool)> {
+        let branches = super::branches(root).expect("branches");
+        branches.into_iter().map(|b| (b.name, b.current)).collect()
+    };
+    assert!(names(root).contains(&("feature/x".to_owned(), true)));
+    super::switch(root, "main").expect("switch");
+    assert!(names(root).contains(&("main".to_owned(), true)));
+    assert_eq!(
+        fs::read_to_string(root.join("kept.txt")).expect("read"),
+        "edited\n"
+    );
+    assert!(super::create_branch(root, "main").is_err(), "taken");
+    assert!(super::create_branch(root, "-x").is_err());
+    assert!(super::switch(root, "nowhere").is_err());
+}

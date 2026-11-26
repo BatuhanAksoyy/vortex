@@ -53,9 +53,11 @@ pub(super) fn follow_message(
 
 /// What a write did, once it ends.
 #[derive(Clone, Copy)]
-enum Done {
+pub(super) enum Done {
     Staging,
     Committed,
+    /// A branch was created, so its name box closes.
+    Branched,
 }
 
 impl GitPage {
@@ -93,7 +95,7 @@ impl GitPage {
 
     /// Runs `act` in the repository's top folder off the main thread, one at
     /// a time, then reads the status again.
-    fn write(
+    pub(super) fn write(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -126,9 +128,12 @@ impl GitPage {
         self.write = None;
         let ok = result.is_ok();
         self.write_error = result.err().map(SharedString::from);
-        if ok && matches!(done, Done::Committed) {
-            self.message
-                .update(cx, |message, cx| message.set_value("", window, cx));
+        match done {
+            Done::Committed if ok => self
+                .message
+                .update(cx, |message, cx| message.set_value("", window, cx)),
+            Done::Branched if ok => self.new_branch = None,
+            _ => {}
         }
         self.repo.update(cx, RepoStatus::refresh);
         cx.notify();

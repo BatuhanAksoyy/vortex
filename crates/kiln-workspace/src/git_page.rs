@@ -2,6 +2,7 @@
 //! branch, what changed, the diff of the change picked, and staging and
 //! committing by hand.
 
+mod branching;
 mod changes;
 mod committing;
 mod diff_pane;
@@ -20,7 +21,7 @@ use gpui_kit::{
     },
     div,
 };
-use kiln_git::{Area, Change, Commit};
+use kiln_git::{Area, Branch, Change, Commit};
 
 use crate::repo_status::{RepoStatus, StatusRead};
 
@@ -52,6 +53,9 @@ pub struct GitPage {
     /// The staging or commit running; the others wait for it.
     write: Option<Task<()>>,
     write_error: Option<SharedString>,
+    branches: Vec<Branch>,
+    branch_load: Option<Task<()>>,
+    new_branch: Option<branching::NewBranch>,
     _subscriptions: [Subscription; 2],
 }
 
@@ -78,6 +82,9 @@ impl GitPage {
             message,
             write: None,
             write_error: None,
+            branches: Vec::new(),
+            branch_load: None,
+            new_branch: None,
             _subscriptions: [status_read, typed],
         }
     }
@@ -90,6 +97,7 @@ impl GitPage {
     /// same file in another area, as after staging it.
     fn follow(&mut self, cx: &mut Context<Self>) {
         self.read_log(cx);
+        self.read_branches(cx);
         if self.picked_commit.is_some() {
             return;
         }
