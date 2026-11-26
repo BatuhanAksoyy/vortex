@@ -273,6 +273,7 @@ impl Workspace {
             }
             ChatPanelEvent::OpenProject(folder) => return self.open_folder(folder, window, cx),
             ChatPanelEvent::BrowseProjects => return self.prompt_open_folder(window, cx),
+            ChatPanelEvent::NewWorktree => return self.new_worktree_chat(panel, window, cx),
             ChatPanelEvent::Close => return self.close_chat(panel, window, cx),
             ChatPanelEvent::Activated | ChatPanelEvent::Removed => return,
             ChatPanelEvent::NewTab => Place::Tab,

@@ -46,6 +46,7 @@ mod projects;
 mod side;
 mod switcher;
 mod tabs;
+mod worktrees;
 
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(150);
 

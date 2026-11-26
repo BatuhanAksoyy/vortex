@@ -46,6 +46,16 @@ pub fn open_workspace(
     cx: &mut TestAppContext,
     root: PathBuf,
 ) -> (WindowHandle<gpui_kit::base::Root>, Entity<Workspace>) {
+    open_workspace_keeping(cx, root, None)
+}
+
+/// A workspace in `root` that keeps its data, worktrees too, in `data`.
+pub fn open_workspace_keeping(
+    cx: &mut TestAppContext,
+    root: PathBuf,
+    data: Option<&std::path::Path>,
+) -> (WindowHandle<gpui_kit::base::Root>, Entity<Workspace>) {
+    let layout = data.map(|data| data.join("layout.json"));
     cx.update(gpui_kit::init);
     cx.update(kiln_workspace::init);
     let (window, workspace) = cx.update(|cx| {
@@ -61,7 +71,13 @@ pub fn open_workspace(
             |window, cx| {
                 let backend = std::rc::Rc::new(NoAgent);
                 let accounts = no_accounts(cx);
-                cx.new(|cx| Workspace::new(Some(root), backend, accounts, window, cx))
+                cx.new(|cx| {
+                    let workspace = Workspace::new(Some(root), backend, accounts, window, cx);
+                    match &layout {
+                        Some(layout) => workspace.keeping_data_beside(layout),
+                        None => workspace,
+                    }
+                })
             },
         )
         .expect("open test window")

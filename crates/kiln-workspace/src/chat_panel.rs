@@ -3,6 +3,7 @@
 
 mod commit;
 mod turn_commit;
+mod worktree;
 
 use std::path::PathBuf;
 
@@ -51,6 +52,9 @@ pub enum ChatPanelEvent {
     OpenProject(PathBuf),
     /// A folder that is not on the projects page is wanted.
     BrowseProjects,
+    /// The tab's "New session in a worktree" button: another chat in the
+    /// same group, on a branch and worktree of its own.
+    NewWorktree,
 }
 
 pub struct ChatPanel {
@@ -65,6 +69,7 @@ pub struct ChatPanel {
     turn: turn_commit::TurnWatch,
     /// Kiln committed for this chat, so it may push as the chat ends.
     made_commit: bool,
+    worktree: worktree::WorktreeState,
     /// Whether it is the only tab, which then offers its own close button.
     alone: bool,
     /// The dock tracks the active panel's handle on the group around it, so
@@ -99,18 +104,21 @@ impl ChatPanel {
                 this.chat.read(cx).focus_handle(cx).focus(window, cx);
             }),
         ];
-        Self {
+        let mut this = Self {
             chat,
             project,
             picker: None,
             review: None,
             turn: turn_commit::TurnWatch::default(),
             made_commit: false,
+            worktree: worktree::WorktreeState::default(),
             projects: None,
             alone: false,
             focus,
             _subscriptions: subscriptions,
-        }
+        };
+        this.read_worktree(cx);
+        this
     }
 
     pub fn set_alone(&mut self, alone: bool, cx: &mut Context<Self>) {
@@ -141,6 +149,7 @@ impl ChatPanel {
             self.project = project;
             self.chat
                 .update(cx, |chat, cx| chat.move_to(root, window, cx));
+            self.read_worktree(cx);
             cx.notify();
         }
     }
@@ -260,6 +269,14 @@ impl Panel for ChatPanel {
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::NewTab))),
                 )
                 .child(
+                    Button::new("chat-new-worktree")
+                        .ghost()
+                        .control_icon(Icon::new(gpui_kit::assets::IconName::GitBranch))
+                        .tab_stop(false)
+                        .tooltip("New session in a worktree")
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::NewWorktree))),
+                )
+                .child(
                     Button::new("chat-split-right")
                         .ghost()
                         .control_icon(Icon::new(gpui_kit::assets::IconName::Columns2))
@@ -352,7 +369,12 @@ impl Render for ChatPanel {
             .relative()
             .size_full()
             .capture_any_mouse_down(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::Activated)))
-            .child(self.chat.clone())
+            .child(
+                v_flex()
+                    .size_full()
+                    .children(self.render_worktree(cx))
+                    .child(div().flex_1().min_h_0().child(self.chat.clone())),
+            )
             .children(review)
             .children(picker)
             .children(projects)

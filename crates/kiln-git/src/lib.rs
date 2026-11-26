@@ -10,6 +10,7 @@ mod lines;
 mod log;
 mod message;
 mod status;
+mod worktree;
 mod write;
 
 use std::{
@@ -26,6 +27,7 @@ pub use lines::{LineChange, LineKind, base_text, line_changes, patch};
 pub use log::{Commit, log, show};
 pub use message::MessageRules;
 pub use status::{Area, Change, Kind, Status};
+pub use worktree::{Worktree, create_worktree, discard_worktree, merge_worktree, worktree_of};
 pub use write::{commit, commit_paths, push, stage, unstage};
 
 /// A diff the parser can read whatever the user's `diff.*` settings are.

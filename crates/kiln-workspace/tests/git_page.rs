@@ -1,4 +1,5 @@
-//! The Git page: listing changes, staging and committing, and branches.
+//! Git in the workspace: the Git page's changes, commits, branches and
+//! pushes, and chats on worktrees of their own.
 
 // Inside a `cfg(test)` module so helpers may `expect`, like unit tests.
 #[cfg(test)]
@@ -7,10 +8,10 @@ mod project;
 
 #[cfg(test)]
 mod git_page {
-    use std::time::Duration;
+    use std::{path::Path, time::Duration};
 
     use gpui_kit::test::{TestAppContextExt, TestQueryExt, TestWindowExt};
-    use gpui_kit::{AppContext as _, TestAppContext};
+    use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext};
 
     use super::project::*;
 
@@ -232,5 +233,75 @@ mod git_page {
             remote_branches(remote.path()) == "main"
         })
         .await;
+    }
+
+    /// The only worktree Kiln made under `data`.
+    fn made(data: &Path) -> std::path::PathBuf {
+        let repos = std::fs::read_dir(data.join("worktrees")).expect("worktrees");
+        let repo = repos.flatten().next().expect("one repository").path();
+        let trees = std::fs::read_dir(repo).expect("its worktrees");
+        trees.flatten().next().expect("one worktree").path()
+    }
+
+    async fn open_worktree_chat(
+        cx: &mut TestAppContext,
+        root: &Path,
+        data: &Path,
+    ) -> AnyWindowHandle {
+        let (window, _) = open_workspace_keeping(cx, root.to_path_buf(), Some(data));
+        let window = window.into();
+        click(cx, window, "chat-new-worktree");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("chat-worktree").is_some()
+        })
+        .await;
+        window
+    }
+
+    fn branches(root: &Path) -> String {
+        let out = std::process::Command::new("git")
+            .args(["branch", "--format=%(refname:short)"])
+            .current_dir(root)
+            .output()
+            .expect("git branch");
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    }
+
+    #[gpui_kit::test]
+    async fn a_worktree_chat_merges_into_its_base(cx: &mut TestAppContext) {
+        let (dir, data) = (changed_project(), tempfile::tempdir().expect("tempdir"));
+        let root = dir.path();
+        let window = open_worktree_chat(cx, root, data.path()).await;
+        let tree = made(data.path());
+        assert!(branches(root).contains("kiln/"), "{}", branches(root));
+        std::fs::write(tree.join("agent.txt"), "work\n").expect("write");
+        git(&tree, &["add", "agent.txt"]);
+        git(&tree, &["commit", "-q", "-m", "Add the agent's work"]);
+        click(cx, window, "chat-worktree-merge");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("chat-worktree").is_none()
+        })
+        .await;
+        assert!(root.join("agent.txt").exists(), "merged");
+        assert!(!tree.exists(), "the worktree is gone");
+        assert_eq!(branches(root), "main");
+        assert!(root.join("README.md").exists());
+    }
+
+    #[gpui_kit::test]
+    async fn a_discarded_worktree_takes_its_work_along(cx: &mut TestAppContext) {
+        let (dir, data) = (changed_project(), tempfile::tempdir().expect("tempdir"));
+        let root = dir.path();
+        let window = open_worktree_chat(cx, root, data.path()).await;
+        let tree = made(data.path());
+        std::fs::write(tree.join("agent.txt"), "work\n").expect("write");
+        click(cx, window, "chat-worktree-discard");
+        click(cx, window, "ok");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("chat-worktree").is_none()
+        })
+        .await;
+        assert!(!tree.exists());
+        assert_eq!(branches(root), "main");
     }
 }

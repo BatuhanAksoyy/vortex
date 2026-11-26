@@ -145,10 +145,10 @@ pub struct SessionHandle {
 
 ## 7. Worktree'ler ve oturumlar arası koordinasyon
 
-- Oturum açarken: **yeni worktree (varsayılan)** / ana checkout / var olan worktree.
-- Konum: `<data>/worktrees/<repo-hash>/<slug>`, branch `kiln/<slug>`.
+- Oturum açarken: ana checkout (sekmedeki "New session") ya da yeni worktree (sekmedeki dal simgeli "New session in a worktree"). Worktree şimdilik isteğe bağlı; varsayılan yapılması ve var olan bir worktree'yi seçmek sonra.
+- Konum: `<data>/worktrees/<repo-hash>/<slug>`, branch `kiln/<slug>`; slug oluşturulma zamanıdır (`20261126-153012`). Worktree ana checkout'taki branch'ten başlar; o branch (base) `branch.kiln/<slug>.kilnBase` git ayarında tutulur, bu da worktree'nin Kiln'in olduğunu gösterir ve branch silinince gider. Proje reponun alt klasörüyse sohbet worktree'deki aynı klasörde açılır. Worktree sohbeti kendi projesi gibidir: Files ve Git sayfaları worktree'yi gösterir, son projeler listesine girmez.
 - Worktree kurulum komutları `.kiln/run.json` dosyasının `setup` alanındadır (ör. `.env` kopyala, `npm ci`). Bu adım olmadan Node projelerinde worktree işe yaramaz. Kullanıcı bu komutları elle yazmaz; ajana "bu proje için başlatma komutlarını ekle" der, ajan `kiln_run_config_propose` aracıyla önerir, kullanıcı Kiln'de görüp onaylar (§10).
-- Kapanış: "Merge into base", "Open MR/PR", "Discard".
+- Kapanış: worktree sohbetinin üstündeki şeritte branch, base ve "Discard" / "Merge into <base>" düğmeleri. Merge, commit edilmemiş değişiklik varken ve ana checkout'ta base açık değilken sebebini söyler; çakışan merge geri alınır. Başarılı merge'den ya da onaylı "Discard"dan sonra worktree ve branch silinir, sekme kapanır. "Open MR/PR" M5'te (§9). Kurulum komutları `.kiln/run.json` ile M3'te gelir; o zamana kadar worktree'de `npm ci` gibi adımlar elle yapılır.
 - Ajanlara MCP araçları:
   - `kiln_sessions_list` → eş oturumlar: id, hesap, ajan, branch, worktree, durum, başlık, değişen dosyalar.
   - `kiln_message_send(to, text)` → mesaj hedef oturumun turu bitince `[from session X]` etiketiyle iletilir. Token harcadığı için ayar: otomatik / kullanıcı onaylı / kapalı.

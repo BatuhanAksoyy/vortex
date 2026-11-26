@@ -327,3 +327,51 @@ fn pushes_and_then_tracks_the_branch() {
     super::push(root, "main", Some("origin/main"), "origin").expect("push");
     assert_eq!(super::status(root).expect("status").ahead, 0);
 }
+
+#[test]
+fn a_worktree_merges_into_its_base_and_goes() {
+    let dir = repository();
+    let root = dir.path();
+    let into = tempfile::tempdir().expect("temp dir");
+    let path = into.path().join("one");
+    let (worktree, folder) = super::create_worktree(root, &path, "one").expect("create");
+    assert_eq!(
+        (worktree.branch.as_str(), worktree.base.as_str()),
+        ("kiln/one", "main")
+    );
+    assert_eq!(folder, path.join(""));
+    let found = super::worktree_of(&path)
+        .expect("read")
+        .expect("a Kiln worktree");
+    assert_eq!(found.branch, "kiln/one");
+    assert_eq!(found.main.canonicalize().ok(), root.canonicalize().ok());
+    assert_eq!(
+        super::worktree_of(root).expect("read"),
+        None,
+        "the main checkout"
+    );
+    fs::write(path.join("new.txt"), "new\n").expect("write");
+    assert!(
+        super::merge_worktree(&found).is_err(),
+        "changes not committed"
+    );
+    super::commit_paths(&path, "Add new", &[]).expect("commit");
+    super::merge_worktree(&found).expect("merge");
+    assert!(root.join("new.txt").exists(), "merged");
+    assert!(!path.exists(), "the worktree is gone");
+    let branches = super::branches(root).expect("branches");
+    assert_eq!(branches.len(), 1, "and its branch");
+}
+
+#[test]
+fn a_discarded_worktree_takes_its_work_along() {
+    let dir = repository();
+    let root = dir.path();
+    let into = tempfile::tempdir().expect("temp dir");
+    let path = into.path().join("two");
+    let (worktree, _) = super::create_worktree(root, &path, "two").expect("create");
+    fs::write(path.join("new.txt"), "new\n").expect("write");
+    super::discard_worktree(&worktree).expect("discard");
+    assert!(!path.exists());
+    assert_eq!(super::branches(root).expect("branches").len(), 1);
+}
