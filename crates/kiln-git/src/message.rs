@@ -13,6 +13,17 @@ pub struct MessageRules {
     pub subject_max: usize,
     /// The first line must read `type(scope): subject`.
     pub conventional: bool,
+    /// The message must match each of these.
+    pub require: Vec<Regex>,
+    /// The message must match none of these.
+    pub forbid: Vec<Regex>,
+}
+
+fn patterns(patterns: &[String]) -> Result<Vec<Regex>, String> {
+    patterns
+        .iter()
+        .map(|pattern| Regex::new(pattern).map_err(|error| format!("`{pattern}`: {error}")))
+        .collect()
 }
 
 impl MessageRules {
@@ -21,14 +32,25 @@ impl MessageRules {
     /// # Errors
     /// When a pattern is not a valid regular expression.
     pub fn new(strip: &[String], subject_max: usize, conventional: bool) -> Result<Self, String> {
-        let strip = strip
-            .iter()
-            .map(|pattern| Regex::new(pattern).map_err(|error| format!("`{pattern}`: {error}")))
-            .collect::<Result<_, _>>()?;
         Ok(Self {
-            strip,
+            strip: patterns(strip)?,
             subject_max,
             conventional,
+            require: Vec::new(),
+            forbid: Vec::new(),
+        })
+    }
+
+    /// The rules, also holding a message to match each of `require` and
+    /// none of `forbid`.
+    ///
+    /// # Errors
+    /// When a pattern is not a valid regular expression.
+    pub fn with_checks(self, require: &[String], forbid: &[String]) -> Result<Self, String> {
+        Ok(Self {
+            require: patterns(require)?,
+            forbid: patterns(forbid)?,
+            ..self
         })
     }
 
@@ -83,6 +105,12 @@ impl MessageRules {
             .is_some_and(|line| !line.trim().is_empty())
         {
             problems.push("A blank line must follow the first line.".to_owned());
+        }
+        for pattern in self.require.iter().filter(|it| !it.is_match(message)) {
+            problems.push(format!("The message must match `{pattern}`."));
+        }
+        for pattern in self.forbid.iter().filter(|it| it.is_match(message)) {
+            problems.push(format!("The message must not match `{pattern}`."));
         }
         problems
     }
@@ -142,5 +170,19 @@ mod tests {
             "no blank line"
         );
         assert!(MessageRules::new(&["(".to_owned()], 0, false).is_err());
+    }
+
+    #[test]
+    fn a_message_must_match_what_is_required_and_not_what_is_forbidden() {
+        let checked = rules(0, false)
+            .with_checks(&[r"^[A-Z]+-\d+ ".to_owned()], &["(?i)wip".to_owned()])
+            .expect("valid");
+        assert_eq!(
+            checked.problems("KLN-12 Fix the parser"),
+            Vec::<String>::new()
+        );
+        assert_eq!(checked.problems("Fix the parser").len(), 1, "no ticket");
+        assert_eq!(checked.problems("KLN-12 WIP parser").len(), 1, "forbidden");
+        assert!(rules(0, false).with_checks(&[], &["(".to_owned()]).is_err());
     }
 }

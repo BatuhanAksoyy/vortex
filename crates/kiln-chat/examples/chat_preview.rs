@@ -40,6 +40,10 @@ struct ScriptedBackend {
 }
 
 impl AgentBackend for ScriptedBackend {
+    fn name(&self) -> &'static str {
+        "scripted"
+    }
+
     fn spawn(&self, _: SessionSpec) -> anyhow::Result<Session> {
         let (events_tx, events) = async_channel::unbounded();
         let (commands, commands_rx) = async_channel::unbounded::<SessionCommand>();

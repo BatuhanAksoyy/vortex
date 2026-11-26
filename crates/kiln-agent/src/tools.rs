@@ -6,4 +6,7 @@ pub struct ToolServer {
     pub command: std::path::PathBuf,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    /// What the project asks of every commit message, told to the agent
+    /// as it starts.
+    pub commit_directives: Vec<String>,
 }

@@ -23,6 +23,10 @@ mod processes {
     }
 
     impl AgentBackend for Running {
+        fn name(&self) -> &'static str {
+            "claude"
+        }
+
         fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
             let session = self.stored.spawn(spec)?;
             Ok(Session {

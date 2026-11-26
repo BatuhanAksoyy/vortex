@@ -37,6 +37,10 @@
     "commit": {
       // Regular expressions; matching lines are taken out of every commit
       // message, whoever wrote it.
+      // Kiln commits a chat's work for it: a strip over the chat counts the
+      // files it changed and commits them with a button, and "trigger" may
+      // be "task_done". The agent's own commit tool works either way.
+      "enabled": false,
       "strip": [
         "(?i)^co-authored-by:.*\\b(claude|codex|openai|anthropic)\\b",
         "(?i)generated with \\[?(claude code|codex)",
@@ -46,14 +50,22 @@
       "subject_max": 72,
       // The first line must read `type(scope): subject`.
       "conventional": false,
-      // A commit the agent asks for waits for the user to approve or edit it.
+      // Told to whoever writes a message, the agent or the writer below,
+      // such as "Write in English" or "Start with the ticket id".
+      "instructions": [],
+      // Regular expressions a message must match, each of them.
+      "require": [],
+      // Regular expressions a message must not match. Unlike `strip`, the
+      // message goes back to be written again.
+      "forbid": [],
+      // A commit waits for the user to approve or edit it.
       "review": true,
       // When the agent's work is committed: "agent" when it calls Kiln's
-      // commit tool; "turn_end" also after a turn that changed files without
-      // calling it, with a message the model below writes.
+      // commit tool or the user presses Commit; "task_done", with "enabled",
+      // also once a turn ends with the work done, as the writer judges it.
       "trigger": "agent",
-      // Writes the message after a turn, on the chat's account.
-      "model": "haiku"
+      // The agent and model that judge a turn and write its message.
+      "writer": { "agent": "claude", "model": "haiku" }
     },
     "push": {
       // When Kiln pushes: "never"; "manual", with the Git page's Push;

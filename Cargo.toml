@@ -34,6 +34,7 @@ jiff = { version = "0.2.46", default-features = false, features = ["std", "tz-sy
 directories = "6.0.0"
 gpui-kit = { version = "=0.10.0", features = ["tree-sitter-languages"] }
 ignore = "0.4.34"
+jsonc-parser = { version = "0.34.0", features = ["cst"] }
 log = "0.4.35"
 env_logger = "0.11.11"
 futures = "0.3.34"

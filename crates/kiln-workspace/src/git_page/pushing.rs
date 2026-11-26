@@ -24,14 +24,15 @@ impl GitPage {
         status: &Status,
         cx: &Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
-        if pushing::settings(cx).policy == PushPolicy::Never {
+        let push = self.settings(cx).git.push;
+        if push.policy == PushPolicy::Never {
             return None;
         }
         let branch = status.branch.clone()?;
         let something = status.ahead > 0 || status.upstream.is_none();
         let tip: SharedString = match &status.upstream {
             Some(upstream) => format!("Push to {upstream}").into(),
-            None => format!("Push to {}", pushing::settings(cx).remote).into(),
+            None => format!("Push to {}", push.remote).into(),
         };
         Some(
             Button::new("git-push")
@@ -46,7 +47,7 @@ impl GitPage {
     }
 
     fn ask_push(&mut self, branch: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if !pushing::is_protected(branch, cx) {
+        if !pushing::is_protected(branch, &self.settings(cx).git.push) {
             self.push(window, cx);
             return;
         }
@@ -78,7 +79,7 @@ impl GitPage {
             return;
         };
         let upstream = status.upstream.clone();
-        let remote = pushing::settings(cx).remote.clone();
+        let remote = self.settings(cx).git.push.remote;
         self.write(window, cx, Done::Staging, move |root| {
             kiln_git::push(root, &branch, upstream.as_deref(), &remote)
         });

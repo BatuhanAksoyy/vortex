@@ -67,6 +67,7 @@ impl Workspace {
                 tools.chats.push((token, panel.downgrade()));
                 let chat = panel.read(cx).chat().clone();
                 chat.update(cx, |chat, _| chat.set_tools(server));
+                panel.update(cx, ChatPanel::settings_changed);
             }
             Err(error) => log::warn!("a chat gets no browser tools: {error:#}"),
         }

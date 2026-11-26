@@ -7,6 +7,10 @@ use kiln_accounts::{Account, Accounts, KnownUsage};
 use super::ChatView;
 use crate::transcript::Status;
 
+/// Sent once another account takes over a turn the usage limit cut off:
+/// the resumed session holds the request, so the agent needs only this.
+const CARRY_ON: &str = "Continue where you left off.";
+
 /// A sign-in in progress; dropping it ends the CLI and with it the sign-in.
 pub(super) struct PendingSignIn {
     id: String,
@@ -86,8 +90,9 @@ impl ChatView {
     }
 
     /// Continues the conversation with account `id`: the process restarts
-    /// with that account's sign-in and resumes the session. Not while a turn
-    /// runs, which the restart would cut off.
+    /// with that account's sign-in and resumes the session, and a turn the
+    /// usage limit cut off is taken up again. Not while a turn runs, which
+    /// the restart would cut off.
     pub(super) fn switch_account(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.account.as_deref() == Some(id) || self.status() == Status::Running {
             return;
@@ -101,6 +106,9 @@ impl ChatView {
         let change = self.transcript.push_notice(format!("Switched to {label}"));
         self.apply_change(change, cx);
         self.ensure_session(window, cx);
+        if std::mem::take(&mut self.cut_by_limit) {
+            self.submit(CARRY_ON.into(), window, cx);
+        }
         cx.emit(super::ChatEvent::AccountChanged);
         cx.notify();
     }

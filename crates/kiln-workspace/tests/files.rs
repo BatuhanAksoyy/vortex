@@ -137,4 +137,44 @@ mod files {
             .expect("window");
         assert!(!shown, "folders are closed");
     }
+
+    fn tree_width(cx: &mut TestAppContext, window: AnyWindowHandle) -> f32 {
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            f32::from(window.find("files-tree").bounds().size.width)
+        })
+        .expect("window")
+    }
+
+    #[gpui_kit::test]
+    fn the_tree_keeps_its_width_when_the_panel_closes(cx: &mut TestAppContext) {
+        let dir = project();
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        click(cx, window, "activity-files");
+        let before = tree_width(cx, window);
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            let tree = window.find("files-tree").bounds();
+            let from = gpui_kit::point(tree.right(), tree.center().y);
+            window.drag(
+                from,
+                gpui_kit::point(from.x + gpui_kit::px(80.), from.y),
+                cx,
+            );
+        })
+        .expect("window");
+        cx.run_until_parked();
+        let sized = tree_width(cx, window);
+        assert!(sized > before + 40., "dragged from {before} to {sized}");
+
+        click(cx, window, "activity-files");
+        assert!(!has(cx, window, "files-tree"), "closed");
+        click(cx, window, "activity-files");
+        let reopened = tree_width(cx, window);
+        assert!(
+            (reopened - sized).abs() < 1.,
+            "{sized} came back as {reopened}"
+        );
+    }
 }

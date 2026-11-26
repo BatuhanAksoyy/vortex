@@ -8,17 +8,12 @@ use std::path::{Path, PathBuf};
 use gpui_kit::{App, AppContext as _};
 use kiln_settings::{PushPolicy, PushSettings};
 
-pub(crate) fn settings(cx: &App) -> &PushSettings {
-    &crate::config::settings(cx).git.push
+pub(crate) fn is_protected(branch: &str, push: &PushSettings) -> bool {
+    push.protected.iter().any(|name| name == branch)
 }
 
-pub(crate) fn is_protected(branch: &str, cx: &App) -> bool {
-    settings(cx).protected.iter().any(|name| name == branch)
-}
-
-/// The settings to push with when the policy is `when`.
-pub(crate) fn wanted(when: PushPolicy, cx: &App) -> Option<PushSettings> {
-    let push = settings(cx);
+/// `push` when its policy is `when`.
+pub(crate) fn wanted(when: PushPolicy, push: &PushSettings) -> Option<PushSettings> {
     (push.policy == when).then(|| push.clone())
 }
 
@@ -44,11 +39,8 @@ pub(crate) fn push_unattended(project: &Path, push: &PushSettings) -> anyhow::Re
     )
 }
 
-/// Pushes in the background when the policy is `when`.
-pub(crate) fn push_on(when: PushPolicy, project: PathBuf, cx: &App) {
-    let Some(push) = wanted(when, cx) else {
-        return;
-    };
+/// Pushes in the background, as [`push_unattended`] does.
+pub(crate) fn push_in_background(project: PathBuf, push: PushSettings, cx: &App) {
     cx.background_spawn(async move {
         if let Err(error) = push_unattended(&project, &push) {
             log::warn!("cannot push {}: {error:#}", project.display());

@@ -54,6 +54,9 @@ pub struct SessionSpec {
 }
 
 pub trait AgentBackend {
+    /// The harness's name in the settings, such as `claude`.
+    fn name(&self) -> &'static str;
+
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session>;
 
     /// Signs an account in to the credential store `env` points at. The user

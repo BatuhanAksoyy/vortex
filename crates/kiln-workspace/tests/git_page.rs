@@ -304,4 +304,40 @@ mod git_page {
         assert!(!tree.exists());
         assert_eq!(branches(root), "main");
     }
+
+    /// Closes the worktree chat's tab, the second in the group.
+    fn close_worktree_tab(cx: &mut TestAppContext, window: AnyWindowHandle) {
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            window.within("tab-bar").click(("close-tab", 1_usize), cx);
+        })
+        .expect("window");
+        cx.run_until_parked();
+    }
+
+    #[gpui_kit::test]
+    async fn closing_an_unused_worktree_chat_takes_its_worktree(cx: &mut TestAppContext) {
+        let (dir, data) = (changed_project(), tempfile::tempdir().expect("tempdir"));
+        let root = dir.path();
+        let window = open_worktree_chat(cx, root, data.path()).await;
+        let tree = made(data.path());
+        close_worktree_tab(cx, window);
+        cx.wait_for(window, Duration::from_secs(5), |_, _| !tree.exists())
+            .await;
+        assert_eq!(branches(root), "main");
+    }
+
+    #[gpui_kit::test]
+    async fn a_closed_worktree_chat_keeps_its_work(cx: &mut TestAppContext) {
+        let (dir, data) = (changed_project(), tempfile::tempdir().expect("tempdir"));
+        let root = dir.path();
+        let window = open_worktree_chat(cx, root, data.path()).await;
+        let tree = made(data.path());
+        std::fs::write(tree.join("agent.txt"), "work\n").expect("write");
+        close_worktree_tab(cx, window);
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+        assert!(tree.join("agent.txt").exists(), "the work stays");
+        assert!(branches(root).contains("kiln/"));
+    }
 }

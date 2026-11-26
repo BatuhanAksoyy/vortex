@@ -59,6 +59,11 @@ impl RepoStatus {
         cx.notify();
     }
 
+    /// The project folder it reads.
+    pub fn project(&self) -> &Path {
+        &self.project
+    }
+
     pub fn reading(&self) -> Option<&Result<Status, String>> {
         self.reading.as_ref()
     }

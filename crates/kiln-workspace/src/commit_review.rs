@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use async_channel::Sender;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, EventEmitter, FocusHandle, FontWeight, KeyDownEvent, SharedString,
+    Context, Entity, EventEmitter, FocusHandle, FontWeight, KeyDownEvent, SharedString,
     Subscription, Task, TestSupportExt, Window,
     component::{
         ActiveTheme, Disableable as _,
@@ -22,7 +22,7 @@ use gpui_kit::{
 use kiln_bridge::Reply;
 use kiln_chat::scale::{ScaledButton as _, ScaledText as _};
 use kiln_git::{MessageRules, Status};
-use kiln_settings::PushPolicy;
+use kiln_settings::{CommitSettings, PushSettings};
 
 const WIDTH: f32 = 420.;
 const FILES_HEIGHT: f32 = 160.;
@@ -32,15 +32,15 @@ const MESSAGE_ROWS: (usize, usize) = (3, 10);
 ///
 /// # Errors
 /// When one of the settings' patterns is not a valid regular expression.
-pub(crate) fn message_rules(cx: &App) -> Result<MessageRules, String> {
-    let commit = &crate::config::settings(cx).git.commit;
+pub(crate) fn message_rules(commit: &CommitSettings) -> Result<MessageRules, String> {
     MessageRules::new(&commit.strip, commit.subject_max, commit.conventional)
-        .map_err(|error| format!("git.commit.strip: {error}"))
+        .map_err(|error| format!("git.commit.strip: {error}"))?
+        .with_checks(&commit.require, &commit.forbid)
+        .map_err(|error| format!("git.commit.require or forbid: {error}"))
 }
 
 /// `message` cleaned, or what keeps it from being committed.
-pub(crate) fn checked(message: &str, cx: &App) -> Result<String, String> {
-    let rules = message_rules(cx)?;
+pub(crate) fn checked(message: &str, rules: &MessageRules) -> Result<String, String> {
     let message = rules.clean(message);
     let problems = rules.problems(&message);
     if problems.is_empty() {
@@ -99,6 +99,8 @@ pub struct CommitReview {
     files: Vec<File>,
     /// What the agent sent, to tell it when the commit says otherwise.
     asked: String,
+    rules: MessageRules,
+    push: Option<PushSettings>,
     message: Entity<TextareaState>,
     reply: Sender<Reply>,
     error: Option<SharedString>,
@@ -124,6 +126,10 @@ pub(crate) struct Pending {
     pub sent: String,
     pub cleaned: String,
     pub reply: Sender<Reply>,
+    /// What the message is held to as it is committed.
+    pub rules: MessageRules,
+    /// Where it goes once committed; `None` keeps it here.
+    pub push: Option<PushSettings>,
 }
 
 impl CommitReview {
@@ -147,6 +153,8 @@ impl CommitReview {
             paths: asked.paths,
             files: asked.files,
             asked: asked.sent,
+            rules: asked.rules,
+            push: asked.push,
             message,
             reply: asked.reply,
             error: None,
@@ -164,7 +172,7 @@ impl CommitReview {
         if self.committing.is_some() {
             return;
         }
-        let message = match checked(&self.message.read(cx).value(), cx) {
+        let message = match checked(&self.message.read(cx).value(), &self.rules) {
             Ok(message) => message,
             Err(problems) => {
                 self.error = Some(problems.into());
@@ -190,7 +198,9 @@ impl CommitReview {
                 let _ = self
                     .reply
                     .try_send(committed_reply(&id, message, &self.asked));
-                crate::pushing::push_on(PushPolicy::AfterCommit, self.project.clone(), cx);
+                if let Some(push) = self.push.clone() {
+                    crate::pushing::push_in_background(self.project.clone(), push, cx);
+                }
                 cx.emit(CommitReviewEvent::Closed { committed: true });
             }
             // A hook refused, say: the user may fix it and try again.

@@ -44,6 +44,9 @@ pub struct SavedChat {
     /// `None` starts it with the effort the user's settings say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<Effort>,
+    /// The settings chosen for the chat alone; `None` when there are none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -200,6 +203,7 @@ mod tests {
                     account: id.strip_prefix("s-").map(|n| format!("account-{n}")),
                     mode: (*id == "s-1").then_some(PermissionMode::Auto),
                     effort: (*id == "s-2").then_some(Effort::Max),
+                    settings: None,
                 })
                 .collect(),
         }

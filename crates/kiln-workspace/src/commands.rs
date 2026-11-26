@@ -22,6 +22,7 @@ actions!(
         ToggleBrowser,
         ToggleChanges,
         OpenSettings,
+        OpenCommitSettings,
         OpenDefaultSettings,
         OpenKeybindings,
         OpenDefaultKeybindings,
@@ -84,6 +85,9 @@ pub const COMMANDS: &[CommandSpec] = &[
         "Open User Settings (JSON)",
         || Box::new(OpenSettings),
     ),
+    spec("kiln.openCommitSettings", "Git: Commit Settings", || {
+        Box::new(OpenCommitSettings)
+    }),
     spec(
         "workbench.action.openRawDefaultSettings",
         "Open Default Settings (JSON)",
@@ -158,6 +162,7 @@ pub fn register(cx: &mut App) {
     on::<ToggleBrowser>(cx, Workspace::toggle_browser);
     on::<ToggleChanges>(cx, Workspace::toggle_changes);
     on::<OpenSettings>(cx, Workspace::open_user_settings);
+    on::<OpenCommitSettings>(cx, Workspace::open_commit_settings);
     on::<OpenDefaultSettings>(cx, Workspace::open_default_settings);
     on::<OpenKeybindings>(cx, Workspace::open_user_keybindings);
     on::<OpenDefaultKeybindings>(cx, Workspace::open_default_keybindings);

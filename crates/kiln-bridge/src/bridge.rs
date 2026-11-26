@@ -99,6 +99,7 @@ impl Bridge {
                 (SOCKET_VAR.to_owned(), socket),
                 (TOKEN_VAR.to_owned(), token.clone()),
             ],
+            commit_directives: Vec::new(),
         };
         Ok((server, token))
     }

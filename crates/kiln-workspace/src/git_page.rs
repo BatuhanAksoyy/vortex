@@ -18,7 +18,7 @@ use gpui_kit::{
     component::{
         diff::{DiffFile, DiffState},
         input::TextareaState,
-        resizable::{h_resizable, resizable_panel, v_resizable},
+        resizable::{ResizableState, h_resizable, resizable_panel, v_resizable},
     },
     div,
 };
@@ -31,6 +31,8 @@ const LIST_WIDTH_REMS: f32 = 17.0;
 pub enum GitPageEvent {
     /// Show the file at this path in the editor.
     OpenFile(PathBuf),
+    /// The commit settings, on the project's tab.
+    CommitSettings,
 }
 
 pub struct GitPage {
@@ -57,6 +59,9 @@ pub struct GitPage {
     branches: Vec<Branch>,
     branch_load: Option<Task<()>>,
     new_branch: Option<branching::NewBranch>,
+    /// The list beside the diff, and the changes above the history; held
+    /// here, not by the window, so they outlive the panel being closed.
+    splits: [Entity<ResizableState>; 2],
     _subscriptions: [Subscription; 2],
 }
 
@@ -86,8 +91,14 @@ impl GitPage {
             branches: Vec::new(),
             branch_load: None,
             new_branch: None,
+            splits: [(); 2].map(|()| cx.new(|_| ResizableState::default())),
             _subscriptions: [status_read, typed],
         }
+    }
+
+    /// The settings of the project the page shows.
+    fn settings(&self, cx: &gpui_kit::App) -> kiln_settings::Settings {
+        crate::config::settings_at(self.repo.read(cx).project(), cx)
     }
 
     pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -232,6 +243,7 @@ impl Render for GitPage {
         let list = (!self.list_hidden).then(|| self.render_changes(cx));
         div().id("git-page").test_support().size_full().child(
             h_resizable("git-panels")
+                .with_state(&self.splits[0])
                 .child(
                     resizable_panel()
                         .size(window.rem_size() * LIST_WIDTH_REMS)
@@ -239,6 +251,7 @@ impl Render for GitPage {
                         .visible(!self.list_hidden)
                         .children(list.map(|list| {
                             v_resizable("git-sides")
+                                .with_state(&self.splits[1])
                                 .child(resizable_panel().child(list))
                                 .child(resizable_panel().child(self.render_history(cx)))
                         })),

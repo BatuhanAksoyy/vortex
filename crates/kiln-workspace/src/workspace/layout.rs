@@ -125,6 +125,9 @@ impl Workspace {
         let mut shown = None;
         for (ix, (saved, open_elsewhere, project)) in listed.into_iter().enumerate() {
             let panel = self.new_chat_panel(&project, window, cx);
+            if let Some(own) = saved.settings.clone() {
+                panel.update(cx, |panel, cx| panel.restore_session_settings(own, cx));
+            }
             let chat = panel.read(cx).chat().clone();
             chat.update(cx, |chat, cx| {
                 resume(chat, saved, open_elsewhere, window, cx);

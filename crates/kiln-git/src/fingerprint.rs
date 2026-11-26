@@ -30,6 +30,12 @@ impl Fingerprint {
         Self(files.collect())
     }
 
+    /// Whether `path` was among the changed files.
+    #[must_use]
+    pub fn holds(&self, path: &std::path::Path) -> bool {
+        self.0.contains_key(path)
+    }
+
     /// The files changed in `later` that are not as they were in `self`,
     /// sorted.
     #[must_use]

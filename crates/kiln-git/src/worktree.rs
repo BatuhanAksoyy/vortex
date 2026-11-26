@@ -138,6 +138,30 @@ pub fn discard_worktree(worktree: &Worktree) -> anyhow::Result<()> {
     remove(worktree, true)
 }
 
+/// Takes the worktree and its branch away when nothing was done on them:
+/// no change in its folder, not even a new file, and no commit its base
+/// lacks. Returns whether they went.
+///
+/// # Errors
+/// When `git` fails.
+pub fn remove_unused_worktree(worktree: &Worktree) -> anyhow::Result<bool> {
+    if !worktree.path.exists() || !crate::status(&worktree.path)?.changes.is_empty() {
+        return Ok(false);
+    }
+    let range = format!("{}..{}", worktree.base, worktree.branch);
+    let ahead = git(&worktree.main, &["rev-list", "--count", &range], &[0])?;
+    if String::from_utf8_lossy(&ahead.stdout).trim() != "0" {
+        return Ok(false);
+    }
+    // Without --force git itself refuses a worktree that holds work. The
+    // branch has nothing its base lacks, though `-d` would also want it
+    // merged into whatever the main checkout has checked out.
+    let path = worktree.path.to_string_lossy();
+    git(&worktree.main, &["worktree", "remove", &path], &[0])?;
+    git(&worktree.main, &["branch", "-D", &worktree.branch], &[0])?;
+    Ok(true)
+}
+
 fn remove(worktree: &Worktree, force: bool) -> anyhow::Result<()> {
     let path = worktree.path.to_string_lossy();
     let mut args = vec!["worktree", "remove"];

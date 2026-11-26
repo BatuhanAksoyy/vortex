@@ -19,7 +19,7 @@ use gpui_kit::{
         ActiveTheme,
         button::{Button, ButtonVariants as _},
         h_flex,
-        resizable::{h_resizable, resizable_panel},
+        resizable::{ResizableState, h_resizable, resizable_panel},
         tree::{TreeEvent, TreeItem, TreeState},
         v_flex,
     },
@@ -52,6 +52,9 @@ pub struct FilesPage {
     /// The file last selected because the editor showed it.
     followed: Option<PathBuf>,
     tree_hidden: bool,
+    /// Held here, not by the window, so the split the user sized outlives
+    /// the panel being closed.
+    split: Entity<ResizableState>,
     _subscriptions: [Subscription; 3],
 }
 
@@ -82,6 +85,7 @@ impl FilesPage {
             pending: None,
             followed: None,
             tree_hidden: false,
+            split: cx.new(|_| ResizableState::default()),
             _subscriptions: subscriptions,
         }
     }
@@ -288,6 +292,7 @@ impl Render for FilesPage {
         };
         let side = (!self.tree_hidden).then(|| self.side(cx));
         h_resizable("files-page")
+            .with_state(&self.split)
             .child(
                 resizable_panel()
                     .size(window.rem_size() * TREE_WIDTH_REMS)

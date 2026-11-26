@@ -12,6 +12,10 @@ use kiln_workspace::Workspace;
 struct NoAgent;
 
 impl kiln_agent::AgentBackend for NoAgent {
+    fn name(&self) -> &'static str {
+        "claude"
+    }
+
     fn spawn(&self, _: kiln_agent::SessionSpec) -> anyhow::Result<kiln_agent::Session> {
         anyhow::bail!("no agent in workspace tests")
     }

@@ -37,6 +37,10 @@ pub type ScriptedSignIn = (
 pub struct FakeBackend(pub Rc<RefCell<Script>>);
 
 impl AgentBackend for FakeBackend {
+    fn name(&self) -> &'static str {
+        "fake"
+    }
+
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
         let (event_tx, events) = async_channel::unbounded();
         let (commands, command_rx) = async_channel::unbounded();

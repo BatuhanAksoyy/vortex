@@ -25,8 +25,11 @@ impl ChatPanel {
             let _ = reply.try_send(Reply::failed(WAITING));
             return;
         }
-        let cleaned = match commit_review::checked(&message, cx) {
-            Ok(cleaned) => cleaned,
+        let settings = self.settings(cx);
+        let checked = commit_review::message_rules(&settings.git.commit)
+            .and_then(|rules| Ok((commit_review::checked(&message, &rules)?, rules)));
+        let (cleaned, rules) = match checked {
+            Ok(checked) => checked,
             Err(problems) => {
                 let _ = reply.try_send(Reply::failed(format!(
                     "Nothing was committed: {problems} Fix the message and call commit again."
@@ -42,6 +45,8 @@ impl ChatPanel {
             sent: message,
             cleaned,
             reply,
+            rules,
+            push: crate::pushing::wanted(PushPolicy::AfterCommit, &settings.git.push),
         };
         let read = cx.background_spawn(async move { kiln_git::status(&project) });
         cx.spawn_in(window, async move |this, cx| {
@@ -93,16 +98,16 @@ impl ChatPanel {
             let _ = pending.reply.try_send(Reply::failed(WAITING));
             return;
         }
-        if !crate::config::settings(cx).git.commit.review {
+        if !self.settings(cx).git.commit.review {
             let Pending {
                 project,
                 paths,
                 sent,
                 cleaned,
                 reply,
+                push,
                 ..
             } = pending;
-            let push = crate::pushing::wanted(PushPolicy::AfterCommit, cx);
             self.made_commit = true;
             let commit = cx.background_spawn(async move {
                 let id = kiln_git::commit_paths(&project, &cleaned, &paths)?;

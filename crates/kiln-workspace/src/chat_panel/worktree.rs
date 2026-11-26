@@ -47,6 +47,27 @@ impl ChatPanel {
         }));
     }
 
+    /// Once the tab is closed, takes its worktree away if nothing was done
+    /// there; one with work stays for the user. The folder is read again,
+    /// as the tab may close before `read_worktree` is back.
+    pub(super) fn drop_unused_worktree(&self, cx: &mut Context<Self>) {
+        let folder = self.project.read(cx).root().to_path_buf();
+        cx.background_spawn(async move {
+            let dropped = kiln_git::worktree_of(&folder).and_then(|worktree| {
+                worktree.map_or(Ok(false), |w| kiln_git::remove_unused_worktree(&w))
+            });
+            match dropped {
+                Ok(true) => log::info!("removed the unused worktree at {}", folder.display()),
+                Ok(false) => {}
+                Err(error) => log::warn!(
+                    "cannot remove the worktree at {}: {error:#}",
+                    folder.display()
+                ),
+            }
+        })
+        .detach();
+    }
+
     fn ask_discard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(worktree) = &self.worktree.worktree else {
             return;

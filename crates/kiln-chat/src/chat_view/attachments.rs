@@ -77,6 +77,7 @@ impl ChatView {
             return false;
         };
         self.drop_suggestion(window, cx);
+        self.cut_by_limit = false;
         let change = self.transcript.push_user(message.clone());
         self.apply_change(change, cx);
         cx.emit(ChatEvent::TurnStarted);

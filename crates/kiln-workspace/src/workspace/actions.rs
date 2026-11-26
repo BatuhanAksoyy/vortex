@@ -47,6 +47,31 @@ impl Workspace {
         view.update(cx, |view, cx| view.focus(window, cx));
     }
 
+    /// The commit settings of the active chat, on `scope`'s tab.
+    pub(super) fn commit_settings(
+        &mut self,
+        scope: kiln_settings::Scope,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let opened = match &self.active_chat {
+            Some(panel) => panel.read(cx).commit_settings(scope, panel, cx),
+            None => crate::commit_settings::Opened {
+                scope: kiln_settings::Scope::Global,
+                project: None,
+                chat: None,
+                own: serde_json::Value::Null,
+                agents: vec![self.backend.name().to_owned()],
+                models: Vec::new(),
+            },
+        };
+        crate::commit_settings::open(opened, window, cx);
+    }
+
+    pub fn open_commit_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.commit_settings(kiln_settings::Scope::Chat, window, cx);
+    }
+
     pub fn open_user_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_user_file(kiln_settings::user_settings_path(), "{\n}\n", window, cx);
     }

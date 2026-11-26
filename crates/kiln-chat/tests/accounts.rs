@@ -238,6 +238,42 @@ mod accounts {
         assert!(offered.is_none(), "{first} is limited too");
     }
 
+    fn sent(commands: &[SessionCommand]) -> Vec<String> {
+        let sent = commands.iter().filter_map(|command| match command {
+            SessionCommand::Send(message) => Some(message.text.clone()),
+            _ => None,
+        });
+        sent.collect()
+    }
+
+    #[gpui_kit::test]
+    fn a_turn_the_limit_cut_off_goes_on_with_the_next_account(cx: &mut TestAppContext) {
+        let harness = ready(cx);
+        click(&harness, cx, "chat-account");
+        add(&harness, cx, "first@example.com");
+        add(&harness, cx, "second@example.com");
+        click(&harness, cx, "chat-account");
+        harness.type_and_send(cx, "write the parser");
+        harness.emit(cx, limited());
+        let failed = TurnOutcome::Failed("usage limit reached".into());
+        harness.emit(cx, AgentEvent::TurnEnded(failed));
+        click(&harness, cx, "chat-limit-continue");
+        assert_eq!(sent(&harness.commands()), ["Continue where you left off."]);
+        assert_eq!(harness.status(cx), Status::Running);
+    }
+
+    #[gpui_kit::test]
+    fn a_limit_between_turns_sends_nothing_on_its_own(cx: &mut TestAppContext) {
+        let harness = ready(cx);
+        click(&harness, cx, "chat-account");
+        add(&harness, cx, "first@example.com");
+        add(&harness, cx, "second@example.com");
+        click(&harness, cx, "chat-account");
+        harness.emit(cx, limited());
+        click(&harness, cx, "chat-limit-continue");
+        assert_eq!(sent(&harness.commands()), Vec::<String>::new());
+    }
+
     #[gpui_kit::test]
     fn the_usual_sign_in_is_offered_nothing_at_the_limit(cx: &mut TestAppContext) {
         let harness = ready(cx);

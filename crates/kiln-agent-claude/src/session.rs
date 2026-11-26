@@ -93,6 +93,10 @@ impl ClaudeBackend {
 }
 
 impl AgentBackend for ClaudeBackend {
+    fn name(&self) -> &'static str {
+        "claude"
+    }
+
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
         let mut command = Command::new(&self.program);
         command.args(ARGS);

@@ -19,6 +19,13 @@ impl ChatView {
         self.agent.tools = Some(server);
     }
 
+    /// What the agent is told of commit messages, from its next process on.
+    pub fn set_commit_directives(&mut self, directives: Vec<String>) {
+        if let Some(tools) = &mut self.agent.tools {
+            tools.commit_directives = directives;
+        }
+    }
+
     pub fn set_model(&mut self, id: &str, cx: &mut Context<Self>) {
         self.agent.choose_model(id);
         self.send_command(SessionCommand::SetModel(id.to_owned()));
@@ -231,9 +238,8 @@ impl ChatView {
                 });
             }
             AgentEvent::TurnEnded(outcome) => {
-                if *outcome == kiln_agent::TurnOutcome::Completed {
-                    cx.emit(super::ChatEvent::TurnCompleted);
-                }
+                let completed = *outcome == kiln_agent::TurnOutcome::Completed;
+                cx.emit(super::ChatEvent::TurnEnded { completed });
             }
             _ => return,
         }
@@ -263,7 +269,10 @@ impl ChatView {
             AgentEvent::Usage(_) => {
                 self.remember_usage(cx);
                 self.sync_limit_timer(cx);
+                let running = self.status() == crate::transcript::Status::Running;
+                self.cut_by_limit |= running && self.is_limited();
             }
+            AgentEvent::TurnEnded(_) => self.cut_by_limit |= self.is_limited(),
             AgentEvent::PromptTokens(_) | AgentEvent::PastPromptTokens { .. } => {
                 self.sync_cache_timer(cx);
             }

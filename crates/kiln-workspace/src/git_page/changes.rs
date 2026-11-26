@@ -98,6 +98,15 @@ impl GitPage {
                     .child(div().flex_1())
                     .children(status.and_then(|status| self.render_push(status, cx)))
                     .child(
+                        Button::new("git-commit-settings")
+                            .ghost()
+                            .control_icon(Lucide::Settings)
+                            .tooltip("Commit settings")
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.emit(super::GitPageEvent::CommitSettings);
+                            })),
+                    )
+                    .child(
                         Button::new("git-refresh")
                             .ghost()
                             .control_icon(Lucide::RefreshCw)

@@ -2,7 +2,10 @@
 //! keeps working while another tab is shown.
 
 mod commit;
+mod pickers;
+mod settings;
 mod turn_commit;
+mod work_strip;
 mod worktree;
 
 use std::path::PathBuf;
@@ -22,10 +25,8 @@ use gpui_kit::{
 use kiln_chat::{ChatEvent, ChatView, Status, scale::ScaledButton as _};
 
 use crate::{
-    commit_review::CommitReview,
-    conversation_picker::{ConversationPicker, ConversationPickerEvent},
-    project::Project,
-    project_picker::{ProjectPicker, ProjectPickerEvent},
+    commit_review::CommitReview, conversation_picker::ConversationPicker, project::Project,
+    project_picker::ProjectPicker,
 };
 
 /// Tab titles past this many characters are cut, so a few tabs fit.
@@ -55,6 +56,8 @@ pub enum ChatPanelEvent {
     /// The tab's "New session in a worktree" button: another chat in the
     /// same group, on a branch and worktree of its own.
     NewWorktree,
+    /// The chat's own settings changed, to keep with its layout.
+    SettingsChanged,
 }
 
 pub struct ChatPanel {
@@ -70,6 +73,8 @@ pub struct ChatPanel {
     /// Kiln committed for this chat, so it may push as the chat ends.
     made_commit: bool,
     worktree: worktree::WorktreeState,
+    /// The settings chosen for this chat alone, over its project's.
+    session: serde_json::Value,
     /// Whether it is the only tab, which then offers its own close button.
     alone: bool,
     /// The dock tracks the active panel's handle on the group around it, so
@@ -112,12 +117,15 @@ impl ChatPanel {
             turn: turn_commit::TurnWatch::default(),
             made_commit: false,
             worktree: worktree::WorktreeState::default(),
+            session: serde_json::Value::Object(serde_json::Map::new()),
             projects: None,
             alone: false,
             focus,
             _subscriptions: subscriptions,
         };
         this.read_worktree(cx);
+        this.settings_changed(cx);
+        this.follow_repo(cx);
         this
     }
 
@@ -150,63 +158,8 @@ impl ChatPanel {
             self.chat
                 .update(cx, |chat, cx| chat.move_to(root, window, cx));
             self.read_worktree(cx);
-            cx.notify();
-        }
-    }
-
-    /// Shows `folders` over the chat, to pick the one to work in.
-    pub fn open_projects(
-        &mut self,
-        folders: Vec<PathBuf>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let current = self.project.read(cx).root().to_owned();
-        let page = cx.new(|cx| ProjectPicker::new(folders, Some(current), cx));
-        let subscription = cx.subscribe_in(&page, window, |this, _, event, window, cx| {
-            this.close_projects(window, cx);
-            match event {
-                ProjectPickerEvent::Pick(folder) if folder != this.project.read(cx).root() => {
-                    cx.emit(ChatPanelEvent::OpenProject(folder.clone()));
-                }
-                ProjectPickerEvent::Browse => cx.emit(ChatPanelEvent::BrowseProjects),
-                ProjectPickerEvent::Pick(_) | ProjectPickerEvent::Close => {}
-            }
-        });
-        ProjectPicker::focus(&page, window, cx);
-        self.projects = Some((page, subscription));
-        cx.notify();
-    }
-
-    fn close_projects(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.projects.take().is_some() {
-            self.chat.read(cx).focus_handle(cx).focus(window, cx);
-            cx.notify();
-        }
-    }
-
-    fn open_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let current = self.chat.read(cx).session_id().map(str::to_owned);
-        let sessions = self.project.read(cx).sessions().clone();
-        let picker = cx.new(|cx| ConversationPicker::new(sessions, current, window, cx));
-        let subscription = cx.subscribe_in(&picker, window, |this, _, event, window, cx| {
-            this.close_picker(window, cx);
-            if let ConversationPickerEvent::Pick { id, open_elsewhere } = event {
-                cx.emit(ChatPanelEvent::Open {
-                    id: id.clone(),
-                    open_elsewhere: *open_elsewhere,
-                });
-            }
-        });
-        ConversationPicker::focus(&picker, window, cx);
-        self.picker = Some((picker, subscription));
-        cx.notify();
-    }
-
-    fn close_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.picker.take().is_some() {
-            self.chat.read(cx).focus_handle(cx).focus(window, cx);
-            cx.notify();
+            self.settings_changed(cx);
+            self.follow_repo(cx);
         }
     }
 }
@@ -220,10 +173,15 @@ impl BasePanel for ChatPanel {
     }
 
     fn on_removed(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        if self.made_commit {
+        let push = self.settings(cx).git.push;
+        if let Some(push) = (self.made_commit)
+            .then(|| crate::pushing::wanted(kiln_settings::PushPolicy::SessionEnd, &push))
+            .flatten()
+        {
             let project = self.project.read(cx).root().to_path_buf();
-            crate::pushing::push_on(kiln_settings::PushPolicy::SessionEnd, project, cx);
+            crate::pushing::push_in_background(project, push, cx);
         }
+        self.drop_unused_worktree(cx);
         cx.emit(ChatPanelEvent::Removed);
     }
 }
@@ -275,6 +233,16 @@ impl Panel for ChatPanel {
                         .tab_stop(false)
                         .tooltip("New session in a worktree")
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::NewWorktree))),
+                )
+                .child(
+                    Button::new("chat-commit-settings")
+                        .ghost()
+                        .control_icon(Icon::new(gpui_kit::assets::IconName::GitCommitHorizontal))
+                        .tab_stop(false)
+                        .tooltip("Commit settings")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_commit_settings(window, cx);
+                        })),
                 )
                 .child(
                     Button::new("chat-split-right")
@@ -373,6 +341,7 @@ impl Render for ChatPanel {
                 v_flex()
                     .size_full()
                     .children(self.render_worktree(cx))
+                    .children(self.render_work(cx))
                     .child(div().flex_1().min_h_0().child(self.chat.clone())),
             )
             .children(review)

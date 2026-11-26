@@ -235,7 +235,7 @@ impl Workspace {
         };
         window.set_window_title(&title);
         self.reload_config(window, cx);
-        let watch = self.watch_config(window, cx);
+        let watch = Self::watch_config(window, cx);
         let _previous = self.config_watch.replace(watch);
         if let Some(project) = self.project(cx).cloned() {
             // Also while the panel is closed: going to a file needs them.
@@ -252,18 +252,16 @@ impl Workspace {
             let editor = project.read(cx).editor().clone();
             editor.update(cx, |pane, cx| pane.apply_settings(window, cx));
         }
-        let sleep_after = config::settings(cx).chat.sleep_after();
         for tab in &self.chats {
-            let chat = tab.panel.read(cx).chat().clone();
-            chat.update(cx, |chat, cx| chat.set_sleep_after(sleep_after, cx));
+            tab.panel.update(cx, ChatPanel::settings_changed);
         }
         cx.notify();
     }
 
     /// Reloads configuration whenever a settings or keybindings file changes.
-    fn watch_config(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Task<()> {
+    fn watch_config(window: &mut Window, cx: &mut Context<Self>) -> Task<()> {
         let (sender, mut receiver) = futures::channel::mpsc::unbounded::<()>();
-        let files = config::watched_files(self.shown_root.as_deref());
+        let files = config::watched_files(cx);
         let watcher = kiln_settings::FileWatcher::new(&files, move || {
             let _ = sender.unbounded_send(());
         });

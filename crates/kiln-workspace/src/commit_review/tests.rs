@@ -68,6 +68,8 @@ fn review(
     let (reply, answer) = async_channel::bounded(1);
     let paths: Vec<String> = paths.iter().map(|path| (*path).to_owned()).collect();
     let status = kiln_git::status(root).expect("status");
+    let commit = cx.update(|cx| crate::config::settings(cx).git.commit.clone());
+    let rules = super::message_rules(&commit).expect("rules");
     let pending = Pending {
         project: root.to_path_buf(),
         files: files(
@@ -76,8 +78,10 @@ fn review(
         ),
         paths,
         sent: message.to_owned(),
-        cleaned: cx.update(|cx| super::message_rules(cx).expect("rules").clean(message)),
+        cleaned: rules.clean(message),
         reply,
+        rules,
+        push: None,
     };
     let (window, _) = cx.update(|cx| {
         let options = WindowOptions {

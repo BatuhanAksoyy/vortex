@@ -19,7 +19,7 @@ use gpui_kit::{
     component::{
         ActiveTheme,
         input::{InputEvent, InputState},
-        resizable::{h_resizable, resizable_panel},
+        resizable::{ResizableState, h_resizable, resizable_panel},
         v_flex,
     },
 };
@@ -53,6 +53,9 @@ pub struct SearchPage {
     typing: Task<()>,
     scroll: UniformListScrollHandle,
     focus: FocusHandle,
+    /// Held here, not by the window, so the split the user sized outlives
+    /// the panel being closed.
+    split: Entity<ResizableState>,
     _query: Subscription,
 }
 
@@ -82,6 +85,7 @@ impl SearchPage {
             typing: Task::ready(()),
             scroll: UniformListScrollHandle::new(),
             focus: cx.focus_handle(),
+            split: cx.new(|_| ResizableState::default()),
             _query: typed,
         }
     }
@@ -188,6 +192,7 @@ impl Render for SearchPage {
             self.editor.clone().into_any_element()
         };
         h_resizable("search-page")
+            .with_state(&self.split)
             .child(
                 resizable_panel()
                     .size(window.rem_size() * LIST_WIDTH_REMS)

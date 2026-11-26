@@ -5,13 +5,22 @@ use serde_json::{Map, Value, json};
 
 /// What the agent is told of Kiln's tools. Commits and pushes are Kiln's,
 /// so the CLI's own ways to them are closed.
-fn instructions(server: &str) -> String {
-    format!(
-        "This session runs in Kiln, an IDE whose tools are named mcp__{server}__*. Commit with \
-         mcp__{server}__commit, never with `git commit`: Kiln holds the message to the \
+fn instructions(server: &ToolServer) -> String {
+    let name = &server.name;
+    let mut told = format!(
+        "This session runs in Kiln, an IDE whose tools are named mcp__{name}__*. Commit with \
+         mcp__{name}__commit, never with `git commit`: Kiln holds the message to the \
          project's rules and the user may review it first. Do not push; Kiln pushes as the \
          user set it to."
-    )
+    );
+    if !server.commit_directives.is_empty() {
+        told.push_str("\n\nThe project asks this of every commit message:");
+        for directive in &server.commit_directives {
+            told.push_str("\n- ");
+            told.push_str(directive);
+        }
+    }
+    told
 }
 
 /// The CLI's settings while Kiln commits: no line crediting Claude, and its
@@ -46,7 +55,7 @@ pub(crate) fn args(server: &ToolServer) -> [String; 8] {
         "--allowedTools".to_owned(),
         format!("mcp__{}", server.name),
         "--append-system-prompt".to_owned(),
-        instructions(&server.name),
+        instructions(server),
         "--settings".to_owned(),
         settings().to_string(),
     ]
@@ -63,6 +72,7 @@ mod tests {
             command: "/Applications/Kiln".into(),
             args: vec!["mcp".into()],
             env: vec![("KILN_BRIDGE_TOKEN".into(), "abc".into())],
+            commit_directives: vec!["Write in English.".into()],
         };
         let [
             flag,
@@ -79,6 +89,7 @@ mod tests {
             ("--append-system-prompt", "--settings")
         );
         assert!(told.contains("mcp__kiln__commit"), "{told}");
+        assert!(told.ends_with("- Write in English."), "{told}");
         let settings: Value = serde_json::from_str(&settings).unwrap();
         assert_eq!(settings["attribution"]["commit"], "");
         assert_eq!(settings["permissions"]["deny"][0], "Bash(git commit:*)");

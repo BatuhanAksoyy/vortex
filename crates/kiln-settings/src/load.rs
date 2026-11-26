@@ -24,6 +24,8 @@ pub struct Diagnostic {
 #[derive(Debug, Clone)]
 pub struct LoadedSettings {
     pub settings: Settings,
+    /// The layers merged, which a chat's own settings go over.
+    pub merged: Value,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -56,8 +58,42 @@ pub fn load(sources: &SettingsSources) -> anyhow::Result<LoadedSettings> {
 
     Ok(LoadedSettings {
         settings,
+        merged,
         diagnostics,
     })
+}
+
+/// `merged` with a chat's own settings over it.
+///
+/// # Errors
+/// When the chat's settings hold a value of the wrong type or out of range.
+pub fn with_session(merged: &Value, session: &Value) -> anyhow::Result<Settings> {
+    let mut merged = merged.clone();
+    merge(&mut merged, session.clone());
+    let settings: Settings = serde_json::from_value(merged).context("invalid setting value")?;
+    let range_errors = settings.range_errors();
+    if !range_errors.is_empty() {
+        anyhow::bail!(range_errors.join("; "));
+    }
+    Ok(settings)
+}
+
+/// What the settings file at `path` holds; an empty object when it is
+/// missing.
+///
+/// # Errors
+/// When it cannot be read or is not a JSON object.
+pub fn read_layer(path: &Path) -> anyhow::Result<Value> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error).context("cannot read file"),
+    };
+    let layer = parse_jsonc(&content)?;
+    if !layer.is_object() {
+        anyhow::bail!("settings file must contain a JSON object");
+    }
+    Ok(layer)
 }
 
 struct AppliedLayer {
@@ -90,7 +126,7 @@ fn apply_layer(base: &Value, path: &Path) -> anyhow::Result<Option<AppliedLayer>
     }))
 }
 
-fn parse_jsonc(content: &str) -> anyhow::Result<Value> {
+pub(crate) fn parse_jsonc(content: &str) -> anyhow::Result<Value> {
     if content.trim().is_empty() {
         return Ok(Value::Object(serde_json::Map::new()));
     }

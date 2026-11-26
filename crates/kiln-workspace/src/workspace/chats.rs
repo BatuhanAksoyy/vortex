@@ -58,7 +58,6 @@ impl Workspace {
             if let Some(dir) = notes {
                 chat.keep_notes_in(dir);
             }
-            chat.set_sleep_after(crate::config::settings(cx).chat.sleep_after(), cx);
             chat
         });
         let panel = cx.new(|cx| ChatPanel::new(chat.clone(), project.clone(), window, cx));
@@ -145,13 +144,19 @@ impl Workspace {
             .chats
             .iter()
             .find(|tab| PanelId::from(tab.panel.entity_id()) == id)?;
-        let chat = tab.panel.read(cx).chat().read(cx);
+        let panel = tab.panel.read(cx);
+        let chat = panel.chat().read(cx);
+        let own = panel.session_settings();
         Some(SavedChat {
             folder: Some(chat.cwd().to_owned()),
             session: chat.session_id().map(str::to_owned),
             account: chat.account().map(str::to_owned),
             mode: chat.known_mode(),
             effort: chat.known_effort(),
+            settings: own
+                .as_object()
+                .is_some_and(|it| !it.is_empty())
+                .then(|| own.clone()),
         })
     }
 
@@ -263,9 +268,10 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if matches!(event, ChatPanelEvent::Removed) {
-            self.remove_chat(panel, window, cx);
-            return;
+        match event {
+            ChatPanelEvent::Removed => return self.remove_chat(panel, window, cx),
+            ChatPanelEvent::SettingsChanged => return self.save_layout(cx),
+            _ => {}
         }
         self.activate(Some(panel.clone()), window, cx);
         let place = match event {
@@ -276,7 +282,9 @@ impl Workspace {
             ChatPanelEvent::BrowseProjects => return self.prompt_open_folder(window, cx),
             ChatPanelEvent::NewWorktree => return self.new_worktree_chat(panel, window, cx),
             ChatPanelEvent::Close => return self.close_chat(panel, window, cx),
-            ChatPanelEvent::Activated | ChatPanelEvent::Removed => return,
+            ChatPanelEvent::Activated
+            | ChatPanelEvent::Removed
+            | ChatPanelEvent::SettingsChanged => return,
             ChatPanelEvent::NewTab => Place::Tab,
             ChatPanelEvent::SplitRight => Place::Right,
         };
@@ -345,7 +353,7 @@ impl Workspace {
                 self.activate(Some(panel), window, cx);
                 self.pick_project(window, cx);
             }
-            ChatEvent::TurnStarted | ChatEvent::TurnCompleted | ChatEvent::PickConversation => {}
+            ChatEvent::TurnStarted | ChatEvent::TurnEnded { .. } | ChatEvent::PickConversation => {}
         }
     }
 

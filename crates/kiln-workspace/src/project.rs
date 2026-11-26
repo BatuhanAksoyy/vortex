@@ -36,6 +36,8 @@ pub enum ProjectEvent {
     SessionsListed,
     /// A file picked on the Git page, to be shown in the editor.
     OpenFile(PathBuf),
+    /// The Git page asked for the commit settings.
+    CommitSettings,
 }
 
 pub struct Project {
@@ -85,6 +87,7 @@ impl Project {
             ),
             cx.subscribe(&git_page, |_, _, event, cx| match event {
                 GitPageEvent::OpenFile(path) => cx.emit(ProjectEvent::OpenFile(path.clone())),
+                GitPageEvent::CommitSettings => cx.emit(ProjectEvent::CommitSettings),
             }),
         ];
         Self {
@@ -107,6 +110,11 @@ impl Project {
 
     pub fn name(&self) -> String {
         folder_name(&self.root)
+    }
+
+    /// What git says is changed in the project, read again as files change.
+    pub fn repo(&self) -> &Entity<RepoStatus> {
+        &self.repo
     }
 
     pub fn sessions(&self) -> &Entity<SessionList> {

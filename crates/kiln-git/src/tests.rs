@@ -375,3 +375,25 @@ fn a_discarded_worktree_takes_its_work_along() {
     assert!(!path.exists());
     assert_eq!(super::branches(root).expect("branches").len(), 1);
 }
+
+#[test]
+fn only_an_unused_worktree_goes_unasked() {
+    let dir = repository();
+    let into = tempfile::tempdir().expect("temp dir");
+    let path = into.path().join("three");
+    let (worktree, _) = super::create_worktree(dir.path(), &path, "three").expect("create");
+    fs::write(path.join("new.txt"), "new\n").expect("write");
+    assert!(
+        !super::remove_unused_worktree(&worktree).expect("check"),
+        "a new file"
+    );
+    super::commit_paths(&path, "Add new", &[]).expect("commit");
+    assert!(
+        !super::remove_unused_worktree(&worktree).expect("check"),
+        "a commit"
+    );
+    run(&path, &["reset", "-q", "--hard", "main"]);
+    assert!(super::remove_unused_worktree(&worktree).expect("remove"));
+    assert!(!path.exists());
+    assert_eq!(super::branches(dir.path()).expect("branches").len(), 1);
+}

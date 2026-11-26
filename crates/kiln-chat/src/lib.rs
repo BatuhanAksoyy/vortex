@@ -25,7 +25,7 @@ mod tool_format;
 mod transcript;
 
 pub use assets::Assets;
-pub use chat_view::{ChatEvent, ChatView, attachments::Attachment};
+pub use chat_view::{ChatEvent, ChatView, asking::Question, attachments::Attachment};
 pub use processes::{
     AgentProcesses, ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog,
     ProcessesDialogEvent, format_cpu, format_memory,

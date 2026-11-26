@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 directories.workspace = true
+jsonc-parser.workspace = true
 notify.workspace = true
 serde.workspace = true
 serde_ignored = "0.1.14"

@@ -90,22 +90,36 @@ pub enum PushPolicy {
     SessionEnd,
 }
 
-/// The rules every commit message is held to.
+/// When an agent's work is committed, and the rules every commit message
+/// is held to.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct CommitSettings {
+    /// Kiln commits a chat's work for it: the strip over the chat with its
+    /// Commit button, and `trigger`'s `task_done`.
+    pub enabled: bool,
     pub strip: Vec<String>,
     pub subject_max: usize,
     pub conventional: bool,
+    pub instructions: Vec<String>,
+    pub require: Vec<String>,
+    pub forbid: Vec<String>,
     pub review: bool,
     pub trigger: CommitTrigger,
-    pub model: String,
+    pub writer: WriterSettings,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CommitTrigger {
     Agent,
-    TurnEnd,
+    TaskDone,
+}
+
+/// The agent and model that judge a turn and write its commit message.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct WriterSettings {
+    pub agent: String,
+    pub model: String,
 }
 
 const FONT_SIZE_RANGE: std::ops::RangeInclusive<f32> = 6.0..=72.0;

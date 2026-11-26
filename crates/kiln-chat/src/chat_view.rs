@@ -5,7 +5,7 @@ mod accounts;
 mod accounts_panel;
 mod agents_dialog;
 mod agents_panel;
-mod asking;
+pub mod asking;
 pub(crate) mod attachments;
 mod bypass;
 mod cache_panel;
@@ -143,6 +143,8 @@ pub struct ChatView {
     spinner: Option<Task<()>>,
     /// Lifts a usage limit when its reset time comes.
     limit_timer: Option<Task<()>>,
+    /// A usage limit cut the last turn off; another account carries it on.
+    cut_by_limit: bool,
     /// Redraws the cache button when the prompt cache expires.
     cache_timer: Option<Task<()>>,
     _usage_poll: Task<()>,
@@ -203,6 +205,7 @@ impl ChatView {
             spinner_frame: 0,
             spinner: None,
             limit_timer: None,
+            cut_by_limit: false,
             cache_timer: None,
             _usage_poll: cx.spawn(Self::poll_usage),
             _subscriptions: [subscription, accounts_changed, activation]

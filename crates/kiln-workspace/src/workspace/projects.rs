@@ -41,6 +41,10 @@ impl Workspace {
         if let Some(project) = known.into_iter().find(|p| p.read(cx).root() == root) {
             return project.clone();
         }
+        crate::config::load_project(&root, cx);
+        // Its settings files are watched too.
+        let watch = Self::watch_config(window, cx);
+        let _previous = self.config_watch.replace(watch);
         let project = cx.new(|cx| Project::new(root, window, cx));
         let subscription = cx.subscribe_in(&project, window, Self::on_project);
         self.projects.push((project.clone(), subscription));
@@ -64,6 +68,9 @@ impl Workspace {
                 self.sync_titles(project, cx);
             }
             ProjectEvent::OpenFile(path) => self.open_absolute(path.clone(), window, cx),
+            ProjectEvent::CommitSettings => {
+                self.commit_settings(kiln_settings::Scope::Project, window, cx);
+            }
         }
     }
 

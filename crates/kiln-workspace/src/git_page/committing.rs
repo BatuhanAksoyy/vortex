@@ -77,7 +77,11 @@ impl GitPage {
         if !self.can_commit(cx) {
             return;
         }
-        let message = match crate::commit_review::checked(&self.message.read(cx).value(), cx) {
+        let commit = self.settings(cx).git.commit;
+        let message = crate::commit_review::message_rules(&commit).and_then(|rules| {
+            crate::commit_review::checked(&self.message.read(cx).value(), &rules)
+        });
+        let message = match message {
             Ok(message) => message,
             Err(problems) => {
                 self.write_error = Some(problems.into());

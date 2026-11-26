@@ -7,9 +7,30 @@ use kiln_agent::{OneShot, Pending};
 use super::ChatView;
 use crate::transcript::Entry;
 
+/// A question for a model of a harness, outside the conversation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Question {
+    /// The harness, by its name in the settings, such as `claude`.
+    pub agent: String,
+    pub model: String,
+    /// What the model is, in place of the agent's own system prompt.
+    pub system: String,
+    pub prompt: String,
+}
+
 impl ChatView {
-    /// One answer from `model` on this chat's account, in its folder.
-    pub fn ask_once(&self, model: &str, system: &str, prompt: String, cx: &App) -> Pending<String> {
+    /// One answer to `question`, in the chat's folder and on its account.
+    pub fn ask_once(&self, question: Question, cx: &App) -> Pending<String> {
+        let Question {
+            agent,
+            model,
+            system,
+            prompt,
+        } = question;
+        if agent != self.backend.name() {
+            let missing = format!("Kiln has no agent named `{agent}`.");
+            return Box::pin(async move { Err(anyhow::anyhow!(missing)) });
+        }
         let env = self
             .account
             .as_deref()
@@ -17,10 +38,22 @@ impl ChatView {
         self.backend.ask_once(OneShot {
             cwd: self.cwd.clone(),
             env,
-            model: model.to_owned(),
-            system: system.to_owned(),
+            model,
+            system,
             prompt,
         })
+    }
+
+    /// The name of the chat's harness, such as `claude`.
+    #[must_use]
+    pub fn agent_name(&self) -> &'static str {
+        self.backend.name()
+    }
+
+    /// The models the chat's agent offers, once it said.
+    #[must_use]
+    pub fn models(&self) -> &[kiln_agent::ModelOption] {
+        self.agent.models()
     }
 
     /// What the user last asked, and what the agent wrote back since.

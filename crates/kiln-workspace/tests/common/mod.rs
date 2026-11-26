@@ -20,6 +20,10 @@ use kiln_workspace::Workspace;
 pub struct Stored(pub Rc<RefCell<Vec<SessionSpec>>>);
 
 impl AgentBackend for Stored {
+    fn name(&self) -> &'static str {
+        "claude"
+    }
+
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
         self.0.borrow_mut().push(spec);
         let (events_tx, events) = async_channel::unbounded();
