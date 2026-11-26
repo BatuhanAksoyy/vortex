@@ -31,6 +31,16 @@ pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
         wire::System::CommandsChanged { commands } => Some(AgentEvent::CommandsChanged(
             control::slash_commands(commands),
         )),
+        wire::System::BackgroundTasksChanged { tasks: running } => tasks.background(running.len()),
+        wire::System::Other => None,
+        task => task_event(task, tasks),
+    };
+    event.into_iter().collect()
+}
+
+/// A subagent's or other task's start, progress or end.
+fn task_event(system: wire::System, tasks: &mut Tasks) -> Option<AgentEvent> {
+    match system {
         wire::System::TaskStarted {
             task_id,
             tool_use_id,
@@ -65,9 +75,8 @@ pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
             summary,
             usage: usage.as_ref(),
         }),
-        wire::System::Other => None,
-    };
-    event.into_iter().collect()
+        _ => None,
+    }
 }
 
 /// Only `/clear` is known to empty the conversation. Another trigger keeps

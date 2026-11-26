@@ -5,8 +5,11 @@ usage: capture.py <case> <out.jsonl>
   case: allow | edit | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
         | running | attach | followup | models | suggestion | thinking | recap
-        | nested | stop
+        | nested | stop | background
 
+"background" has the model start a short shell command in the background and
+end its turn while it runs, to record how the CLI reports a backgrounded
+shell starting and, after the turn, ending.
 "edit" has the model read a ten-line file and change two lines next to each
 other with one Edit, to record the patch the CLI reports with the result.
 It keeps its session and copies it beside the output as `<out>-session.jsonl`,
@@ -113,6 +116,7 @@ PROMPTS = {
     "thinking": "Think step by step: how many times does the letter r appear in 'strawberry raspberry'? Reply with only the number.",
     "recap": "Write a haiku about rust. Reply with only the haiku.",
     "edit": "Read lines.txt with the Read tool, then use the Edit tool once to replace the line `four` with `FOUR` and the line `five` with `5`, then reply with the single word done.",
+    "background": "Run the shell command `perl -e \"sleep 5\"` with the Bash tool and run_in_background true, then reply with the single word started without waiting for it.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -369,7 +373,7 @@ for line in proc.stdout:
     kind = msg.get("type")
     if kind == "control_request" and msg["request"].get("subtype") == "can_use_tool":
         req = msg["request"]
-        if case in ("allow", "edit", "plan", "subagent", "attach", "followup", "nested", "stop"):
+        if case in ("allow", "edit", "plan", "subagent", "attach", "followup", "nested", "stop", "background"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
         elif case == "questions":
             answers = {}
@@ -472,6 +476,10 @@ for line in proc.stdout:
     if kind == "system" and msg.get("subtype") == "init":
         session_id = msg.get("session_id")
     if kind == "result" and case == "subagent" and not notified:
+        continue
+    if case == "background" and kind == "system" and msg.get("subtype") == "task_notification":
+        deadline = min(deadline, time.time() + 30)
+    if kind == "result" and case == "background" and not notified:
         continue
     if kind == "result" and case == "followup":
         if reports == 0 or (followed_up and reports < 2):

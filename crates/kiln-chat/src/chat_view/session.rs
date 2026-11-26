@@ -301,6 +301,7 @@ impl ChatView {
         self.update_skills(&event, cx);
         self.update_hooks(&event, cx);
         let exited = matches!(event, AgentEvent::Exited { .. });
+        let sleep = super::sleep::Signal::of(&event);
         let turn_ended = matches!(event, AgentEvent::TurnEnded(_));
         let turn_ran = self.status() == crate::transcript::Status::Running;
         self.update_suggestion(&event, window, cx);
@@ -314,6 +315,7 @@ impl ChatView {
             self.session = None;
         }
         self.sync_prompt(window, cx);
+        self.follow_sleep(sleep, cx);
         if turn_ended {
             self.after_turn(turn_ran, window, cx);
         }

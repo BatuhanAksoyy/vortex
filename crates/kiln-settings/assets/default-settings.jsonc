@@ -23,6 +23,12 @@
     // The outline of the whole file beside the editor, to scroll by.
     "minimap": { "enabled": true }
   },
+  "chat": {
+    // Minutes a chat may stay idle before its agent's process stops, to
+    // start again on the same conversation with the next message; 0 keeps
+    // it running. A turn, subagent or background task keeps it awake.
+    "sleep_after_minutes": 30
+  },
   "files": {
     // Hidden from the file tree and quick open, in addition to .gitignore rules.
     "exclude": [".git", ".DS_Store"]

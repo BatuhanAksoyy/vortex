@@ -7,6 +7,7 @@ pub struct Settings {
     pub theme: ThemeSettings,
     pub ui: UiSettings,
     pub editor: EditorSettings,
+    pub chat: ChatSettings,
     pub files: FilesSettings,
     pub git: GitSettings,
 }
@@ -46,6 +47,20 @@ pub struct EditorSettings {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct MinimapSettings {
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ChatSettings {
+    pub sleep_after_minutes: u64,
+}
+
+impl ChatSettings {
+    /// How long a chat may stay idle; `None` keeps it running.
+    #[must_use]
+    pub fn sleep_after(&self) -> Option<std::time::Duration> {
+        (self.sleep_after_minutes > 0)
+            .then(|| std::time::Duration::from_mins(self.sleep_after_minutes))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

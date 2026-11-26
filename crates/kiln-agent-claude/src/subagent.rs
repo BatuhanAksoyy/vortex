@@ -16,9 +16,13 @@ use crate::{stream, wire};
 /// command, are not subagents.
 const AGENT_TASK: &str = "local_agent";
 
-/// The call that first started each task, by task id.
+/// The call that first started each task, by task id, and how many run
+/// in the background.
 #[derive(Default)]
-pub struct Tasks(HashMap<String, String>);
+pub struct Tasks {
+    calls: HashMap<String, String>,
+    background: usize,
+}
 
 /// A task's start as the CLI reports it.
 pub struct Start {
@@ -48,14 +52,14 @@ impl Tasks {
             return None;
         }
         let call = start.call?;
-        if let Some(first) = start.task.as_ref().and_then(|task| self.0.get(task))
+        if let Some(first) = start.task.as_ref().and_then(|task| self.calls.get(task))
             && *first != call
         {
             let message = start.prompt.unwrap_or_default();
             return Some(event(first.clone(), SubagentChange::Resumed { message }));
         }
         if let Some(task) = start.task {
-            self.0.insert(task, call.clone());
+            self.calls.insert(task, call.clone());
         }
         let change = SubagentChange::Started {
             description: start.description,
@@ -85,20 +89,31 @@ impl Tasks {
         Some(event(self.first(report.task, report.call)?, change))
     }
 
+    /// The background tasks counted, once their number changes.
+    pub fn background(&mut self, running: usize) -> Option<AgentEvent> {
+        (running != self.background).then(|| {
+            self.background = running;
+            AgentEvent::BackgroundTasks(running)
+        })
+    }
+
     /// The call that first started `task`.
     pub fn call(&self, task: &str) -> Option<&str> {
-        self.0.get(task).map(String::as_str)
+        self.calls.get(task).map(String::as_str)
     }
 
     /// The task `call` started.
     pub fn task(&self, call: &str) -> Option<&str> {
         let started = |(_, first): &(&String, &String)| *first == call;
-        self.0.iter().find(started).map(|(task, _)| task.as_str())
+        self.calls
+            .iter()
+            .find(started)
+            .map(|(task, _)| task.as_str())
     }
 
     /// The call that first started `task`, else the call the line names.
     fn first(&self, task: Option<&str>, call: Option<String>) -> Option<String> {
-        task.and_then(|task| self.0.get(task)).cloned().or(call)
+        task.and_then(|task| self.calls.get(task)).cloned().or(call)
     }
 }
 

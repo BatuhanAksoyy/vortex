@@ -58,6 +58,7 @@ impl Workspace {
             if let Some(dir) = notes {
                 chat.keep_notes_in(dir);
             }
+            chat.set_sleep_after(crate::config::settings(cx).chat.sleep_after(), cx);
             chat
         });
         let panel = cx.new(|cx| ChatPanel::new(chat.clone(), project.clone(), window, cx));

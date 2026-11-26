@@ -252,6 +252,11 @@ impl Workspace {
             let editor = project.read(cx).editor().clone();
             editor.update(cx, |pane, cx| pane.apply_settings(window, cx));
         }
+        let sleep_after = config::settings(cx).chat.sleep_after();
+        for tab in &self.chats {
+            let chat = tab.panel.read(cx).chat().clone();
+            chat.update(cx, |chat, cx| chat.set_sleep_after(sleep_after, cx));
+        }
         cx.notify();
     }
 

@@ -28,6 +28,7 @@ mod session;
 mod skills;
 mod skills_panel;
 mod slash_menu;
+mod sleep;
 mod tokens_panel;
 mod turn_keys;
 
@@ -119,6 +120,7 @@ pub struct ChatView {
     recap: recap::RecapWatch,
     kept: crate::kept_notes::KeptNotes,
     cli: session::CliRun,
+    sleep: sleep::Sleep,
     find: Option<find::Find>,
     /// The sent message Up last put in the box, by its place from the
     /// newest, while the box still holds it unchanged.
@@ -185,6 +187,7 @@ impl ChatView {
             recap: recap::RecapWatch::default(),
             kept: crate::kept_notes::KeptNotes::default(),
             cli: session::CliRun::default(),
+            sleep: sleep::Sleep::default(),
             find: None,
             recalled: None,
             slash: SlashMenu::default(),

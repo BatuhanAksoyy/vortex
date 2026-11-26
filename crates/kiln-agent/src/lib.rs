@@ -356,6 +356,9 @@ pub enum AgentEvent {
     },
     /// Where the conversation stands, for a user coming back to it.
     Recap(String),
+    /// How many tasks the agent runs in the background now, such as shell
+    /// commands it left running; they end with its process.
+    BackgroundTasks(usize),
     /// The message the user is likely to send next, predicted after a turn
     /// ends. None comes when the next step is not obvious.
     PromptSuggestion(String),

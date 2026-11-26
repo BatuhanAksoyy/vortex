@@ -85,6 +85,11 @@ pub enum System {
         summary: String,
         usage: Option<TaskUsage>,
     },
+    /// Every task running in the background, each time the list changes.
+    BackgroundTasksChanged {
+        #[serde(default)]
+        tasks: Vec<Value>,
+    },
     /// An estimate of the tokens thought since the last one, while the
     /// model thinks.
     ThinkingTokens {
