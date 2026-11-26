@@ -26,5 +26,20 @@
   "files": {
     // Hidden from the file tree and quick open, in addition to .gitignore rules.
     "exclude": [".git", ".DS_Store"]
+  },
+  "git": {
+    "commit": {
+      // Regular expressions; matching lines are taken out of every commit
+      // message, whoever wrote it.
+      "strip": [
+        "(?i)^co-authored-by:.*\\b(claude|codex|openai|anthropic)\\b",
+        "(?i)generated with \\[?(claude code|codex)",
+        "^🤖 Generated with"
+      ],
+      // The first line's most characters; 0 for no limit.
+      "subject_max": 72,
+      // The first line must read `type(scope): subject`.
+      "conventional": false
+    }
   }
 }

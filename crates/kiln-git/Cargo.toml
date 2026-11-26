@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+regex.workspace = true
 similar.workspace = true
 
 [dev-dependencies]

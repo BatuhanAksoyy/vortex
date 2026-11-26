@@ -92,14 +92,24 @@ mod git_page {
         })
         .await;
         click_label(cx, window, "Commit message");
+        type_text(cx, window, &"x".repeat(80));
+        press(cx, window, &primary("enter"));
+        assert!(
+            has(cx, window, "git-write-error"),
+            "the subject is too long"
+        );
+        press(cx, window, &primary("a"));
         type_text(cx, window, "Change the readme");
+        press(cx, window, "enter");
+        press(cx, window, "enter");
+        type_text(cx, window, "Co-Authored-By: Claude <noreply@anthropic.com>");
         press(cx, window, &primary("enter"));
         cx.wait_for(window, Duration::from_secs(5), |window, _| {
             window.try_find("git-change-staged-README.md").is_none()
         })
         .await;
         let log = std::process::Command::new("git")
-            .args(["log", "-1", "--format=%s"])
+            .args(["log", "-1", "--format=%B"])
             .current_dir(root)
             .output()
             .expect("git log");

@@ -6,6 +6,7 @@ mod branches;
 mod counts;
 mod lines;
 mod log;
+mod message;
 mod status;
 mod write;
 
@@ -20,6 +21,7 @@ pub use branches::{Branch, branches, create_branch, switch};
 pub use counts::Counts;
 pub use lines::{LineChange, LineKind, base_text, line_changes, patch};
 pub use log::{Commit, log, show};
+pub use message::MessageRules;
 pub use status::{Area, Change, Kind, Status};
 pub use write::{commit, stage, unstage};
 

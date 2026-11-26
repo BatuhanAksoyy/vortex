@@ -8,6 +8,7 @@ pub struct Settings {
     pub ui: UiSettings,
     pub editor: EditorSettings,
     pub files: FilesSettings,
+    pub git: GitSettings,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -50,6 +51,19 @@ pub struct MinimapSettings {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct FilesSettings {
     pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct GitSettings {
+    pub commit: CommitSettings,
+}
+
+/// The rules every commit message is held to.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CommitSettings {
+    pub strip: Vec<String>,
+    pub subject_max: usize,
+    pub conventional: bool,
 }
 
 const FONT_SIZE_RANGE: std::ops::RangeInclusive<f32> = 6.0..=72.0;
