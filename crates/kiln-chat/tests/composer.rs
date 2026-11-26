@@ -43,6 +43,7 @@ mod composer {
         AgentEvent::Started {
             session_id: "s".into(),
             model: "claude-opus-5-5".into(),
+            cli_version: None,
         }
     }
 

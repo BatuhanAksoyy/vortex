@@ -18,10 +18,8 @@ impl RecentProjects {
     /// What was kept in `file`. A missing or damaged one starts with
     /// `fallback`.
     pub fn load(file: PathBuf, fallback: impl FnOnce() -> Vec<PathBuf>) -> Self {
-        let text = std::fs::read_to_string(&file).ok();
-        let kept = text.and_then(|text| serde_json::from_str(&text).ok());
         Self {
-            folders: kept.unwrap_or_else(fallback),
+            folders: read(&file).unwrap_or_else(fallback),
             file: Some(file),
         }
     }
@@ -32,8 +30,11 @@ impl RecentProjects {
         existing.cloned().collect()
     }
 
-    /// Puts `folder` first.
+    /// Puts `folder` first, after what another window added.
     pub fn add(&mut self, folder: &Path) -> anyhow::Result<()> {
+        if let Some(kept) = self.file.as_deref().and_then(read) {
+            self.folders = kept;
+        }
         if self.folders.first().is_some_and(|first| first == folder) {
             return Ok(());
         }
@@ -50,6 +51,11 @@ impl RecentProjects {
         std::fs::write(file, serde_json::to_string_pretty(&self.folders)?)
             .with_context(|| format!("cannot write {}", file.display()))
     }
+}
+
+fn read(file: &Path) -> Option<Vec<PathBuf>> {
+    let text = std::fs::read_to_string(file).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
 #[cfg(test)]

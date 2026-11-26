@@ -1,6 +1,6 @@
 //! The chat layout kept for the window, so Kiln reopens the tabs and splits
-//! the user left. Only conversations are kept: a tab with nothing
-//! said in it has nothing to resume.
+//! the user left, as editors reopen the last window. A tab with nothing said
+//! in it comes back blank in its folder.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -29,7 +29,9 @@ pub enum Pane {
 /// mode and effort it runs with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedChat {
-    pub session: String,
+    /// `None` for a tab with no conversation yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     /// `None` in a layout kept for one project, whose folder it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<PathBuf>,
@@ -193,7 +195,7 @@ mod tests {
             chats: sessions
                 .iter()
                 .map(|id| SavedChat {
-                    session: (*id).to_owned(),
+                    session: Some((*id).to_owned()),
                     folder: None,
                     account: id.strip_prefix("s-").map(|n| format!("account-{n}")),
                     mode: (*id == "s-1").then_some(PermissionMode::Auto),

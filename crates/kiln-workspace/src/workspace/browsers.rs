@@ -95,7 +95,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<Browser> {
-        let profile = self.browser_profile.clone();
+        let profile = self.data_dir.as_ref().map(|dir| dir.join("browser"));
         let browser = cx.new(|cx| Browser::new(profile, window, cx));
         let chat = chat.downgrade();
         let events = cx.subscribe_in(

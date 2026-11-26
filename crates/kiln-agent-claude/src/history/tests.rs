@@ -57,6 +57,19 @@ fn an_abandoned_branch_is_not_shown() {
 }
 
 #[test]
+fn a_stored_block_is_keyed_as_it_streamed() {
+    let stored = r#"{"type":"assistant","uuid":"u2","apiBlockIndex":2,"message":{"id":"msg_9","content":[{"type":"text","text":"two"}]}}"#;
+    let key = messages(stored)
+        .into_iter()
+        .find_map(|message| match message {
+            PastMessage::Agent(AgentEvent::TextDelta { block, .. }) => Some(block),
+            _ => None,
+        });
+    let key = key.map(|block| (block.message_id, block.index));
+    assert_eq!(key, Some(("msg_9".to_owned(), 2)));
+}
+
+#[test]
 fn commands_and_interruptions_read_as_typed() {
     let line = |content: &str| serde_json::json!({"type": "user", "uuid": content, "message": {"role": "user", "content": content}});
     let command = "<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>haiku</command-args>";

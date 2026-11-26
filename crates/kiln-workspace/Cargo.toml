@@ -14,6 +14,7 @@ jiff.workspace = true
 gpui-kit.workspace = true
 kiln-accounts.workspace = true
 kiln-agent.workspace = true
+kiln-agent-claude.workspace = true
 kiln-bridge.workspace = true
 kiln-browser.workspace = true
 kiln-chat.workspace = true

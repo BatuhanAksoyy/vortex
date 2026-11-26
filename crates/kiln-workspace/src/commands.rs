@@ -26,6 +26,7 @@ actions!(
         OpenKeybindings,
         OpenDefaultKeybindings,
         OpenFolder,
+        NewWindow,
         Save,
         CloseEditor,
         NextEditor,
@@ -103,6 +104,9 @@ pub const COMMANDS: &[CommandSpec] = &[
         "Open Folder…",
         || Box::new(OpenFolder),
     ),
+    spec("workbench.action.newWindow", "New Window", || {
+        Box::new(NewWindow)
+    }),
     spec("workbench.action.files.save", "Save", || Box::new(Save)),
     spec("workbench.action.closeActiveEditor", "Close Editor", || {
         Box::new(CloseEditor)
@@ -165,6 +169,7 @@ pub fn register(cx: &mut App) {
     on::<ZoomIn>(cx, Workspace::zoom_in);
     on::<ZoomOut>(cx, Workspace::zoom_out);
     on::<ZoomReset>(cx, Workspace::zoom_reset);
+    cx.on_action(|_: &NewWindow, cx: &mut App| crate::windows::open_another(cx));
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
 }
 

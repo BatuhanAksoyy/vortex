@@ -25,7 +25,7 @@ use kiln_chat::{ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog};
 use crate::{
     browser::Browser,
     chat_panel::ChatPanel,
-    commands::ActiveWorkspace,
+    cli_version::{CliVersion, CliVersionEvent},
     config,
     project::{Project, folder_name},
     project_picker::ProjectPicker,
@@ -39,10 +39,13 @@ mod activity_bar;
 mod agent_tools;
 mod browsers;
 mod chats;
+mod cli_update;
 mod layout;
 mod processes;
 mod projects;
 mod side;
+mod switcher;
+mod tabs;
 
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(150);
 
@@ -61,10 +64,15 @@ pub struct Workspace {
     accounts: Entity<Accounts>,
     /// What every agent's processes use, in the status bar.
     process_meter: Entity<ProcessMeter>,
+    /// The Claude Code version, in the status bar; none in tests, which run
+    /// no real CLI.
+    cli_version: Option<(Entity<CliVersion>, Subscription)>,
     side_panel: SidePanel,
-    /// The sessions' browsers, by chat, and where they keep their data.
+    /// The sessions' browsers, by chat.
     browsers: Vec<(EntityId, Entity<Browser>)>,
-    browser_profile: Option<PathBuf>,
+    /// Where Kiln keeps its data: the browsers' profile, and what chats keep
+    /// of a conversation that the agent does not store; `None` keeps none.
+    data_dir: Option<PathBuf>,
     agent_tools: Option<agent_tools::AgentTools>,
     /// Whether the side panel fills the window while open; not kept across restarts.
     side_maximized: bool,
@@ -102,12 +110,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let workspace = cx.entity().downgrade();
-        cx.set_global(ActiveWorkspace {
-            window: window.window_handle(),
-            workspace,
-        });
-        cx.on_release(|_, cx| cx.quit()).detach();
+        crate::windows::track(window, cx);
         let processes = Processes::shared(cx);
         let meter = cx.new(|cx| ProcessMeter::all(processes.clone(), cx));
         let dock = chats::new_dock(window, cx);
@@ -123,6 +126,7 @@ impl Workspace {
             }),
             cx.observe_window_activation(window, |this, window, cx| {
                 if window.is_window_active() {
+                    crate::windows::make_active(window, cx);
                     this.refresh_project(window, cx);
                 }
             }),
@@ -145,9 +149,10 @@ impl Workspace {
             backend,
             accounts,
             process_meter: meter,
+            cli_version: None,
             side_panel: SidePanel::default(),
             browsers: Vec::new(),
-            browser_profile: None,
+            data_dir: None,
             agent_tools: None,
             side_maximized: false,
             side_panel_file: None,
@@ -169,16 +174,49 @@ impl Workspace {
     /// Keeps the chat layout in the file at `path`, to reopen it on the next
     /// start, and the recent projects, side panel and browser data beside it.
     #[must_use]
-    pub fn keeping_layouts_in(mut self, path: PathBuf) -> Self {
+    pub fn keeping_layouts_in(self, path: PathBuf) -> Self {
+        let mut this = self.keeping_data_beside(&path);
+        let projects = path.with_file_name("projects.json");
+        let layouts = LayoutFile::new(path);
+        this.recent = RecentProjects::load(projects, || layouts.projects());
+        this.layouts = Some(layouts);
+        this
+    }
+
+    /// For a further window: the recent projects, side panel and browser
+    /// data beside `path`, but not the layout there, which is the first
+    /// window's.
+    #[must_use]
+    pub fn keeping_data_beside(mut self, path: &Path) -> Self {
         let side_panel = path.with_file_name("side-panel.json");
         self.side_panel = SidePanel::load(&side_panel);
         self.side_panel_file = Some(side_panel);
-        self.browser_profile = Some(path.with_file_name("browser"));
+        self.data_dir = path.parent().map(Path::to_path_buf);
         self.agent_tools = path.parent().and_then(agent_tools::AgentTools::start);
-        let projects = path.with_file_name("projects.json");
-        let layouts = LayoutFile::new(path);
-        self.recent = RecentProjects::load(projects, || layouts.projects());
-        self.layouts = Some(layouts);
+        self.recent = RecentProjects::load(path.with_file_name("projects.json"), Vec::new);
+        self
+    }
+
+    /// Shows `version` in the status bar, whose panel restarts the chats
+    /// left on an older one.
+    #[must_use]
+    pub fn showing_cli_version(
+        mut self,
+        version: Entity<CliVersion>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let workspace = cx.weak_entity();
+        version.update(cx, |version, _| {
+            version.count_chats_behind(move |installed, cx| {
+                let workspace = workspace.upgrade();
+                workspace.map_or(0, |it| it.read(cx).chats_behind(installed, cx).len())
+            });
+        });
+        let restart = cx.subscribe_in(&version, window, |this, _, event, window, cx| match event {
+            CliVersionEvent::RestartChats => this.restart_chats_behind(window, cx),
+        });
+        self.cli_version = Some((version, restart));
         self
     }
 
@@ -284,7 +322,14 @@ impl Render for Workspace {
                         .pr_2()
                         .gap_2()
                         .children(self.render_panel_toggle(cx))
-                        .child(gpui_kit::div().flex_1().min_w_0().truncate().child(name))
+                        .child(
+                            // A row, so the menu's button keeps to the left.
+                            h_flex()
+                                .flex_1()
+                                .min_w_0()
+                                .justify_start()
+                                .child(self.render_switcher(name, cx)),
+                        )
                         .children(self.render_browser_toggle(cx)),
                 ),
             )
@@ -306,7 +351,10 @@ impl Render for Workspace {
                 StatusBar::new()
                     .left(self.process_meter.clone())
                     .left(root.display().to_string())
-                    .child(active_file.unwrap_or_default()),
+                    .right(active_file.unwrap_or_default())
+                    .when_some(self.cli_version.as_ref(), |bar, (version, _)| {
+                        bar.right(version.clone())
+                    }),
             )
     }
 }

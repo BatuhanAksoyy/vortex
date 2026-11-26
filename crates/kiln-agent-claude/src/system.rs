@@ -11,7 +11,15 @@ use crate::{
 
 pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
     let event = match system {
-        wire::System::Init { session_id, model } => Some(AgentEvent::Started { session_id, model }),
+        wire::System::Init {
+            session_id,
+            model,
+            claude_code_version,
+        } => Some(AgentEvent::Started {
+            session_id,
+            model,
+            cli_version: claude_code_version,
+        }),
         wire::System::ThinkingTokens {
             estimated_tokens_delta,
         } => (estimated_tokens_delta > 0)

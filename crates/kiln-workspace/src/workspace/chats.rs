@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub(super) struct ChatTab {
-    panel: Entity<ChatPanel>,
+    pub(super) panel: Entity<ChatPanel>,
     _subscriptions: [Subscription; 2],
 }
 
@@ -52,7 +52,14 @@ impl Workspace {
             self.accounts.clone(),
             project.read(cx).root().to_owned(),
         );
-        let chat = cx.new(|cx| ChatView::new(backend, accounts, root, window, cx));
+        let notes = self.data_dir.as_ref().map(|dir| dir.join("notes"));
+        let chat = cx.new(|cx| {
+            let mut chat = ChatView::new(backend, accounts, root, window, cx);
+            if let Some(dir) = notes {
+                chat.keep_notes_in(dir);
+            }
+            chat
+        });
         let panel = cx.new(|cx| ChatPanel::new(chat.clone(), project.clone(), window, cx));
         self.give_tools(&panel, cx);
         let weak = panel.downgrade();
@@ -68,6 +75,7 @@ impl Workspace {
             panel: panel.clone(),
             _subscriptions: subscriptions,
         });
+        self.sync_alone(cx);
         panel
     }
 
@@ -79,8 +87,14 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<ChatView> {
+        // A new tab goes on in the mode the user last worked in.
+        let mode = (self.active_chat.as_ref())
+            .and_then(|active| active.read(cx).chat().read(cx).known_mode());
         let panel = self.new_chat_panel(project, window, cx);
         let chat = panel.read(cx).chat().clone();
+        if let Some(mode) = mode {
+            chat.update(cx, |chat, cx| chat.start_in_mode(mode, cx));
+        }
         let beside = self.focused_group(cx);
         let id = PanelId::from(panel.entity_id());
         self.dock.update(cx, |dock, cx| {
@@ -133,7 +147,7 @@ impl Workspace {
         let chat = tab.panel.read(cx).chat().read(cx);
         Some(SavedChat {
             folder: Some(chat.cwd().to_owned()),
-            session: chat.session_id()?.to_owned(),
+            session: chat.session_id().map(str::to_owned),
             account: chat.account().map(str::to_owned),
             mode: chat.known_mode(),
             effort: chat.known_effort(),
@@ -255,17 +269,11 @@ impl Workspace {
         self.activate(Some(panel.clone()), window, cx);
         let place = match event {
             ChatPanelEvent::Open { id, open_elsewhere } => {
-                self.switch_conversation(id, *open_elsewhere, window, cx);
-                return;
+                return self.switch_conversation(id, *open_elsewhere, window, cx);
             }
-            ChatPanelEvent::OpenProject(folder) => {
-                self.open_folder(folder, window, cx);
-                return;
-            }
-            ChatPanelEvent::BrowseProjects => {
-                self.prompt_open_folder(window, cx);
-                return;
-            }
+            ChatPanelEvent::OpenProject(folder) => return self.open_folder(folder, window, cx),
+            ChatPanelEvent::BrowseProjects => return self.prompt_open_folder(window, cx),
+            ChatPanelEvent::Close => return self.close_chat(panel, window, cx),
             ChatPanelEvent::Activated | ChatPanelEvent::Removed => return,
             ChatPanelEvent::NewTab => Place::Tab,
             ChatPanelEvent::SplitRight => Place::Right,
@@ -273,26 +281,6 @@ impl Workspace {
         let project = panel.read(cx).project().clone();
         let chat = self.add_chat(place, &project, window, cx);
         focus(&chat, window, cx);
-    }
-
-    /// Forgets a closed tab, which ends its process. The dock never closes
-    /// the last one.
-    fn remove_chat(
-        &mut self,
-        panel: &Entity<ChatPanel>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(ix) = self.chats.iter().position(|tab| &tab.panel == panel) else {
-            return;
-        };
-        self.chats.remove(ix);
-        self.browsers.retain(|(chat, _)| *chat != panel.entity_id());
-        if self.active_chat.as_ref() == Some(panel) {
-            let next = self.displayed_chat(cx);
-            self.activate(next, window, cx);
-        }
-        self.sync_running(cx);
     }
 
     /// Moves on to the tab now shown in the active chat's group, so the side
@@ -319,7 +307,7 @@ impl Workspace {
     }
 
     /// The chat the first group of tabs shows.
-    fn displayed_chat(&self, cx: &gpui_kit::App) -> Option<Entity<ChatPanel>> {
+    pub(super) fn displayed_chat(&self, cx: &gpui_kit::App) -> Option<Entity<ChatPanel>> {
         let dock = self.dock.read(cx);
         let tree = dock.layout(DockPlacement::Center)?;
         self.chat_in(displayed(tree.root(), None)?)

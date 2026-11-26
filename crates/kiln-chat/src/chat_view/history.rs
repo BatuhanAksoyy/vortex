@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use gpui_kit::{AppContext as _, Context, EventEmitter, Window};
 
 use super::ChatView;
-use crate::transcript::{Status, Transcript};
+use crate::{
+    kept_notes::KeptNotes,
+    transcript::{Status, Transcript},
+};
 
 /// What the window's history list follows.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,10 +133,12 @@ impl ChatView {
         self.scroller
             .update(cx, |scroller, cx| scroller.reset(1, cx));
         let load = self.backend.past_messages(&self.cwd, id);
+        let kept = self.kept_notes(id, cx);
         self.history_load = Some(cx.spawn_in(window, async move |this, cx| {
             let messages = cx.background_spawn(load).await;
+            let kept = kept.await;
             let _ = this.update_in(cx, |this, window, cx| match messages {
-                Ok(messages) => this.show_history(messages, window, cx),
+                Ok(messages) => this.show_history(messages, &kept, window, cx),
                 Err(error) => {
                     let change = this
                         .transcript
@@ -149,13 +154,29 @@ impl ChatView {
         cx.notify();
     }
 
+    /// Keeps what the chat shows that the agent does not store in `dir`,
+    /// one file per conversation, to show it again when reopened.
+    pub fn keep_notes_in(&mut self, dir: PathBuf) {
+        self.kept.keep_in(dir);
+    }
+
+    fn kept_notes(&self, id: &str, cx: &Context<Self>) -> gpui_kit::Task<(String, Vec<u8>)> {
+        let (dir, id) = (self.kept.dir().map(Path::to_path_buf), id.to_owned());
+        cx.background_spawn(async move {
+            let kept = KeptNotes::read(dir.as_deref(), &id);
+            (id, kept)
+        })
+    }
+
     fn show_history(
         &mut self,
         messages: Vec<kiln_agent::PastMessage>,
+        (id, kept): &(String, Vec<u8>),
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.transcript.restore(messages);
+        self.kept.restore(id, kept);
+        self.transcript.restore(self.kept.merge(messages));
         if self.conversation.as_ref().is_some_and(|stored| stored.fork) {
             let _ = self.transcript.push_notice(
                 "Open in another window. Messages sent here continue a copy of it.".to_owned(),

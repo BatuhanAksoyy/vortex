@@ -4,6 +4,7 @@ mod changes;
 mod closing;
 mod document;
 mod minimap;
+mod preview;
 
 use std::path::{Path, PathBuf};
 
@@ -26,7 +27,7 @@ use gpui_kit::{
 use kiln_chat::scale::ScaledButton as _;
 
 use crate::file_icon;
-use document::{Contents, Document, file_title, read_text};
+use document::{Contents, Document, file_title, read_opened};
 
 /// A file was written.
 pub struct Saved;
@@ -94,7 +95,7 @@ impl EditorPane {
         }
         let read = cx.background_spawn({
             let path = path.clone();
-            async move { read_text(&path) }
+            async move { read_opened(&path) }
         });
         cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
@@ -204,6 +205,12 @@ impl EditorPane {
         }
     }
 
+    pub fn toggle_preview(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(document) = self.active_document() {
+            document.update(cx, Document::toggle_preview);
+        }
+    }
+
     pub fn toggle_changes(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(document) = self.active_document() {
             document.update(cx, Document::toggle_changes);
@@ -256,7 +263,34 @@ impl EditorPane {
             .when_some(self.active, TabBar::selected_index)
             .on_click(cx.listener(|this, ix: &usize, window, cx| this.activate(*ix, window, cx)))
             .children(tabs)
-            .suffix(self.changes_button(cx))
+            .suffix(
+                h_flex()
+                    .px_2()
+                    .gap_1()
+                    .children(self.preview_button(cx))
+                    .child(self.changes_button(cx)),
+            )
+    }
+
+    fn preview_button(&self, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
+        let document = self.active_document()?.read(cx);
+        if !document.is_markdown() {
+            return None;
+        }
+        let shown = document.shows_preview();
+        let tooltip = if shown {
+            "Show the source"
+        } else {
+            "Open Preview"
+        };
+        Some(
+            Button::new("editor-toggle-preview")
+                .ghost()
+                .control_icon(Lucide::BookOpen)
+                .selected(shown)
+                .tooltip(tooltip)
+                .on_click(cx.listener(|this, _, window, cx| this.toggle_preview(window, cx))),
+        )
     }
 
     fn changes_button(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
@@ -268,15 +302,13 @@ impl EditorPane {
             (true, false) => "Show changes since the last commit",
             (true, true) => "Show the file",
         };
-        h_flex().px_2().child(
-            Button::new("editor-toggle-changes")
-                .ghost()
-                .control_icon(Lucide::FileDiff)
-                .selected(shown)
-                .disabled(!changed)
-                .tooltip(tooltip)
-                .on_click(cx.listener(|this, _, window, cx| this.toggle_changes(window, cx))),
-        )
+        Button::new("editor-toggle-changes")
+            .ghost()
+            .control_icon(Lucide::FileDiff)
+            .selected(shown)
+            .disabled(!changed)
+            .tooltip(tooltip)
+            .on_click(cx.listener(|this, _, window, cx| this.toggle_changes(window, cx)))
     }
 }
 

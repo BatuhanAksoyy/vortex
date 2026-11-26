@@ -11,6 +11,7 @@ gpui_kit::assets::icon_assets!(
         ArrowLeft,
         ArrowRight,
         Bluetooth,
+        BookOpen,
         Cable,
         Camera,
         Columns2,

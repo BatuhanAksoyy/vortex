@@ -29,8 +29,11 @@ enum Stored {
         is_compact_summary: bool,
         message: UserMessage,
     },
+    #[serde(rename_all = "camelCase")]
     Assistant {
         uuid: String,
+        /// Where the block stood in the model's message, as streamed.
+        api_block_index: Option<u64>,
         message: AssistantMessage,
     },
     Attachment {
@@ -86,6 +89,8 @@ enum UserBlock {
 
 #[derive(Deserialize)]
 struct AssistantMessage {
+    /// The model's message id, which the streamed blocks carry too.
+    id: Option<String>,
     content: Vec<AssistantBlock>,
 }
 
@@ -188,7 +193,11 @@ fn shown(line: Stored) -> Vec<PastMessage> {
             is_compact_summary: false,
             message,
         } => user_messages(message.content),
-        Stored::Assistant { uuid, message } => assistant_messages(&uuid, message),
+        Stored::Assistant {
+            uuid,
+            api_block_index,
+            message,
+        } => assistant_messages(&uuid, api_block_index, message),
         Stored::Attachment { attachment } if attachment.kind == "queued_command" => attachment
             .prompt
             .as_str()
@@ -302,15 +311,27 @@ pub(super) fn tagged<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
     Some(text[start..end].trim())
 }
 
-/// Each block keyed by its line, so every block is a row of its own, as it
-/// was when streamed.
-fn assistant_messages(uuid: &str, message: AssistantMessage) -> Vec<PastMessage> {
+/// Each block keyed as it was when streamed: by the model's message and
+/// the block's place in it, so what Kiln kept of a block finds it again.
+/// Older lines without both are keyed by the line.
+fn assistant_messages(
+    uuid: &str,
+    api_block_index: Option<u64>,
+    message: AssistantMessage,
+) -> Vec<PastMessage> {
+    let streamed = message.id.zip(api_block_index);
     (0..)
         .zip(message.content)
         .filter_map(|(index, block)| {
-            let block_key = || BlockKey {
-                message_id: uuid.to_owned(),
-                index,
+            let block_key = || match &streamed {
+                Some((id, at)) => BlockKey {
+                    message_id: id.clone(),
+                    index: at + index,
+                },
+                None => BlockKey {
+                    message_id: uuid.to_owned(),
+                    index,
+                },
             };
             let event = match block {
                 AssistantBlock::Text { text } if !text.trim().is_empty() => AgentEvent::TextDelta {

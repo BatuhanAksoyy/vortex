@@ -4,6 +4,7 @@
 mod appearance;
 mod browser;
 mod chat_panel;
+mod cli_version;
 mod commands;
 mod config;
 mod conversation_picker;
@@ -21,11 +22,14 @@ mod saved_layout;
 mod search_page;
 mod session_list;
 mod side_panel;
+mod windows;
 mod workspace;
 
 use gpui_kit::App;
 
+pub use cli_version::{CliVersion, CliVersionEvent};
 pub use kiln_chat::Assets;
+pub use windows::open_first as open_first_window;
 pub use workspace::Workspace;
 
 /// Registers themes, configuration state and application-level commands.

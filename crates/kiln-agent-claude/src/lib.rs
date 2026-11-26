@@ -9,6 +9,7 @@ mod cli_edit;
 mod control;
 mod history;
 mod hooks;
+mod install;
 mod outgoing;
 mod picture;
 mod recap;
@@ -24,5 +25,6 @@ mod turn_end;
 mod usage;
 mod wire;
 
+pub use install::{Install, Method, is_newer};
 pub use session::ClaudeBackend;
 pub use translate::Translator;

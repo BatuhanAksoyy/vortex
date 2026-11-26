@@ -37,6 +37,9 @@ pub enum ChatPanelEvent {
     SplitRight,
     /// The tab was closed; its process ends with it.
     Removed,
+    /// The tab's own close button, which only the last tab shows: the dock
+    /// never closes its last tab itself.
+    Close,
     /// A conversation picked on the chat's conversations page, to show in
     /// this chat.
     Open { id: String, open_elsewhere: bool },
@@ -53,6 +56,8 @@ pub struct ChatPanel {
     picker: Option<(Entity<ConversationPicker>, Subscription)>,
     /// The projects page over the chat, while open.
     projects: Option<(Entity<ProjectPicker>, Subscription)>,
+    /// Whether it is the only tab, which then offers its own close button.
+    alone: bool,
     /// The dock tracks the active panel's handle on the group around it, so
     /// it must not be the chat's own, which the composer tracks too: one
     /// focus reported by two elements panics GPUI's accessibility tree.
@@ -89,8 +94,16 @@ impl ChatPanel {
             project,
             picker: None,
             projects: None,
+            alone: false,
             focus,
             _subscriptions: subscriptions,
+        }
+    }
+
+    pub fn set_alone(&mut self, alone: bool, cx: &mut Context<Self>) {
+        if self.alone != alone {
+            self.alone = alone;
+            cx.notify();
         }
     }
 
@@ -190,20 +203,29 @@ impl BasePanel for ChatPanel {
 }
 
 impl Panel for ChatPanel {
+    /// The project and conversation, with a dot while a turn runs, and the
+    /// last tab's own close button.
     fn title(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let chat = self.chat.read(cx);
         let running = chat.status() == Status::Running;
+        let title = format!(
+            "{} · {}",
+            self.project.read(cx).name(),
+            tab_title(chat.title())
+        );
         h_flex()
             .gap_1p5()
             .when(running, |this| {
                 this.child(div().size_1p5().rounded_full().bg(cx.theme().primary))
             })
-            .children(self.tab_name(cx))
+            .child(title)
+            .when(self.alone, |this| this.child(Self::close_button(cx)))
     }
 
-    fn tab_name(&self, cx: &App) -> Option<SharedString> {
-        let title = tab_title(self.chat.read(cx).title());
-        Some(format!("{} · {title}", self.project.read(cx).name()).into())
+    /// None, so the tab draws [`Panel::title`], which holds the last tab's
+    /// close button.
+    fn tab_name(&self, _: &App) -> Option<SharedString> {
+        None
     }
 
     /// Drawn here rather than as toolbar buttons, which the dock shrinks to
@@ -234,6 +256,20 @@ impl Panel for ChatPanel {
     /// The chat draws its own margins.
     fn inner_padding(&self, _: &App) -> bool {
         false
+    }
+}
+
+impl ChatPanel {
+    fn close_button(cx: &Context<Self>) -> Button {
+        Button::new("chat-close")
+            .ghost()
+            .row_icon(Icon::new(gpui_kit::assets::IconName::Close))
+            .tab_stop(false)
+            .tooltip("Close session")
+            .on_click(cx.listener(|_, _, _, cx| {
+                cx.stop_propagation();
+                cx.emit(ChatPanelEvent::Close);
+            }))
     }
 }
 

@@ -124,7 +124,7 @@ mod sessions {
         assert_eq!(spawned(&backend), 3);
         assert_eq!(last_resume(&backend).as_deref(), Some("s-old"));
         assert_eq!(labels(cx, window, "Fix the build"), 0, "replaced");
-        assert!(!tab_bar_has(cx, window, ("close-tab", 0)), "still one tab");
+        assert!(!tab_bar_has(cx, window, ("close-tab", 1)), "still one tab");
     }
 
     #[gpui_kit::test]
@@ -198,17 +198,19 @@ mod sessions {
     }
 
     #[gpui_kit::test]
-    fn a_closed_tab_ends_its_conversation_but_the_last_one_stays(cx: &mut TestAppContext) {
+    fn a_closed_tab_ends_its_conversation_and_the_last_one_closes_too(cx: &mut TestAppContext) {
         let backend = Stored::default();
         let window = open(cx, backend.clone());
-        assert!(!tab_bar_has(cx, window, ("close-tab", 0)), "the last tab");
+        let close = |cx: &mut TestAppContext, tab: usize| {
+            cx.update_window(window, |_, window, cx| {
+                window.within("tab-bar").click(("close-tab", tab), cx);
+            })
+            .expect("window");
+            cx.run_until_parked();
+        };
         two_tabs(cx, window, "s-new", "s-old");
-        cx.update_window(window, |_, window, cx| {
-            window.within("tab-bar").click(("close-tab", 1_usize), cx);
-        })
-        .expect("window");
-        cx.run_until_parked();
-        assert!(!tab_bar_has(cx, window, ("close-tab", 0)), "one tab left");
+        close(cx, 1);
+        assert!(!tab_bar_has(cx, window, ("close-tab", 1)), "one tab left");
         assert!(
             labels(cx, window, "Fix the build") > 0,
             "the other tab shows"
@@ -216,6 +218,19 @@ mod sessions {
         let started = spawned(&backend);
         pick(cx, window, "s-old");
         assert_eq!(spawned(&backend), started + 1, "reopened");
+
+        assert!(
+            !tab_bar_has(cx, window, ("close-tab", 0)),
+            "not the dock's own"
+        );
+        click(cx, window, "chat-close");
+        let start = cx
+            .update_window(window, |_, window, cx| {
+                window.render_frame(cx);
+                !window.find_all("start-page").is_empty()
+            })
+            .expect("window");
+        assert!(start, "an empty window offers the folders");
     }
 
     /// Types and sends `text`; whether it was said in the chat on screen.
@@ -263,5 +278,37 @@ mod sessions {
             typed_into_shown_chat(cx, window, "second"),
             "the new chat beside it"
         );
+    }
+
+    #[gpui_kit::test]
+    fn the_title_bar_menu_switches_to_another_session(cx: &mut TestAppContext) {
+        let backend = Stored::default();
+        let window = open(cx, backend.clone());
+        two_tabs(cx, window, "s-new", "s-old");
+        click(cx, window, "window-switcher");
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            let at = window
+                .find_by_label("kiln-workspace · Fix the build")
+                .bounds()
+                .center();
+            window.drag(at, at, cx);
+        })
+        .expect("window");
+        cx.run_until_parked();
+        assert!(
+            typed_into_shown_chat(cx, window, "here"),
+            "the chosen session"
+        );
+        let shown = cx
+            .update_window(window, |_, window, cx| {
+                window.render_frame(cx);
+                window
+                    .find_all_by_label("Fix the build")
+                    .iter()
+                    .any(gpui_kit::test::ElementSnapshot::visible)
+            })
+            .expect("window");
+        assert!(shown, "its tab is shown");
     }
 }

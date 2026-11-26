@@ -125,7 +125,11 @@ impl AgentState {
                 SessionCommand::RefreshContext,
                 SessionCommand::RefreshEffort,
             ],
-            AgentEvent::ConversationReset => &[SessionCommand::RefreshContext],
+            // Each request of a long turn grows the context; the agent
+            // already counts the new prompt when it starts.
+            AgentEvent::ConversationReset | AgentEvent::PromptTokens(_) => {
+                &[SessionCommand::RefreshContext]
+            }
             _ => &[],
         }
     }

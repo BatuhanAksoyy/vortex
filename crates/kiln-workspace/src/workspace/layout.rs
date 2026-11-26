@@ -106,7 +106,13 @@ impl Workspace {
             };
             let project = self.project_at(folder, window, cx);
             let sessions = project.read(cx).sessions().read(cx);
-            if let Some(open_elsewhere) = sessions.open_elsewhere(&saved.session) {
+            // A conversation no longer listed was deleted; a blank tab
+            // comes back blank.
+            let open_elsewhere = match &saved.session {
+                Some(id) => sessions.open_elsewhere(id),
+                None => Some(false),
+            };
+            if let Some(open_elsewhere) = open_elsewhere {
                 listed.push((saved, open_elsewhere, project));
             }
         }
@@ -204,5 +210,7 @@ fn resume(
     if let Some(effort) = saved.effort {
         chat.start_with_effort(effort, cx);
     }
-    chat.open_session(&saved.session, open_elsewhere, window, cx);
+    if let Some(id) = &saved.session {
+        chat.open_session(id, open_elsewhere, window, cx);
+    }
 }

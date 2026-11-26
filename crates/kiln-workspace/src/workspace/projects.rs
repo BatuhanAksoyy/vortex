@@ -156,7 +156,7 @@ impl Workspace {
         }
     }
 
-    fn show_start_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn show_start_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let folders = self.recent.folders();
         let page = cx.new(|cx| ProjectPicker::new(folders, None, cx));
         let subscription =

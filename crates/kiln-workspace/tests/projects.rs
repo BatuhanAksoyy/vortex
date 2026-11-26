@@ -120,6 +120,20 @@ mod projects {
     }
 
     #[gpui_kit::test]
+    fn after_the_last_tab_closes_a_folder_starts_again(cx: &mut TestAppContext) {
+        let (_dir, one, two) = folders();
+        let backend = Stored::default();
+        let window = open_in(cx, backend.clone(), None, no_accounts(), Some(one));
+        click(cx, window, "chat-close");
+        assert!(has(cx, window, "start-page"));
+        assert_eq!(chats(cx, window).len(), 0);
+        browse(cx, window, &two);
+        assert!(!has(cx, window, "start-page"));
+        assert_eq!(chats(cx, window).len(), 1);
+        assert_eq!(folder_of_last(&backend), Some(two));
+    }
+
+    #[gpui_kit::test]
     fn sessions_come_back_in_their_folders(cx: &mut TestAppContext) {
         let (dir, one, two) = folders();
         let layouts = dir.path().join("layouts.json");

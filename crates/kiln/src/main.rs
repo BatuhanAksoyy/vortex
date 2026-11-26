@@ -1,11 +1,7 @@
 use std::path::PathBuf;
 
-use gpui_kit::{
-    AppContext as _, Bounds, WindowBounds, WindowOptions, component::TitleBar, px, size,
-};
+use gpui_kit::AppContext as _;
 use kiln_accounts::Accounts;
-use kiln_agent_claude::ClaudeBackend;
-use kiln_workspace::Workspace;
 
 fn main() {
     if std::env::args_os()
@@ -28,30 +24,8 @@ fn main() {
             gpui_kit::init(cx);
             kiln_workspace::init(cx);
 
-            let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
-            let options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                window_min_size: Some(size(px(640.), px(400.))),
-                #[cfg(target_os = "linux")]
-                window_decorations: Some(gpui_kit::WindowDecorations::Client),
-                ..TitleBar::window_options()
-            };
             let accounts = cx.new(|_| load_accounts());
-            let opened = gpui_kit::open_window(options, cx, |window, cx| {
-                let backend = std::rc::Rc::new(ClaudeBackend::new("claude"));
-                let layouts = kiln_accounts::data_dir().map(|dir| dir.join("layouts.json"));
-                cx.new(|cx| {
-                    let workspace = Workspace::new(folder, backend, accounts, window, cx);
-                    match layouts {
-                        Some(path) => workspace.keeping_layouts_in(path),
-                        None => workspace,
-                    }
-                })
-            });
-            if let Err(error) = opened {
-                log::error!("cannot open the Kiln window: {error:#}");
-                cx.quit();
-            }
+            kiln_workspace::open_first_window(folder, accounts, kiln_accounts::data_dir(), cx);
         });
 }
 

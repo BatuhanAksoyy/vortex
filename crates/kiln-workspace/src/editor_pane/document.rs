@@ -22,7 +22,12 @@ use gpui_kit::{
 use kiln_git::LineChange;
 use kiln_settings::EditorSettings;
 
-use super::{Saved, changes::Marks, minimap::Minimap};
+use super::{
+    Saved,
+    changes::Marks,
+    minimap::Minimap,
+    preview::{self, Kind},
+};
 use crate::config;
 
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
@@ -42,6 +47,9 @@ pub struct Contents {
 pub struct Document {
     title: SharedString,
     path: Option<PathBuf>,
+    kind: Kind,
+    /// A Markdown file shown rendered in place of its source.
+    previewing: bool,
     editor: Entity<EditorState>,
     /// The text on disk, which undoing back to makes it unchanged again.
     saved: Rope,
@@ -80,6 +88,8 @@ impl Document {
         });
         let mut this = Self {
             title: contents.title,
+            kind: Kind::of(contents.path.as_deref()),
+            previewing: false,
             path: contents.path,
             saved: editor.read(cx).text().clone(),
             dirty: false,
@@ -119,6 +129,27 @@ impl Document {
         self.diff.is_some()
     }
 
+    pub fn is_markdown(&self) -> bool {
+        self.kind == Kind::Markdown
+    }
+
+    pub fn shows_preview(&self) -> bool {
+        self.previewing
+    }
+
+    /// Switches a Markdown file between its source and how it reads.
+    pub fn toggle_preview(&mut self, cx: &mut Context<Self>) {
+        self.previewing = !self.previewing && self.is_markdown();
+        self.diff = None;
+        cx.notify();
+    }
+
+    /// The file, unless it is a picture, which is never read or written as
+    /// text.
+    fn text_path(&self) -> Option<PathBuf> {
+        self.path.clone().filter(|_| self.kind != Kind::Image)
+    }
+
     pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
         self.editor
             .update(cx, |editor, cx| editor.focus(window, cx));
@@ -133,6 +164,8 @@ impl Document {
     /// Follows the file to the path it was renamed to.
     pub fn moved_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.title = file_title(&path);
+        self.kind = Kind::of(Some(&path));
+        self.previewing &= self.is_markdown();
         self.path = Some(path);
         self.load_base(cx);
         cx.notify();
@@ -152,7 +185,7 @@ impl Document {
 
     /// Writes the text to disk; whether it was written.
     pub fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Task<bool> {
-        let Some(path) = self.path.clone() else {
+        let Some(path) = self.text_path() else {
             window.push_notification(Notification::warning("This document is read-only."), cx);
             return Task::ready(false);
         };
@@ -182,7 +215,7 @@ impl Document {
     /// change both. Unsaved changes are kept.
     pub fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.load_base(cx);
-        let Some(path) = self.path.clone().filter(|_| !self.dirty) else {
+        let Some(path) = self.text_path().filter(|_| !self.dirty) else {
             return;
         };
         let read = cx.background_spawn(async move { read_text(&path) });
@@ -222,7 +255,7 @@ impl Document {
     }
 
     fn load_base(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = self.path.clone() else {
+        let Some(path) = self.text_path() else {
             return;
         };
         let read = cx.background_spawn(async move { kiln_git::base_text(&path) });
@@ -268,6 +301,7 @@ impl Document {
 
     /// Switches between the text and its changes since the last commit.
     pub fn toggle_changes(&mut self, cx: &mut Context<Self>) {
+        self.previewing = false;
         self.diff = if self.diff.is_none() && self.changed {
             let files = self.diff_files(&self.editor.read(cx).text().to_string());
             Some(cx.new(|cx| DiffState::new(files, cx)))
@@ -287,6 +321,13 @@ impl Document {
 impl Render for Document {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        if let (Kind::Image, Some(path)) = (self.kind, &self.path) {
+            return preview::image(path, cx);
+        }
+        if self.previewing {
+            let text = self.editor.read(cx).text().to_string();
+            return preview::markdown(text.into(), self.path.as_deref());
+        }
         if let Some(diff) = &self.diff {
             let diff = Diff::new(diff).header_visible(false).size_full();
             return div()
@@ -332,7 +373,15 @@ pub fn file_title(path: &Path) -> SharedString {
         .into()
 }
 
-pub fn read_text(path: &Path) -> anyhow::Result<String> {
+/// What a file opens with: its text, or none for a picture.
+pub fn read_opened(path: &Path) -> anyhow::Result<String> {
+    if Kind::of(Some(path)) == Kind::Image {
+        return Ok(String::new());
+    }
+    read_text(path)
+}
+
+fn read_text(path: &Path) -> anyhow::Result<String> {
     let size = std::fs::metadata(path).context("cannot read file")?.len();
     if size > MAX_FILE_BYTES {
         anyhow::bail!("file is larger than {} MB", MAX_FILE_BYTES / 1024 / 1024);

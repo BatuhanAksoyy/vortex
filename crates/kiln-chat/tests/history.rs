@@ -127,6 +127,7 @@ mod history {
             AgentEvent::Started {
                 session_id: "s-copy".into(),
                 model: "claude-opus-5-5".into(),
+                cli_version: None,
             },
         );
         let id = cx.update(|cx| harness.view.read(cx).session_id().map(str::to_owned));

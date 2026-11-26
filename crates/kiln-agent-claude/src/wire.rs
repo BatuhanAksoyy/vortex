@@ -44,6 +44,8 @@ pub enum System {
     Init {
         session_id: String,
         model: String,
+        #[serde(default)]
+        claude_code_version: Option<String>,
     },
     /// Sent when the session's state changes, e.g. its permission mode.
     Status {

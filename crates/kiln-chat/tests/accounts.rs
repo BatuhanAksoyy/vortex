@@ -155,6 +155,7 @@ mod accounts {
             AgentEvent::Started {
                 session_id: "s-1".into(),
                 model: "claude-opus-5-5".into(),
+                cli_version: None,
             },
         );
         harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));

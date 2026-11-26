@@ -56,6 +56,33 @@ mod layouts {
     }
 
     #[gpui_kit::test]
+    fn the_last_window_comes_back_without_a_conversation_said(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let layouts = dir.path().join("layouts.json");
+        let folder: std::path::PathBuf = env!("CARGO_MANIFEST_DIR").into();
+        open_in(
+            cx,
+            Stored::default(),
+            Some(layouts.clone()),
+            no_accounts(),
+            Some(folder.clone()),
+        );
+
+        let backend = Stored::default();
+        let after = open_in(cx, backend.clone(), Some(layouts), no_accounts(), None);
+        let start_page = cx
+            .update_window(after, |_, window, cx| {
+                window.render_frame(cx);
+                !window.find_all("start-page").is_empty()
+            })
+            .expect("window");
+        assert!(!start_page, "the folder, not the folder picker");
+        assert_eq!(chats(cx, after).len(), 1);
+        let cwd = backend.0.borrow().last().map(|spec| spec.cwd.clone());
+        assert_eq!(cwd, Some(folder.canonicalize().expect("folder")));
+    }
+
+    #[gpui_kit::test]
     fn a_kept_conversation_no_longer_stored_is_left_out(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().expect("temp dir");
         let layouts = dir.path().join("layouts.json");
@@ -146,9 +173,10 @@ mod layouts {
     fn each_tab_comes_back_in_its_permission_mode(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().expect("temp dir");
         let layouts = dir.path().join("layouts.json");
+        let first = Stored::default();
         let before = open_in(
             cx,
-            Stored::default(),
+            first.clone(),
             Some(layouts.clone()),
             no_accounts(),
             Some(env!("CARGO_MANIFEST_DIR").into()),
@@ -158,6 +186,20 @@ mod layouts {
         click(cx, before, "chat-mode-Auto");
         click(cx, before, "chat-split-right");
         pick(cx, before, "s-old");
+        let inherited = |backend: &Stored| backend.0.borrow().last().and_then(|spec| spec.mode);
+        assert_eq!(
+            inherited(&first),
+            Some(PermissionMode::Auto),
+            "a new tab goes on in the mode last used"
+        );
+        // The new tab is the right-hand pane.
+        for id in ["chat-mode", "chat-mode-Plan"] {
+            cx.update_window(before, |_, window, cx| {
+                window.within(("resizable-panel", 1_usize)).click(id, cx);
+            })
+            .expect("window");
+            cx.run_until_parked();
+        }
 
         let backend = Stored::default();
         open_in(
@@ -176,6 +218,6 @@ mod layouts {
             spec.mode
         };
         assert_eq!(mode("s-new"), Some(PermissionMode::Auto), "the one picked");
-        assert_eq!(mode("s-old"), None, "the user's own default");
+        assert_eq!(mode("s-old"), Some(PermissionMode::Plan), "its own");
     }
 }

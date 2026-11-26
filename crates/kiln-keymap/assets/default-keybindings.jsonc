@@ -12,6 +12,7 @@
   { "key": "ctrl+,", "mac": "cmd+,", "command": "workbench.action.openSettingsJson" },
   { "key": "ctrl+k ctrl+s", "mac": "cmd+k cmd+s", "command": "workbench.action.openGlobalKeybindingsFile" },
   { "key": "ctrl+k ctrl+o", "mac": "cmd+o", "command": "workbench.action.files.openFolder" },
+  { "key": "ctrl+shift+n", "mac": "cmd+shift+n", "command": "workbench.action.newWindow" },
   { "key": "ctrl+s", "mac": "cmd+s", "command": "workbench.action.files.save" },
   { "key": "ctrl+w", "mac": "cmd+w", "command": "workbench.action.closeActiveEditor" },
   { "key": "ctrl+pagedown", "mac": "cmd+alt+right", "command": "workbench.action.nextEditor" },

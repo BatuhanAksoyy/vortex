@@ -257,6 +257,8 @@ pub enum AgentEvent {
     Started {
         session_id: String,
         model: String,
+        /// The version of the CLI the process runs, when it says.
+        cli_version: Option<String>,
     },
     TextDelta {
         block: BlockKey,

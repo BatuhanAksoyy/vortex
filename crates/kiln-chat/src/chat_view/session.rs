@@ -211,7 +211,12 @@ impl ChatView {
     /// is when the CLI has saved the conversation again.
     fn follow_session(&mut self, event: &AgentEvent, cx: &mut Context<Self>) {
         match event {
-            AgentEvent::Started { session_id, .. } => {
+            AgentEvent::Started {
+                session_id,
+                cli_version,
+                ..
+            } => {
+                self.cli.version.clone_from(cli_version);
                 // A copy of a conversation keeps its name until listed.
                 let title = self.conversation.take().and_then(|stored| stored.title);
                 self.conversation = Some(super::Conversation {
@@ -224,6 +229,23 @@ impl ChatView {
             _ => return,
         }
         cx.emit(super::ChatEvent::SessionChanged);
+    }
+
+    /// Keeps what the agent will not store, and writes it down once a turn
+    /// or a recap ends.
+    fn keep_note(&mut self, event: &AgentEvent, cx: &mut Context<Self>) {
+        match event {
+            AgentEvent::Started { session_id, .. } => self.kept.follow(session_id),
+            AgentEvent::ConversationReset => self.kept.clear(),
+            _ => self.kept.record(event),
+        }
+        if !matches!(event, AgentEvent::TurnEnded(_) | AgentEvent::Recap(_)) {
+            return;
+        }
+        if let Some((path, contents)) = self.kept.take_changes() {
+            cx.background_spawn(async move { write_kept(&path, &contents) })
+                .detach();
+        }
     }
 
     /// Times what a report makes expire: a usage limit, the prompt cache.
@@ -265,6 +287,7 @@ impl ChatView {
             cx.emit(super::ChatEvent::ChoicesChanged);
         }
         self.follow_session(&event, cx);
+        self.keep_note(&event, cx);
         self.start_timers(&event, cx);
         self.update_skills(&event, cx);
         self.update_hooks(&event, cx);
@@ -283,8 +306,70 @@ impl ChatView {
         }
         self.sync_prompt(window, cx);
         if turn_ended {
-            self.recap_due(turn_ran, window, cx);
-            self.adopt_added_account(window, cx);
+            self.after_turn(turn_ran, window, cx);
         }
+    }
+
+    /// What waits for a turn to end: a restart onto a newer CLI, a recap,
+    /// an added account.
+    fn after_turn(&mut self, turn_ran: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.cli.restart_due {
+            self.restart_process(window, cx);
+        }
+        self.recap_due(turn_ran, window, cx);
+        self.adopt_added_account(window, cx);
+    }
+}
+
+fn write_kept(path: &std::path::Path, contents: &[u8]) {
+    let written = path
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::write(path, contents));
+    if let Err(error) = written {
+        log::warn!(
+            "cannot keep the chat's notes in {}: {error}",
+            path.display()
+        );
+    }
+}
+
+/// Which CLI the chat's process runs, and whether it moves to a newer one.
+#[derive(Default)]
+pub(super) struct CliRun {
+    version: Option<String>,
+    /// Asked to move while a turn ran; it moves once the turn ends.
+    restart_due: bool,
+}
+
+impl ChatView {
+    /// The version of the CLI the chat's process runs, once it said.
+    #[must_use]
+    pub fn cli_version(&self) -> Option<&str> {
+        self.session.as_ref().and(self.cli.version.as_deref())
+    }
+
+    /// Moves the conversation onto the CLI installed now: the process
+    /// restarts and resumes it, at once or when the turn under way ends.
+    pub fn restart_on_new_cli(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.session.is_none() {
+            return;
+        }
+        if self.status() == crate::transcript::Status::Running {
+            self.cli.restart_due = true;
+            return;
+        }
+        self.restart_process(window, cx);
+    }
+
+    fn restart_process(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.cli.restart_due = false;
+        self.session = None;
+        let change = self
+            .transcript
+            .push_notice("Restarted on the updated CLI".to_owned());
+        self.apply_change(change, cx);
+        self.ensure_session(window, cx);
+        cx.notify();
     }
 }

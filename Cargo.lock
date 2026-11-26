@@ -4177,6 +4177,7 @@ dependencies = [
  "kiln-file-icons",
  "kiln-services",
  "log",
+ "serde",
  "serde_json",
  "tempfile",
 ]
@@ -4263,6 +4264,7 @@ dependencies = [
  "jiff 0.2.46",
  "kiln-accounts",
  "kiln-agent",
+ "kiln-agent-claude",
  "kiln-bridge",
  "kiln-browser",
  "kiln-chat",

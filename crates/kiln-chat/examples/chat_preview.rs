@@ -202,6 +202,7 @@ fn opening() -> Vec<AgentEvent> {
         AgentEvent::Started {
             session_id: "preview".into(),
             model: "claude-opus-5-5".into(),
+            cli_version: None,
         },
         AgentEvent::PromptTokens(PromptTokens {
             cached: 38_520,

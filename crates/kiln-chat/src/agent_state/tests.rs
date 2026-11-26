@@ -33,6 +33,7 @@ fn the_running_model_shows_by_its_own_name_not_the_default_alias() {
     state.apply(&AgentEvent::Started {
         session_id: "s".into(),
         model: "claude-opus-5-5".into(),
+        cli_version: None,
     });
     assert_eq!(state.model_label().as_deref(), Some("Opus 5.5"));
     state.choose_model("default");
@@ -61,6 +62,7 @@ fn the_model_the_agent_reports_wins_over_the_pick() {
     state.apply(&AgentEvent::Started {
         session_id: "s".into(),
         model: "claude-opus-5-5".into(),
+        cli_version: None,
     });
     assert_eq!(state.model_label().as_deref(), Some("Opus 5.5"));
 }
@@ -197,6 +199,7 @@ fn a_fresh_model_list_replaces_the_one_the_agent_started_with() {
     state.apply(&AgentEvent::Started {
         session_id: "s".into(),
         model: "claude-opus-5-5".into(),
+        cli_version: None,
     });
     let ended = AgentEvent::TurnEnded(kiln_agent::TurnOutcome::Completed);
     assert!(AgentState::refreshes_after(&ended).contains(&SessionCommand::RefreshModels));
@@ -210,4 +213,13 @@ fn a_fresh_model_list_replaces_the_one_the_agent_started_with() {
     ]));
     assert_eq!(state.models().len(), 2);
     assert_eq!(state.model_label().as_deref(), Some("Opus"));
+}
+
+#[test]
+fn the_context_is_read_again_as_each_request_of_a_turn_starts() {
+    let request = AgentEvent::PromptTokens(kiln_agent::PromptTokens::default());
+    assert_eq!(
+        AgentState::refreshes_after(&request),
+        [SessionCommand::RefreshContext]
+    );
 }

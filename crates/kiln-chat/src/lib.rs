@@ -7,6 +7,7 @@ mod clock;
 mod code_block;
 mod entry_view;
 mod hook_list;
+mod kept_notes;
 mod literal;
 mod permission_prompt;
 mod pictures;

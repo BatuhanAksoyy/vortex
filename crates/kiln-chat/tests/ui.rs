@@ -251,6 +251,7 @@ mod chat {
         AgentEvent::Started {
             session_id: session_id.into(),
             model: "claude-opus-5-5".into(),
+            cli_version: None,
         }
     }
 

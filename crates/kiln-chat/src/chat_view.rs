@@ -116,6 +116,8 @@ pub struct ChatView {
     /// empty composer.
     suggestion: Option<String>,
     recap: recap::RecapWatch,
+    kept: crate::kept_notes::KeptNotes,
+    cli: session::CliRun,
     find: Option<find::Find>,
     /// The sent message Up last put in the box, by its place from the
     /// newest, while the box still holds it unchanged.
@@ -160,11 +162,7 @@ impl ChatView {
         let meter_opened = process_meter
             .as_ref()
             .map(|meter| Self::follow_meter(meter, window, cx));
-        let account = accounts
-            .read(cx)
-            .added()
-            .first()
-            .map(|account| account.id.clone());
+        let account = accounts.read(cx).added().first().map(|it| it.id.clone());
         let mut view = Self {
             backend,
             accounts,
@@ -184,6 +182,8 @@ impl ChatView {
             composer,
             suggestion: None,
             recap: recap::RecapWatch::default(),
+            kept: crate::kept_notes::KeptNotes::default(),
+            cli: session::CliRun::default(),
             find: None,
             recalled: None,
             slash: SlashMenu::default(),
