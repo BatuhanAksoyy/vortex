@@ -40,8 +40,36 @@ pub fn unstage(root: &Path, changes: &[Change]) -> anyhow::Result<()> {
 /// # Errors
 /// When nothing is staged, a hook refuses, or `git` cannot run.
 pub fn commit(root: &Path, message: &str) -> anyhow::Result<String> {
+    commit_with(root, message, &[])
+}
+
+/// Commits `paths` as they are in the working tree, new files too, or every
+/// change when `paths` is empty. Relative paths are from `project`, which
+/// may be a folder inside the repository. What else is staged stays staged.
+///
+/// # Errors
+/// When there is nothing to commit, a hook refuses, or `git` cannot run.
+pub fn commit_paths(project: &Path, message: &str, paths: &[String]) -> anyhow::Result<String> {
+    // Without paths, `add --all` takes the whole repository, not only what
+    // is below `project`.
+    let mut add = vec!["add", "--all"];
+    if !paths.is_empty() {
+        add.push("--");
+        add.extend(paths.iter().map(String::as_str));
+    }
+    git(project, &add, &[0])?;
+    let mut only: Vec<&str> = Vec::new();
+    if !paths.is_empty() {
+        only.push("--");
+        only.extend(paths.iter().map(String::as_str));
+    }
+    commit_with(project, message, &only)
+}
+
+fn commit_with(root: &Path, message: &str, extra: &[&str]) -> anyhow::Result<String> {
     let mut child = Command::new("git")
         .args(["commit", "--quiet", "--file=-", "--cleanup=strip"])
+        .args(extra)
         .env("LC_ALL", "C")
         .current_dir(root)
         .stdin(Stdio::piped())

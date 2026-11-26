@@ -16,7 +16,7 @@ use gpui_kit::{
     div,
 };
 use kiln_chat::scale::{ScaledButton as _, ScaledText as _};
-use kiln_git::{Area, Change, MessageRules};
+use kiln_git::{Area, Change};
 
 use super::GitPage;
 use crate::repo_status::RepoStatus;
@@ -77,7 +77,7 @@ impl GitPage {
         if !self.can_commit(cx) {
             return;
         }
-        let message = match checked(&self.message.read(cx).value(), cx) {
+        let message = match crate::commit_review::checked(&self.message.read(cx).value(), cx) {
             Ok(message) => message,
             Err(problems) => {
                 self.write_error = Some(problems.into());
@@ -228,28 +228,6 @@ impl GitPage {
                 this.stage(changes.clone(), window, cx);
             }))
             .into_any_element()
-    }
-}
-
-/// The rules from the settings.
-///
-/// # Errors
-/// When one of the settings' patterns is not a valid regular expression.
-pub(crate) fn message_rules(cx: &gpui_kit::App) -> Result<MessageRules, String> {
-    let commit = &crate::config::settings(cx).git.commit;
-    MessageRules::new(&commit.strip, commit.subject_max, commit.conventional)
-        .map_err(|error| format!("git.commit.strip: {error}"))
-}
-
-/// `message` cleaned, or what keeps it from being committed.
-fn checked(message: &str, cx: &gpui_kit::App) -> Result<String, String> {
-    let rules = message_rules(cx)?;
-    let message = rules.clean(message);
-    let problems = rules.problems(&message);
-    if problems.is_empty() {
-        Ok(message)
-    } else {
-        Err(problems.join(" "))
     }
 }
 

@@ -8,7 +8,7 @@ mod bridge {
         path::PathBuf,
     };
 
-    use kiln_bridge::{Bridge, Reply, Request};
+    use kiln_bridge::{Bridge, Browse, Reply, Request};
     use serde_json::{Value, json};
 
     fn connect(
@@ -46,7 +46,7 @@ mod bridge {
         let received = calls.recv_blocking().unwrap();
         assert_eq!(received.token, token);
         let url = "localhost:3000".to_owned();
-        assert_eq!(received.request, Request::Navigate { url });
+        assert_eq!(received.request, Request::Browse(Browse::Navigate { url }));
         received.reply.send_blocking(Reply::text("opened")).unwrap();
         let answer = next();
         assert_eq!(answer["id"], 2);

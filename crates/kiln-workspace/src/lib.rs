@@ -6,6 +6,7 @@ mod browser;
 mod chat_panel;
 mod cli_version;
 mod commands;
+mod commit_review;
 mod config;
 mod conversation_picker;
 mod editor_pane;

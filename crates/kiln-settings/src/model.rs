@@ -64,6 +64,7 @@ pub struct CommitSettings {
     pub strip: Vec<String>,
     pub subject_max: usize,
     pub conventional: bool,
+    pub review: bool,
 }
 
 const FONT_SIZE_RANGE: std::ops::RangeInclusive<f32> = 6.0..=72.0;

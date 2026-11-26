@@ -25,6 +25,12 @@ pub struct Status {
 }
 
 impl Status {
+    /// Where the project lies in the repository; empty at its top.
+    #[must_use]
+    pub fn prefix(&self) -> &std::path::Path {
+        &self.prefix
+    }
+
     /// The lines `change` adds and removes; `None` for a binary file.
     #[must_use]
     pub fn counts(&self, change: &Change) -> Option<Counts> {

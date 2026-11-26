@@ -294,3 +294,18 @@ fn creates_and_switches_branches_keeping_changes() {
     assert!(super::create_branch(root, "-x").is_err());
     assert!(super::switch(root, "nowhere").is_err());
 }
+
+#[test]
+fn commits_only_the_paths_asked_for() {
+    let dir = repository();
+    let root = dir.path();
+    fs::write(root.join("kept.txt"), "edited\n").expect("write");
+    fs::write(root.join("new.txt"), "new\n").expect("write");
+    super::commit_paths(root, "Add new", &["new.txt".to_owned()]).expect("commit");
+    let status = super::status(root).expect("status");
+    let left: Vec<_> = status.changes.iter().map(|c| c.path.clone()).collect();
+    assert_eq!(left, [std::path::PathBuf::from("kept.txt")]);
+    super::commit_paths(root, "Edit kept", &[]).expect("commit all");
+    assert_eq!(super::status(root).expect("status").changes, []);
+    assert!(super::commit_paths(root, "Nothing", &[]).is_err());
+}

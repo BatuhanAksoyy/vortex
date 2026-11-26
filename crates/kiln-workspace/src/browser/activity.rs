@@ -9,7 +9,7 @@ use gpui_kit::{
     component::{ActiveTheme, Sizable as _, h_flex, spinner::Spinner},
     div, ease_out_quint, px,
 };
-use kiln_bridge::Request;
+use kiln_bridge::Browse;
 use kiln_browser::Target;
 
 use super::Browser;
@@ -43,7 +43,7 @@ struct Doing {
 
 impl Browser {
     /// Shows that the agent began `request`; the number names the call.
-    pub(super) fn begin(&mut self, request: &Request, cx: &mut Context<Self>) -> u64 {
+    pub(super) fn begin(&mut self, request: &Browse, cx: &mut Context<Self>) -> u64 {
         let activity = &mut self.activity;
         activity.serial += 1;
         activity.clearing = None;
@@ -186,19 +186,19 @@ impl Browser {
 }
 
 /// The verb to name the element with, and what the call does without it.
-fn describe(request: &Request) -> (&'static str, String) {
+fn describe(request: &Browse) -> (&'static str, String) {
     let simple = |text: &str| ("", text.to_owned());
     match request {
-        Request::Navigate { url } => ("", format!("Opening {}", short(url))),
-        Request::Snapshot => simple("Reading the page"),
-        Request::Click { .. } => ("Clicking", "Clicking".to_owned()),
-        Request::Type { .. } => ("Typing in", "Typing".to_owned()),
-        Request::PressKey { key } => ("", format!("Pressing {key}")),
-        Request::Screenshot => simple("Taking a screenshot"),
-        Request::Console => simple("Reading the console"),
-        Request::Evaluate { .. } => simple("Running a script"),
-        Request::Questions => simple("Reading what the page asks"),
-        Request::Answer(_) => simple("Answering the page"),
+        Browse::Navigate { url } => ("", format!("Opening {}", short(url))),
+        Browse::Snapshot => simple("Reading the page"),
+        Browse::Click { .. } => ("Clicking", "Clicking".to_owned()),
+        Browse::Type { .. } => ("Typing in", "Typing".to_owned()),
+        Browse::PressKey { key } => ("", format!("Pressing {key}")),
+        Browse::Screenshot => simple("Taking a screenshot"),
+        Browse::Console => simple("Reading the console"),
+        Browse::Evaluate { .. } => simple("Running a script"),
+        Browse::Questions => simple("Reading what the page asks"),
+        Browse::Answer(_) => simple("Answering the page"),
     }
 }
 

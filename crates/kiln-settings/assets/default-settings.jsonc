@@ -39,7 +39,9 @@
       // The first line's most characters; 0 for no limit.
       "subject_max": 72,
       // The first line must read `type(scope): subject`.
-      "conventional": false
+      "conventional": false,
+      // A commit the agent asks for waits for the user to approve or edit it.
+      "review": true
     }
   }
 }

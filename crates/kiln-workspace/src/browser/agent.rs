@@ -6,7 +6,7 @@ use std::{collections::HashSet, time::Duration};
 
 use async_channel::Sender;
 use gpui_kit::{AsyncWindowContext, Context, WeakEntity, Window};
-use kiln_bridge::{Content, Reply, Request};
+use kiln_bridge::{Browse, Content, Reply};
 use kiln_browser::{Level, Page, Target};
 
 use super::{Browser, activity::LOOK, agent_questions::unless_asked, live::State};
@@ -31,7 +31,7 @@ pub(super) struct AgentUse {
 
 pub(super) struct Waiting {
     pub site: String,
-    request: Request,
+    request: Browse,
     reply: Sender<Reply>,
 }
 
@@ -39,14 +39,14 @@ impl Browser {
     /// Does what the agent asks, once the site it is for may be used.
     pub fn serve(
         &mut self,
-        request: Request,
+        request: Browse,
         reply: Sender<Reply>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let (request, url) = match request {
-            Request::Navigate { url } => match kiln_browser::normalize(&url) {
-                Ok(url) => (Request::Navigate { url: url.clone() }, url),
+            Browse::Navigate { url } => match kiln_browser::normalize(&url) {
+                Ok(url) => (Browse::Navigate { url: url.clone() }, url),
                 Err(error) => return answer(&reply, Reply::failed(error.to_string())),
             },
             request => (request, self.url.clone()),
@@ -88,7 +88,7 @@ impl Browser {
 
     fn run(
         &mut self,
-        request: Request,
+        request: Browse,
         reply: Sender<Reply>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -97,7 +97,7 @@ impl Browser {
             return answer(&reply, done);
         }
         let opened = match &request {
-            Request::Navigate { url } => Some(self.visit(url.clone(), window, cx)),
+            Browse::Navigate { url } => Some(self.visit(url.clone(), window, cx)),
             _ => None,
         };
         let serial = self.begin(&request, cx);
@@ -119,17 +119,17 @@ impl Browser {
     /// What is answered from what Kiln knows, without the page.
     fn at_once(
         &mut self,
-        request: &Request,
+        request: &Browse,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Reply> {
         Some(match request {
-            Request::Console => Reply::text(self.console_text()),
-            Request::Questions => Reply::text(
+            Browse::Console => Reply::text(self.console_text()),
+            Browse::Questions => Reply::text(
                 self.questions()
                     .unwrap_or_else(|| "The page is not asking anything.".to_owned()),
             ),
-            Request::Answer(answered) => self.answer_for_agent(answered, window, cx),
+            Browse::Answer(answered) => self.answer_for_agent(answered, window, cx),
             _ => return None,
         })
     }
@@ -248,7 +248,7 @@ async fn navigated(
 /// Does `request` on the page, unless the page asks the user something.
 async fn perform(
     this: &WeakEntity<Browser>,
-    request: Request,
+    request: Browse,
     serial: u64,
     cx: &mut AsyncWindowContext,
 ) -> anyhow::Result<Reply> {
@@ -273,18 +273,18 @@ async fn aim(
 
 async fn act(
     this: &WeakEntity<Browser>,
-    request: Request,
+    request: Browse,
     serial: u64,
     cx: &mut AsyncWindowContext,
 ) -> anyhow::Result<Reply> {
     let page = page(this, cx).await?;
     let done = match request {
-        Request::Snapshot => {
+        Browse::Snapshot => {
             let where_ = settled(&page, cx).await;
             let outline = page.snapshot().await?;
             return Ok(Reply::text(format!("{where_}\n\n{outline}\n\n{CAUTION}")));
         }
-        Request::Screenshot => {
+        Browse::Screenshot => {
             let shot = page.screenshot().await?;
             let media_type = shot.media_type.to_owned();
             let content = vec![Content::Image {
@@ -296,17 +296,17 @@ async fn act(
                 error: false,
             });
         }
-        Request::Evaluate { expression } => {
+        Browse::Evaluate { expression } => {
             let value = page.evaluate(&expression).await?;
             return Ok(Reply::text(format!("{value}\n{CAUTION}")));
         }
-        Request::Click { target } => {
+        Browse::Click { target } => {
             let target = aim(this, &page, target, serial, cx).await?;
             page.click(&target).await?;
             this.update(cx, |this, cx| this.clicked(serial, cx))?;
             Ok("Clicked.")
         }
-        Request::Type {
+        Browse::Type {
             target,
             text,
             submit,
@@ -318,10 +318,8 @@ async fn act(
             }
             Ok("Typed.")
         }
-        Request::PressKey { key } => page.press(&key).await.map(|()| "Pressed."),
-        Request::Navigate { .. } | Request::Console | Request::Questions | Request::Answer(_) => {
-            Ok("")
-        }
+        Browse::PressKey { key } => page.press(&key).await.map(|()| "Pressed."),
+        Browse::Navigate { .. } | Browse::Console | Browse::Questions | Browse::Answer(_) => Ok(""),
     }?;
     cx.background_executor().timer(SETTLE).await;
     Ok(Reply::text(format!("{done} {}", settled(&page, cx).await)))

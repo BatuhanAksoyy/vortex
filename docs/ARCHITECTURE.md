@@ -152,25 +152,24 @@ pub struct SessionHandle {
 - Ajanlara MCP araçları:
   - `kiln_sessions_list` → eş oturumlar: id, hesap, ajan, branch, worktree, durum, başlık, değişen dosyalar.
   - `kiln_message_send(to, text)` → mesaj hedef oturumun turu bitince `[from session X]` etiketiyle iletilir. Token harcadığı için ayar: otomatik / kullanıcı onaylı / kapalı.
-- Ajan bilgilendirmesi kısa bir ek sistem promptuyla yapılır (Claude `--append-system-prompt`, Codex developer instructions): uzun süreli süreçler için `kiln_service_*`, commit için `kiln_commit`, eşler için `kiln_sessions_list`.
+- Ajan bilgilendirmesi kısa bir ek sistem promptuyla yapılır (Claude `--append-system-prompt`, Codex developer instructions): uzun süreli süreçler için `kiln_service_*`, commit için `mcp__kiln__commit`, eşler için `kiln_sessions_list`.
 
 ## 8. Git
 
 **Commit hattı (Kiln'e ait):**
-1. **Tetikleyici** (proje bazında): manuel / her tur sonunda / ajan `kiln_commit` çağırınca / görev bitince.
+1. **Tetikleyici** (proje bazında): manuel / her tur sonunda / ajan `commit` aracını çağırınca / görev bitince.
 2. **Mesaj kaynağı:**
-   - a) Ajan `kiln_commit({message, paths?})` çağırır. En ucuzu bu, çünkü ajan ne yaptığını zaten biliyor ve git komutlarıyla uğraşmıyor.
+   - a) Ajan Kiln'in `commit({message, paths?})` aracını (`mcp__kiln__commit`) çağırır. En ucuzu bu, çünkü ajan ne yaptığını zaten biliyor ve git komutlarıyla uğraşmıyor. `paths` yoksa tüm değişiklikler (yeni dosyalar dahil), varsa yalnızca o dosya ve klasörler commit edilir (`kiln_git::commit_paths`); başka stage'li şeyler stage'li kalır. Kurallara uymayan mesaj kullanıcıya gösterilmeden sebebiyle ajana geri döner, ajan düzeltip yeniden çağırır.
    - b) Tur sonu tetikleyicisinde ajan çağırmadıysa: aynı hesapta tek seferlik küçük model çağrısı (`claude -p --model haiku`) diff + tur özetiyle. Model ve hesap ayarlanabilir. (Kullanıcı onayladı, 2026-11-19.)
    - c) Kullanıcı düzenler.
-3. **İnceleme kapısı** (aç/kapa): diff + düzenlenebilir mesaj, Approve / Reject.
+3. **İnceleme kapısı** (`git.commit.review`, varsayılan açık): istek sohbetin üzerinde bir kartta bekler. Kartta alınacak dosyalar (durum harfi, +/−) ve düzenlenebilir mesaj, "Reject" ve "Commit" var; Cmd/Ctrl+Enter commit eder, Escape reddeder. Çağrı kullanıcı karar verene kadar bekler; ajana commit'in kısa hash'i (mesaj değiştiyse son hâliyle) ya da reddedildiği söylenir. Hook reddederse kart açık kalır, sebep kırmızıyla yazılır. Kapalıyken commit hemen yapılır. Kart yalnızca kullanıcı o sohbetteyse klavyeyi alır.
 4. **Temizleme** (deterministik, `kiln_git::MessageRules`): `git.commit.strip` regex listesine uyan satırlar silinir, sondaki boşluklar ve art arda boş satırlar atılır. Varsayılanlar: `Co-Authored-By:` + Claude/Codex/OpenAI/Anthropic, `Generated with [Claude Code]`, `🤖 Generated with`. Aynı fonksiyon MR/PR gövdelerinde de çalışır.
 5. **Doğrulama:** Konu uzunluğu (`subject_max`, varsayılan 72), Conventional Commits biçimi (`conventional`) ve konudan sonra boş satır deterministik kontrol edilir; üretilmiş mesaj geçmezse yeniden üretilir. Dil kuralı henüz yok.
 6. `git commit` kullanıcının kimliğiyle çalışır, böylece kullanıcının pre-commit hook'ları normal şekilde devreye girer.
 7. **Push politikası:** asla / commit sonrası / manuel / oturum sonunda. Korumalı branch'lere (main/master) açık izin olmadan push yok.
 
 **Ek önlemler:**
-- Claude'a `--settings` ile `includeCoAuthoredBy: false` verilir.
-- Politika IDE'ye aitken varsayılan izin kuralları ajanın `git commit*`, `git push*`, `--no-verify` komutlarını "use kiln_commit" mesajıyla reddeder.
+- Kiln'in araçları verilen Claude oturumuna `--settings` ile `attribution: {commit: "", pr: ""}` (eski CLI'lar için `includeCoAuthoredBy: false`) ve `Bash(git commit:*)`, `Bash(git push:*)` deny kuralları, `--append-system-prompt` ile de "commit için `mcp__kiln__commit`, push yok" notu verilir.
 - Opsiyonel `commit-msg` hook'u, ajanın Kiln dışında commit attığı durumlar için Kiln'in oluşturduğu worktree'lere kurulur.
 
 **Arayüz:** gpui-kit diff bileşeni ile yan yana / satır içi diff. Oturum diff'i (worktree vs base), commit diff'i, çalışma ağacı. Git paneli: status, stage, commit, kısa log, branch değiştirme ve oluşturma (§13, Git).
@@ -402,7 +401,7 @@ allow-expect-in-tests = true
 |---|---|---|
 | **M0 Temel** | Workspace, kalite kapıları, CI. GPUI pencere + dock, ayarlar + hot-reload, iki tema, VSCode keymap motoru. Dosya ağacı + renkli görüntüleyici, hızlı dosya açma | Boş ama sağlam iskelet |
 | **M1 Claude oturumları** | Hesap ekleme / giriş / rozet, eşzamanlı oturumlar, tool kartları, izin istekleri + kurallar. Subagent ağacı + model/context, kota ölçeri, sohbet içi arama, görsel/dosya yapıştırma, interrupt, resume | **İlk kullanılabilir sürüm** |
-| **M2 Git** | Diff görünümü, MCP köprüsü + `kiln_commit`, commit hattı (politika, inceleme, temizleme), push politikası. Oturum başına worktree + merge/discard, uyku modu | |
+| **M2 Git** | Diff görünümü, MCP köprüsü + `commit` aracı, commit hattı (politika, inceleme, temizleme), push politikası. Oturum başına worktree + merge/discard, uyku modu | |
 | **M3 Servisler** | Run konfigleri, denetleyici, loglar, ajan süreç izleyici, `kiln_service_*`, yapay zekayla konfig tanımlama | |
 | **M4 Codex + koordinasyon** | Codex backend, `kiln_sessions_list`, `kiln_message_send` | |
 | **M5 Cila** | gh/glab, ajan bağlamı paneli + özetler, bildirimler, Windows | |

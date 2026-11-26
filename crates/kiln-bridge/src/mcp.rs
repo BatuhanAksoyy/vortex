@@ -106,7 +106,7 @@ mod tests {
         assert!(matches!(
             read(call),
             Incoming::Call {
-                request: Request::Snapshot,
+                request: Request::Browse(crate::Browse::Snapshot),
                 ..
             }
         ));

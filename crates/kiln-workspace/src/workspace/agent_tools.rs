@@ -1,14 +1,15 @@
 //! Kiln's tools for the chats' agents. Each chat's agent gets a token of its
-//! own, and a call carrying it goes to that chat's browser.
+//! own, and a call carrying it goes to that chat: its browser, or its
+//! commit review.
 
 use std::path::Path;
 
 use async_channel::Receiver;
 use gpui_kit::{Context, Entity, Task, WeakEntity, Window};
-use kiln_bridge::{Bridge, Call, Reply};
+use kiln_bridge::{Bridge, Call, Reply, Request};
 
 use super::Workspace;
-use crate::{browser::Browser, chat_panel::ChatPanel};
+use crate::{browser::Browser, chat_panel::ChatPanel, commit_review::CommitCall};
 
 pub(super) struct AgentTools {
     bridge: Bridge,
@@ -85,10 +86,23 @@ impl Workspace {
             let _ = call.reply.try_send(Reply::failed("The chat is closed."));
             return;
         };
-        let browser = self.agent_browser(&panel, window, cx);
-        browser.update(cx, |browser, cx| {
-            browser.serve(call.request, call.reply, window, cx);
-        });
+        match call.request {
+            Request::Commit { message, paths } => panel.update(cx, |panel, cx| {
+                let reply = call.reply;
+                let call = CommitCall {
+                    message,
+                    paths,
+                    reply,
+                };
+                panel.ask_commit(call, window, cx);
+            }),
+            Request::Browse(request) => {
+                let browser = self.agent_browser(&panel, window, cx);
+                browser.update(cx, |browser, cx| {
+                    browser.serve(request, call.reply, window, cx);
+                });
+            }
+        }
     }
 
     /// The chat's browser, shown if the chat is the one the user is in.

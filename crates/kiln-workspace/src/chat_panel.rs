@@ -1,6 +1,8 @@
 //! A chat as a tab in the dock. Each one runs its own agent process, which
 //! keeps working while another tab is shown.
 
+mod commit;
+
 use std::path::PathBuf;
 
 use gpui_kit::prelude::*;
@@ -18,6 +20,7 @@ use gpui_kit::{
 use kiln_chat::{ChatEvent, ChatView, Status, scale::ScaledButton as _};
 
 use crate::{
+    commit_review::CommitReview,
     conversation_picker::{ConversationPicker, ConversationPickerEvent},
     project::Project,
     project_picker::{ProjectPicker, ProjectPickerEvent},
@@ -56,6 +59,8 @@ pub struct ChatPanel {
     picker: Option<(Entity<ConversationPicker>, Subscription)>,
     /// The projects page over the chat, while open.
     projects: Option<(Entity<ProjectPicker>, Subscription)>,
+    /// A commit the agent asked for, while it waits for the user.
+    review: Option<(Entity<CommitReview>, Subscription)>,
     /// Whether it is the only tab, which then offers its own close button.
     alone: bool,
     /// The dock tracks the active panel's handle on the group around it, so
@@ -93,6 +98,7 @@ impl ChatPanel {
             chat,
             project,
             picker: None,
+            review: None,
             projects: None,
             alone: false,
             focus,
@@ -320,11 +326,23 @@ impl Render for ChatPanel {
                 .bg(cx.theme().overlay)
                 .child(page.clone())
         });
+        let review = self.review.as_ref().map(|(review, _)| {
+            v_flex()
+                .absolute()
+                .inset_0()
+                .p_4()
+                .items_center()
+                .justify_end()
+                .occlude()
+                .bg(cx.theme().overlay)
+                .child(review.clone())
+        });
         div()
             .relative()
             .size_full()
             .capture_any_mouse_down(cx.listener(|_, _, _, cx| cx.emit(ChatPanelEvent::Activated)))
             .child(self.chat.clone())
+            .children(review)
             .children(picker)
             .children(projects)
     }

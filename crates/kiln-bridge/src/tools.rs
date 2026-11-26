@@ -2,9 +2,20 @@
 
 use serde_json::{Value, json};
 
-/// What an agent asks of the browser beside its chat.
+/// What an agent asks of Kiln.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Request {
+    Browse(Browse),
+    /// Commit `paths`, or every change when empty, with `message`.
+    Commit {
+        message: String,
+        paths: Vec<String>,
+    },
+}
+
+/// What an agent asks of the browser beside its chat.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Browse {
     Navigate {
         url: String,
     },
@@ -135,6 +146,7 @@ pub(crate) fn list() -> Value {
         ),
     ];
     tools.extend(question_tools());
+    tools.push(commit_tool());
     Value::Array(tools)
 }
 
@@ -161,6 +173,18 @@ fn question_tools() -> [Value; 2] {
     ]
 }
 
+fn commit_tool() -> Value {
+    tool(
+        "commit",
+        "Commits changes in the project's repository with `message`; use it instead of `git commit`. Without `paths` every change is committed, new files too; with them only those files, relative to the project folder. Write the message as the project's history does: a short first line, a blank line, then why. Do not credit yourself or any tool in it. Kiln takes such lines out, checks the message against the project's rules and may show it to the user to approve or edit first; the call waits for that and says what was committed, or why not.",
+        &json!({
+            "message": {"type": "string"},
+            "paths": {"type": "array", "items": {"type": "string"}},
+        }),
+        &["message"],
+    )
+}
+
 fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) -> Value {
     json!({
         "name": name,
@@ -171,6 +195,13 @@ fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) ->
 
 /// The call `name` makes with `arguments`, or what is wrong with it.
 pub(crate) fn parse(name: &str, arguments: &Value) -> Result<Request, String> {
+    if name == "commit" {
+        return commit(arguments);
+    }
+    browse(name, arguments).map(Request::Browse)
+}
+
+fn browse(name: &str, arguments: &Value) -> Result<Browse, String> {
     let text = |key: &str| {
         let value = arguments[key].as_str().map(str::to_owned);
         value.ok_or_else(|| format!("`{key}` must be a string"))
@@ -180,30 +211,48 @@ pub(crate) fn parse(name: &str, arguments: &Value) -> Result<Request, String> {
         value.ok_or_else(|| "`ref` must be a number from browser_snapshot".to_owned())
     };
     Ok(match name {
-        "browser_navigate" => Request::Navigate { url: text("url")? },
-        "browser_snapshot" => Request::Snapshot,
-        "browser_click" => Request::Click { target: target()? },
-        "browser_type" => Request::Type {
+        "browser_navigate" => Browse::Navigate { url: text("url")? },
+        "browser_snapshot" => Browse::Snapshot,
+        "browser_click" => Browse::Click { target: target()? },
+        "browser_type" => Browse::Type {
             target: target()?,
             text: text("text")?,
             submit: arguments["submit"].as_bool().unwrap_or(false),
         },
-        "browser_press_key" => Request::PressKey { key: text("key")? },
-        "browser_screenshot" => Request::Screenshot,
-        "browser_console" => Request::Console,
-        "browser_evaluate" => Request::Evaluate {
+        "browser_press_key" => Browse::PressKey { key: text("key")? },
+        "browser_screenshot" => Browse::Screenshot,
+        "browser_console" => Browse::Console,
+        "browser_evaluate" => Browse::Evaluate {
             expression: text("expression")?,
         },
         _ => return question_call(name, arguments),
     })
 }
 
-fn question_call(name: &str, arguments: &Value) -> Result<Request, String> {
+fn question_call(name: &str, arguments: &Value) -> Result<Browse, String> {
     match name {
-        "browser_questions" => Ok(Request::Questions),
-        "browser_answer" => answer(arguments).map(Request::Answer),
+        "browser_questions" => Ok(Browse::Questions),
+        "browser_answer" => answer(arguments).map(Browse::Answer),
         _ => Err(format!("There is no tool named {name}")),
     }
+}
+
+fn commit(arguments: &Value) -> Result<Request, String> {
+    let message = arguments["message"].as_str();
+    let message = message.ok_or_else(|| "`message` must be a string".to_owned())?;
+    let paths = match &arguments["paths"] {
+        Value::Null => Vec::new(),
+        Value::Array(paths) => paths
+            .iter()
+            .map(|path| path.as_str().map(str::to_owned))
+            .collect::<Option<_>>()
+            .ok_or_else(|| "`paths` must be a list of strings".to_owned())?,
+        _ => return Err("`paths` must be a list of strings".to_owned()),
+    };
+    Ok(Request::Commit {
+        message: message.to_owned(),
+        paths,
+    })
 }
 
 fn answer(arguments: &Value) -> Result<Answer, String> {
@@ -232,7 +281,7 @@ mod tests {
     fn every_listed_tool_can_be_called() {
         let arguments = json!({
             "url": "x", "ref": 1, "text": "x", "key": "x", "expression": "x",
-            "question": "device", "accept": true,
+            "question": "device", "accept": true, "message": "x",
         });
         let tools = list();
         for tool in tools.as_array().unwrap() {
@@ -244,17 +293,17 @@ mod tests {
     #[test]
     fn wrong_arguments_are_explained() {
         let typed = parse("browser_type", &json!({"ref": 3, "text": "hi"}));
-        let expected = Request::Type {
+        let expected = Browse::Type {
             target: 3,
             text: "hi".into(),
             submit: false,
         };
-        assert_eq!(typed, Ok(expected));
+        assert_eq!(typed, Ok(Request::Browse(expected)));
         let paired = parse(
             "browser_answer",
             &json!({"question": "device", "accept": true, "device": "Kiln Heart"}),
         );
-        let Ok(Request::Answer(paired)) = paired else {
+        let Ok(Request::Browse(Browse::Answer(paired))) = paired else {
             panic!("not an answer");
         };
         assert_eq!(
@@ -267,6 +316,14 @@ mod tests {
         )
         .unwrap_err();
         assert!(wrong.contains("`question`"), "{wrong}");
+        let committed = parse("commit", &json!({"message": "Fix", "paths": ["a.rs"]}));
+        let expected = Request::Commit {
+            message: "Fix".into(),
+            paths: vec!["a.rs".into()],
+        };
+        assert_eq!(committed, Ok(expected));
+        let wrong = parse("commit", &json!({"message": "Fix", "paths": "a.rs"})).unwrap_err();
+        assert!(wrong.contains("`paths`"), "{wrong}");
         let wrong = parse("browser_click", &json!({"ref": "e3"})).unwrap_err();
         assert!(wrong.contains("`ref`"), "{wrong}");
     }
