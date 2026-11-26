@@ -10,6 +10,8 @@ use kiln_git::Status;
 use super::ChatPanel;
 use crate::commit_review::{self, CommitCall, CommitReview, CommitReviewEvent, Pending};
 
+const WAITING: &str = "Another commit from this chat waits for the user.";
+
 impl ChatPanel {
     pub fn ask_commit(&mut self, call: CommitCall, window: &mut Window, cx: &mut Context<Self>) {
         let CommitCall {
@@ -17,10 +19,9 @@ impl ChatPanel {
             paths,
             reply,
         } = call;
+        self.turn.committed = true;
         if self.review.is_some() {
-            let _ = reply.try_send(Reply::failed(
-                "Another commit from this chat waits for the user.",
-            ));
+            let _ = reply.try_send(Reply::failed(WAITING));
             return;
         }
         let cleaned = match commit_review::checked(&message, cx) {
@@ -33,14 +34,6 @@ impl ChatPanel {
             }
         };
         let project = self.project.read(cx).root().to_path_buf();
-        if !crate::config::settings(cx).git.commit.review {
-            let commit = cx.background_spawn(async move {
-                let made = kiln_git::commit_paths(&project, &cleaned, &paths);
-                made.map(|id| commit_review::committed_reply(&id, &cleaned, &message))
-            });
-            cx.background_spawn(answer(commit, reply)).detach();
-            return;
-        }
         let asked = Pending {
             project: project.clone(),
             paths,
@@ -73,18 +66,49 @@ impl ChatPanel {
                 return;
             }
         };
-        asked.files = commit_review::files(&status, &asked.paths);
-        if asked.files.is_empty() || self.review.is_some() {
-            let _ = asked
-                .reply
-                .try_send(Reply::failed(if asked.files.is_empty() {
-                    "There is nothing to commit there."
-                } else {
-                    "Another commit from this chat waits for the user."
-                }));
+        // The agent's paths are from the project folder, the status's from
+        // the repository's top.
+        let targets: Vec<_> = (asked.paths.iter())
+            .map(|path| status.prefix().join(path.trim_start_matches("./")))
+            .collect();
+        asked.files = commit_review::files(&status, &targets);
+        if asked.files.is_empty() {
+            let nothing = Reply::failed("There is nothing to commit there.");
+            let _ = asked.reply.try_send(nothing);
             return;
         }
-        let review = cx.new(|cx| CommitReview::new(asked, window, cx));
+        self.show_review(asked, window, cx);
+    }
+
+    /// Lets the user decide on `pending`, or commits it at once when the
+    /// settings leave it to Kiln.
+    pub(super) fn show_review(
+        &mut self,
+        pending: Pending,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.review.is_some() {
+            let _ = pending.reply.try_send(Reply::failed(WAITING));
+            return;
+        }
+        if !crate::config::settings(cx).git.commit.review {
+            let Pending {
+                project,
+                paths,
+                sent,
+                cleaned,
+                reply,
+                ..
+            } = pending;
+            let commit = cx.background_spawn(async move {
+                let made = kiln_git::commit_paths(&project, &cleaned, &paths);
+                made.map(|id| commit_review::committed_reply(&id, &cleaned, &sent))
+            });
+            cx.background_spawn(answer(commit, reply)).detach();
+            return;
+        }
+        let review = cx.new(|cx| CommitReview::new(pending, window, cx));
         let closed = cx.subscribe_in(&review, window, |this, _, event, window, cx| {
             let CommitReviewEvent::Closed = event;
             this.review = None;
@@ -106,7 +130,10 @@ impl ChatPanel {
 async fn answer(commit: gpui_kit::Task<anyhow::Result<Reply>>, reply: Sender<Reply>) {
     let answer = match commit.await {
         Ok(answer) => answer,
-        Err(error) => Reply::failed(format!("Nothing was committed: {error:#}")),
+        Err(error) => {
+            log::warn!("a commit failed: {error:#}");
+            Reply::failed(format!("Nothing was committed: {error:#}"))
+        }
     };
     let _ = reply.try_send(answer);
 }

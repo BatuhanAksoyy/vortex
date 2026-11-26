@@ -230,7 +230,11 @@ impl ChatView {
                     title,
                 });
             }
-            AgentEvent::TurnEnded(_) => {}
+            AgentEvent::TurnEnded(outcome) => {
+                if *outcome == kiln_agent::TurnOutcome::Completed {
+                    cx.emit(super::ChatEvent::TurnCompleted);
+                }
+            }
             _ => return,
         }
         cx.emit(super::ChatEvent::SessionChanged);

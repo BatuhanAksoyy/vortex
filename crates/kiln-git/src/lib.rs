@@ -1,9 +1,11 @@
 //! The git CLI, as Kiln reads it: the branch, what changed in the working
-//! tree and the index, and each change's diff. It also stages, commits and switches branches. Kiln runs the user's own
-//! `git`, so their configuration applies.
+//! tree and the index, and each change's diff. It also stages, commits and
+//! switches branches. Kiln runs the user's own `git`, so their
+//! configuration applies.
 
 mod branches;
 mod counts;
+mod fingerprint;
 mod lines;
 mod log;
 mod message;
@@ -19,6 +21,7 @@ use anyhow::{Context as _, bail};
 
 pub use branches::{Branch, branches, create_branch, switch};
 pub use counts::Counts;
+pub use fingerprint::Fingerprint;
 pub use lines::{LineChange, LineKind, base_text, line_changes, patch};
 pub use log::{Commit, log, show};
 pub use message::MessageRules;

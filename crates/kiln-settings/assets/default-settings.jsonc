@@ -41,7 +41,13 @@
       // The first line must read `type(scope): subject`.
       "conventional": false,
       // A commit the agent asks for waits for the user to approve or edit it.
-      "review": true
+      "review": true,
+      // When the agent's work is committed: "agent" when it calls Kiln's
+      // commit tool; "turn_end" also after a turn that changed files without
+      // calling it, with a message the model below writes.
+      "trigger": "agent",
+      // Writes the message after a turn, on the chat's account.
+      "model": "haiku"
     }
   }
 }

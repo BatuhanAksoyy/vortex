@@ -58,13 +58,9 @@ pub(crate) struct File {
     pub removed: usize,
 }
 
-/// The changes in `status` that `paths`, relative to the project, take;
-/// every change when there are none. A path may be a folder.
-pub(crate) fn files(status: &Status, paths: &[String]) -> Vec<File> {
-    let targets: Vec<PathBuf> = paths
-        .iter()
-        .map(|path| status.prefix().join(path.trim_start_matches("./")))
-        .collect();
+/// The changes in `status` under `targets`, paths from the repository's
+/// top that may be folders; every change when there are none.
+pub(crate) fn files(status: &Status, targets: &[PathBuf]) -> Vec<File> {
     let wanted = |path: &Path| targets.is_empty() || targets.iter().any(|t| path.starts_with(t));
     let mut files: Vec<File> = Vec::new();
     for change in &status.changes {

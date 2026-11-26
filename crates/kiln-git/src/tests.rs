@@ -13,7 +13,7 @@ fn run(root: &Path, args: &[&str]) {
 }
 
 /// A repository on `main` with `kept.txt` and `old.txt` committed.
-fn repository() -> tempfile::TempDir {
+pub(crate) fn repository() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("temp dir");
     run(dir.path(), &["init", "-q", "-b", "main"]);
     fs::write(dir.path().join("kept.txt"), "one\ntwo\n").expect("write");

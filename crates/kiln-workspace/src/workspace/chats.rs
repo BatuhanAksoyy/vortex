@@ -343,7 +343,7 @@ impl Workspace {
                 self.activate(Some(panel), window, cx);
                 self.pick_project(window, cx);
             }
-            ChatEvent::TurnStarted | ChatEvent::PickConversation => {}
+            ChatEvent::TurnStarted | ChatEvent::TurnCompleted | ChatEvent::PickConversation => {}
         }
     }
 

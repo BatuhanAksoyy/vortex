@@ -2,6 +2,7 @@
 //! keeps working while another tab is shown.
 
 mod commit;
+mod turn_commit;
 
 use std::path::PathBuf;
 
@@ -61,6 +62,7 @@ pub struct ChatPanel {
     projects: Option<(Entity<ProjectPicker>, Subscription)>,
     /// A commit the agent asked for, while it waits for the user.
     review: Option<(Entity<CommitReview>, Subscription)>,
+    turn: turn_commit::TurnWatch,
     /// Whether it is the only tab, which then offers its own close button.
     alone: bool,
     /// The dock tracks the active panel's handle on the group around it, so
@@ -85,6 +87,7 @@ impl ChatPanel {
                 if matches!(event, ChatEvent::PickConversation) {
                     this.open_picker(window, cx);
                 }
+                this.follow_turn(event, window, cx);
             }),
             cx.on_focus_in(&focus, window, |_, _, cx| {
                 cx.emit(ChatPanelEvent::Activated);
@@ -99,6 +102,7 @@ impl ChatPanel {
             project,
             picker: None,
             review: None,
+            turn: turn_commit::TurnWatch::default(),
             projects: None,
             alone: false,
             focus,

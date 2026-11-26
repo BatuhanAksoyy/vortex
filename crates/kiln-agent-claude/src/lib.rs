@@ -10,6 +10,7 @@ mod control;
 mod history;
 mod hooks;
 mod install;
+mod one_shot;
 mod outgoing;
 mod picture;
 mod recap;

@@ -19,6 +19,8 @@ pub enum ChatEvent {
     /// A message was sent; another conversation cannot be opened until the
     /// turn ends, which `SessionChanged` reports.
     TurnStarted,
+    /// The agent finished the turn, not stopped or failed.
+    TurnCompleted,
     /// The chat moved to another account.
     AccountChanged,
     /// The permission mode or effort a new process would start with

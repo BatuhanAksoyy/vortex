@@ -5,6 +5,7 @@
 mod effort;
 mod hooks;
 mod message;
+mod one_shot;
 mod past;
 mod permission;
 mod skills;
@@ -14,6 +15,7 @@ mod tools;
 pub use effort::{Effort, PromptTokens, SpentTokens};
 pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
 pub use message::{Message, Picture};
+pub use one_shot::OneShot;
 pub use past::{PastMessage, PastSession};
 pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Remember, RuleScope};
 pub use skills::{Skill, SkillLock, SkillState};
@@ -65,6 +67,13 @@ pub trait AgentBackend {
     /// The messages of stored conversation `session_id`, oldest first, as a
     /// reopened chat shows them.
     fn past_messages(&self, cwd: &Path, session_id: &str) -> Pending<Vec<PastMessage>>;
+
+    /// One answer to `ask.prompt`, from a model run for it alone, with no
+    /// tools; for Kiln's own small jobs, such as a commit message.
+    fn ask_once(&self, ask: OneShot) -> Pending<String> {
+        drop(ask);
+        Box::pin(async { anyhow::bail!("this agent cannot be asked for a single answer") })
+    }
 }
 
 /// Work a backend hands out to be polled, typically on a background executor.

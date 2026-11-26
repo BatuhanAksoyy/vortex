@@ -1,4 +1,7 @@
-use std::{path::Path, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use gpui_kit::test::{TestAppContextExt as _, TestWindowExt as _};
 use gpui_kit::{
@@ -39,16 +42,16 @@ fn a_call_takes_the_files_under_its_paths() {
     let repo = repository();
     let status = kiln_git::status(repo.path()).expect("status");
     let names = |paths: &[&str]| -> Vec<String> {
-        let paths: Vec<String> = paths.iter().map(|path| (*path).to_owned()).collect();
+        let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
         files(&status, &paths)
             .into_iter()
             .map(|file| file.path)
             .collect()
     };
     assert_eq!(names(&[]), ["a.txt", "docs/b.txt"]);
-    assert_eq!(names(&["./docs"]), ["docs/b.txt"]);
+    assert_eq!(names(&["docs"]), ["docs/b.txt"]);
     assert_eq!(names(&["nowhere"]), Vec::<String>::new());
-    let a = &files(&status, &["a.txt".to_owned()])[0];
+    let a = &files(&status, &[PathBuf::from("a.txt")])[0];
     assert_eq!((a.letter, a.added, a.removed), ('M', 1, 0));
 }
 
@@ -67,7 +70,10 @@ fn review(
     let status = kiln_git::status(root).expect("status");
     let pending = Pending {
         project: root.to_path_buf(),
-        files: files(&status, &paths),
+        files: files(
+            &status,
+            &paths.iter().map(PathBuf::from).collect::<Vec<_>>(),
+        ),
         paths,
         sent: message.to_owned(),
         cleaned: cx.update(|cx| super::message_rules(cx).expect("rules").clean(message)),

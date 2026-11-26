@@ -11,8 +11,8 @@ use futures::{
     stream,
 };
 use kiln_agent::{
-    AgentBackend, AgentEvent, HookEdit, PastMessage, PastSession, Pending, Session, SessionCommand,
-    SessionSpec, SignIn, SkillState,
+    AgentBackend, AgentEvent, HookEdit, OneShot, PastMessage, PastSession, Pending, Session,
+    SessionCommand, SessionSpec, SignIn, SkillState,
 };
 use serde_json::Value;
 
@@ -180,6 +180,10 @@ impl AgentBackend for ClaudeBackend {
 
     fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn> {
         sign_in::start(&self.program, env)
+    }
+
+    fn ask_once(&self, ask: OneShot) -> Pending<String> {
+        Box::pin(crate::one_shot::ask(self.program.clone(), ask))
     }
 }
 
