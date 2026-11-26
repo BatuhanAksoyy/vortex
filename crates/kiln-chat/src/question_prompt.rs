@@ -204,7 +204,7 @@ impl Render for QuestionPrompt {
             .p_3()
             .rounded(theme.radius * 2.)
             .border_1()
-            .border_color(spinner::accent())
+            .border_color(spinner::accent(cx))
             .bg(theme.secondary)
             .child(tabs)
             .children(question.map(|question| {

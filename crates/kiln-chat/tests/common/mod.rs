@@ -37,8 +37,9 @@ pub type ScriptedSignIn = (
 pub struct FakeBackend(pub Rc<RefCell<Script>>);
 
 impl AgentBackend for FakeBackend {
+    // Stands in for Claude Code, whose accounts the tests add.
     fn name(&self) -> &'static str {
-        "fake"
+        "claude"
     }
 
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
@@ -96,13 +97,22 @@ pub struct Harness {
 
 impl Harness {
     pub fn new(cx: &mut TestAppContext) -> Self {
+        Self::with(cx, None)
+    }
+
+    /// A chat that also offers `other`, when given, to switch to.
+    pub fn with(cx: &mut TestAppContext, other: Option<Rc<dyn AgentBackend>>) -> Self {
         cx.update(gpui_kit::init);
         let script = Rc::new(RefCell::new(Script::default()));
         let backend = Rc::new(FakeBackend(script.clone()));
         let data = tempfile::tempdir().expect("temp dir");
         let accounts = cx
             .update(|cx| cx.new(|_| Accounts::load(data.path().to_owned()).expect("account list")));
+        let backends = other.map(|other| kiln_chat::Backends::new(backend.clone(), vec![other]));
         let (window, view) = cx.update(|cx| open(backend, accounts, cx));
+        if let Some(backends) = backends {
+            cx.update(|cx| view.update(cx, |view, _| view.offer(backends)));
+        }
         cx.run_until_parked();
         Self {
             window,

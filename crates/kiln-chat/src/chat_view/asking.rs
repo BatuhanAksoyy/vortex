@@ -27,21 +27,42 @@ impl ChatView {
             system,
             prompt,
         } = question;
-        if agent != self.backend.name() {
+        let Some((backend, account)) = self.asked_backend(&agent, cx) else {
             let missing = format!("Kiln has no agent named `{agent}`.");
             return Box::pin(async move { Err(anyhow::anyhow!(missing)) });
-        }
-        let env = self
-            .account
-            .as_deref()
-            .map_or_else(Vec::new, |id| self.accounts.read(cx).env(id));
-        self.backend.ask_once(OneShot {
+        };
+        let env = account.map_or_else(Vec::new, |id| self.accounts.read(cx).env(&id));
+        backend.ask_once(OneShot {
             cwd: self.cwd.clone(),
             env,
             model,
             system,
             prompt,
         })
+    }
+
+    /// Harness `agent` and the account to ask it on: the chat's own when
+    /// it runs on that harness, else the harness's first added account.
+    fn asked_backend(
+        &self,
+        agent: &str,
+        cx: &App,
+    ) -> Option<(std::rc::Rc<dyn kiln_agent::AgentBackend>, Option<String>)> {
+        if agent == self.backend.name() {
+            return Some((self.backend.clone(), self.account.clone()));
+        }
+        let backend = self.backends.as_ref()?.get(agent);
+        (backend.name() == agent).then(|| {
+            let account = super::first_added(self.accounts.read(cx), agent);
+            (backend, account)
+        })
+    }
+
+    /// Every harness the chat may ask, its own first.
+    #[must_use]
+    pub fn agent_names(&self) -> Vec<String> {
+        let offered = self.offered_agents().into_iter();
+        offered.map(str::to_owned).collect()
     }
 
     /// The name of the chat's harness, such as `claude`.

@@ -56,7 +56,7 @@ impl State {
     pub fn color(self, cx: &App) -> Hsla {
         let theme = cx.theme();
         match self {
-            Self::Working => spinner::accent(),
+            Self::Working => spinner::accent(cx),
             Self::Waiting => theme.warning,
             Self::Failed => theme.danger,
             Self::Finished => theme.success,

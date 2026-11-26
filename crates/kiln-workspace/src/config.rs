@@ -134,6 +134,14 @@ pub fn adjust_zoom(delta: Option<f32>, cx: &mut App) {
     apply_appearance(cx);
 }
 
+/// Shows Kiln in `brand`'s color from now on.
+pub fn set_brand(brand: kiln_chat::Brand, cx: &mut App) {
+    if cx.try_global::<kiln_chat::Brand>() != Some(&brand) {
+        cx.set_global(brand);
+        apply_appearance(cx);
+    }
+}
+
 fn apply_appearance(cx: &mut App) -> Vec<String> {
     let state = cx.global::<ConfigState>();
     let (settings, zoom, fonts) = (

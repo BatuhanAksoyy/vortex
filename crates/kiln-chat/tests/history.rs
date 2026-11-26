@@ -40,7 +40,17 @@ mod history {
     fn open_as(harness: &Harness, cx: &mut TestAppContext, id: &'static str, elsewhere: bool) {
         let view = harness.view.clone();
         harness.with_window(cx, move |window, cx| {
-            view.update(cx, |view, cx| view.open_session(id, elsewhere, window, cx));
+            view.update(cx, |view, cx| {
+                view.open_session(
+                    &kiln_chat::Stored {
+                        agent: "claude",
+                        id,
+                        open_elsewhere: elsewhere,
+                    },
+                    window,
+                    cx,
+                );
+            });
         });
         cx.run_until_parked();
     }

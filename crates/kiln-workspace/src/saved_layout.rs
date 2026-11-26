@@ -35,6 +35,10 @@ pub struct SavedChat {
     /// `None` in a layout kept for one project, whose folder it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<PathBuf>,
+    /// The harness it runs on, by its settings name; `None` for a chat kept
+    /// before Kiln offered another, which ran on Claude Code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
     /// `None` runs it with the usual sign-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
@@ -200,6 +204,7 @@ mod tests {
                 .map(|id| SavedChat {
                     session: Some((*id).to_owned()),
                     folder: None,
+                    agent: None,
                     account: id.strip_prefix("s-").map(|n| format!("account-{n}")),
                     mode: (*id == "s-1").then_some(PermissionMode::Auto),
                     effort: (*id == "s-2").then_some(Effort::Max),

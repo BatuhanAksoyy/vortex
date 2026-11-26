@@ -29,6 +29,7 @@ impl ChatPanel {
     /// The commit settings of `this` chat and its project, on `scope`'s tab.
     pub fn commit_settings(&self, scope: Scope, this: &Entity<Self>, cx: &App) -> Opened {
         let chat = self.chat.read(cx);
+        // The chat's agent says its models; another one's are not known here.
         let mut models: Vec<String> = chat.models().iter().map(|model| model.id.clone()).collect();
         models.dedup();
         Opened {
@@ -36,7 +37,7 @@ impl ChatPanel {
             project: Some(self.project.read(cx).root().to_path_buf()),
             chat: Some(this.downgrade()),
             own: self.session_settings().clone(),
-            agents: vec![chat.agent_name().to_owned()],
+            agents: chat.agent_names(),
             models,
         }
     }

@@ -1,4 +1,4 @@
-//! Agent-neutral session model. Each backend (`kiln-agent-claude`, later
+//! Agent-neutral session model. Each backend (`kiln-agent-claude`,
 //! `kiln-agent-codex`) translates its own protocol into these types, so the UI
 //! never sees protocol details.
 
@@ -11,6 +11,7 @@ mod permission;
 mod skills;
 mod subagent;
 mod tools;
+mod usage;
 
 pub use effort::{Effort, PromptTokens, SpentTokens};
 pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
@@ -21,6 +22,7 @@ pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Reme
 pub use skills::{Skill, SkillLock, SkillState};
 pub use subagent::{SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage};
 pub use tools::ToolServer;
+pub use usage::{ContextCategory, ContextKind, ContextUsage, Limited, Usage, UsageWindow};
 
 use std::{
     future::Future,
@@ -30,6 +32,23 @@ use std::{
 };
 
 use serde_json::Value;
+
+/// Set by a parent Claude Code process. Inherited, they make a spawned CLI
+/// behave as a nested session of whatever terminal launched Kiln, so no
+/// backend passes them on.
+pub const PARENT_SESSION_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_PID",
+    "CLAUDE_EFFORT",
+    "AI_AGENT",
+];
 
 /// Where and how to start a session.
 #[derive(Clone, Debug)]
@@ -51,6 +70,9 @@ pub struct SessionSpec {
     pub fork: bool,
     /// Kiln's tools; the agent uses them without asking, Kiln asks instead.
     pub tools: Option<ToolServer>,
+    /// The conversation so far, as another harness held it, for a new
+    /// conversation that continues it; given to the agent as instructions.
+    pub handoff: Option<String>,
 }
 
 pub trait AgentBackend {
@@ -71,12 +93,33 @@ pub trait AgentBackend {
     /// reopened chat shows them.
     fn past_messages(&self, cwd: &Path, session_id: &str) -> Pending<Vec<PastMessage>>;
 
+    /// What of Kiln's session features the harness has; a chat hides the
+    /// rest rather than show them empty.
+    fn features(&self) -> Features {
+        Features::ALL
+    }
+
     /// One answer to `ask.prompt`, from a model run for it alone, with no
     /// tools; for Kiln's own small jobs, such as a commit message.
     fn ask_once(&self, ask: OneShot) -> Pending<String> {
         drop(ask);
         Box::pin(async { anyhow::bail!("this agent cannot be asked for a single answer") })
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Features {
+    /// Skills and hooks the chat lists and changes.
+    pub skills_and_hooks: bool,
+    /// A prompt cache that expires, which the chat counts down.
+    pub prompt_cache: bool,
+}
+
+impl Features {
+    pub const ALL: Self = Self {
+        skills_and_hooks: true,
+        prompt_cache: true,
+    };
 }
 
 /// Work a backend hands out to be polled, typically on a background executor.
@@ -201,59 +244,6 @@ pub struct Account {
     pub organization: String,
     /// The subscription, e.g. "Claude Pro".
     pub plan: String,
-}
-
-/// How much of the subscription's usage limits is spent.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Usage {
-    /// The short window (five hours for Claude).
-    pub session: Option<UsageWindow>,
-    pub weekly: Option<UsageWindow>,
-    /// Set while a limit is reached and messages would be refused.
-    pub limited: Option<Limited>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct UsageWindow {
-    /// Whole percent used, 0–100.
-    pub percent: u8,
-    pub resets_at: Option<SystemTime>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Limited {
-    /// When sending works again, if the agent says.
-    pub until: Option<SystemTime>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ContextUsage {
-    pub used_tokens: u64,
-    pub max_tokens: u64,
-    /// Whole percent in use as the agent itself shows it, when it says.
-    pub percent: Option<u64>,
-    /// Where the context goes, as the agent breaks it down; empty when it
-    /// does not.
-    pub categories: Vec<ContextCategory>,
-}
-
-/// One part of the context, e.g. the system prompt or the messages.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ContextCategory {
-    pub name: String,
-    pub tokens: u64,
-    pub kind: ContextKind,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ContextKind {
-    /// Counted in [`ContextUsage::used_tokens`].
-    Used,
-    /// Loaded only when needed, so not counted as used.
-    Deferred,
-    /// Kept free so the conversation can be compacted.
-    Buffer,
-    Free,
 }
 
 /// Identifies one streamed content block, so consecutive deltas can be

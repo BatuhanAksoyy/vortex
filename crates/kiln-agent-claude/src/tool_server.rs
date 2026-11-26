@@ -37,7 +37,9 @@ fn settings() -> Value {
 /// Added to the user's own servers, whose tools Kiln leaves to the CLI's
 /// rules. Kiln's tools the CLI does not ask about: Kiln asks the user itself,
 /// about what matters, such as which sites the browser may open.
-pub(crate) fn args(server: &ToolServer) -> [String; 8] {
+/// The CLI's arguments for `server`; `handoff` goes after its instructions,
+/// as the CLI takes one appended prompt.
+pub(crate) fn args(server: &ToolServer, handoff: Option<&str>) -> [String; 8] {
     let env: Map<String, Value> = server
         .env
         .iter()
@@ -55,7 +57,10 @@ pub(crate) fn args(server: &ToolServer) -> [String; 8] {
         "--allowedTools".to_owned(),
         format!("mcp__{}", server.name),
         "--append-system-prompt".to_owned(),
-        instructions(server),
+        handoff.map_or_else(
+            || instructions(server),
+            |handoff| format!("{}\n\n{handoff}", instructions(server)),
+        ),
         "--settings".to_owned(),
         settings().to_string(),
     ]
@@ -83,7 +88,7 @@ mod tests {
             told,
             flag_settings,
             settings,
-        ] = args(&server);
+        ] = args(&server, None);
         assert_eq!(
             (prompt.as_str(), flag_settings.as_str()),
             ("--append-system-prompt", "--settings")

@@ -148,8 +148,15 @@ impl CommitSettingsPage {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let other_agent = field.key == AGENT.key && self.value(&AGENT) != value.as_ref();
         if let Err(error) = self.layers.set(self.scope, field.key, value.clone()) {
             self.refuse(format!("Not saved: {error:#}"), cx);
+            return;
+        }
+        // Each agent names its models differently; another one starts on
+        // its default.
+        if other_agent && self.value(&MODEL).is_some_and(|model| model != "") {
+            self.save(&MODEL, Some(Value::String(String::new())), window, cx);
             return;
         }
         self.error = None;

@@ -10,6 +10,7 @@ license.workspace = true
 anyhow.workspace = true
 directories.workspace = true
 kiln-agent.workspace = true
+log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

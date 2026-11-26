@@ -1,6 +1,7 @@
 //! The account button in the header and the panel it opens: the accounts
-//! Kiln knows, which one the chat runs with, and adding another. Drawn like
-//! the usage panel beside it.
+//! Kiln knows, under the harness each signs in to, which one the chat runs
+//! with, and adding another. Picking another harness's account hands the
+//! conversation over to it. Drawn like the usage panel beside it.
 
 use std::time::SystemTime;
 
@@ -20,6 +21,7 @@ use gpui_kit::{
 
 use super::ChatView;
 use crate::{
+    backends::title,
     scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
     transcript::Status,
 };
@@ -30,13 +32,24 @@ const TRIGGER_MAX_WIDTH: f32 = 240.;
 /// One account as the panel lists it.
 struct Row {
     id: String,
+    /// `None` for a harness's usual sign-in.
+    account: Option<String>,
+    agent: &'static str,
     name: String,
     detail: String,
 }
 
+/// One harness's accounts.
+struct Group {
+    agent: &'static str,
+    rows: Vec<Row>,
+}
+
 /// What the panel shows, copied out of the view each render.
 struct Shown {
-    rows: Vec<Row>,
+    /// The chat's own harness first.
+    groups: Vec<Group>,
+    agent: &'static str,
     /// `None` while the chat runs with the usual sign-in.
     current: Option<String>,
     /// A turn is running; switching would cut it off.
@@ -95,33 +108,51 @@ impl ChatView {
     }
 
     /// On the usage limit notice: carry on with the first other account
-    /// not known to be limited too.
+    /// not known to be limited too, else with another harness.
     pub(super) fn limit_offer(&self, now: SystemTime, cx: &Context<Self>) -> Option<Button> {
-        let account = self.accounts.read(cx).added().iter().find(|account| {
+        let accounts = self.accounts.read(cx);
+        let mut added = accounts.added_for(self.backend.name());
+        let other = added.find(|account| {
             self.account.as_deref() != Some(account.id.as_str())
                 && self.agent.left_limit_at(&account.id, now).is_none()
-        })?;
-        let id = account.id.clone();
+        });
+        let (agent, id, label) = if let Some(account) = other {
+            let label = format!("Continue with {}", account.email);
+            (self.backend.name(), Some(account.id.clone()), label)
+        } else {
+            let agent = *self.offered_agents().get(1)?;
+            let id = super::first_added(accounts, agent);
+            (agent, id, format!("Continue in {}", title(agent)))
+        };
         Some(
             Button::new("chat-limit-continue")
                 .primary()
                 .small()
-                .label(format!("Continue with {}", account.email))
+                .label(label)
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.switch_account(&id, window, cx);
+                    this.pick_account(agent, id.clone(), window, cx);
                 })),
         )
     }
 
     fn shown_accounts(&self, cx: &App) -> Shown {
-        let rows = self.accounts.read(cx).added().iter().map(|account| Row {
-            id: account.id.clone(),
-            name: account.email.clone(),
-            detail: short_plan(&account.plan).to_owned(),
+        let accounts = self.accounts.read(cx);
+        let groups = self.offered_agents().into_iter().map(|agent| Group {
+            agent,
+            rows: (accounts.added_for(agent))
+                .map(|account| Row {
+                    id: account.id.clone(),
+                    account: Some(account.id.clone()),
+                    agent,
+                    name: account.email.clone(),
+                    detail: short_plan(&account.plan).to_owned(),
+                })
+                .collect(),
         });
         let panel = &self.accounts_panel;
         Shown {
-            rows: rows.collect(),
+            groups: groups.collect(),
+            agent: self.backend.name(),
             current: self.account.clone(),
             busy: self.status() == Status::Running,
             signing_in: panel.signing_in.is_some(),
@@ -144,16 +175,18 @@ fn panel(shown: &Shown, view: &WeakEntity<ChatView>, cx: &App) -> impl IntoEleme
         .when(shown.current.is_none(), |this| {
             this.child(message(
                 "chat-account-usual",
-                "Using your usual Claude Code sign-in. Accounts you add here \
-                 are used instead.",
+                &format!(
+                    "Using your usual {} sign-in. Accounts you add here are used instead.",
+                    title(shown.agent)
+                ),
                 muted,
             ))
         })
         .children(
             shown
-                .rows
+                .groups
                 .iter()
-                .map(|row| account_row(row, shown, view, cx)),
+                .map(|group| render_group(group, shown, view, cx)),
         )
         .child(div().my_1().h_px().bg(theme.border))
         .children(
@@ -168,7 +201,43 @@ fn panel(shown: &Shown, view: &WeakEntity<ChatView>, cx: &App) -> impl IntoEleme
                 .as_deref()
                 .map(|text| message("chat-account-notice", text, muted)),
         )
-        .child(add_control(shown.signing_in, view, cx))
+        .child(add_control(shown, view, cx))
+}
+
+/// A harness's accounts under its name, when there are several harnesses;
+/// another harness with none offers its usual sign-in.
+fn render_group(
+    group: &Group,
+    shown: &Shown,
+    view: &WeakEntity<ChatView>,
+    cx: &App,
+) -> impl IntoElement + use<> {
+    let several = shown.groups.len() > 1;
+    let usual = (group.agent != shown.agent && group.rows.is_empty()).then(|| Row {
+        id: format!("usual-{}", group.agent),
+        account: None,
+        agent: group.agent,
+        name: format!("Usual {} sign-in", title(group.agent)),
+        detail: String::new(),
+    });
+    v_flex()
+        .gap_1()
+        .when(several, |this| {
+            this.child(
+                div()
+                    .mt_1()
+                    .text_caption()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(title(group.agent).to_owned()),
+            )
+        })
+        .children(
+            group
+                .rows
+                .iter()
+                .map(|row| account_row(row, shown, view, cx)),
+        )
+        .children(usual.map(|row| account_row(&row, shown, view, cx)))
 }
 
 fn account_row(
@@ -178,8 +247,9 @@ fn account_row(
     cx: &App,
 ) -> impl IntoElement + use<> {
     let theme = cx.theme();
-    let current = shown.current.as_deref() == Some(row.id.as_str());
-    let (id, view, busy) = (row.id.clone(), view.clone(), shown.busy);
+    let current = row.agent == shown.agent && shown.current == row.account;
+    let (agent, account) = (row.agent, row.account.clone());
+    let (view, busy) = (view.clone(), shown.busy);
     h_flex()
         .id(SharedString::from(format!("chat-account-{}", row.id)))
         .test_support()
@@ -210,21 +280,21 @@ fn account_row(
                 .on_click(move |_, window, cx| {
                     let _ = view.update(cx, |view, cx| {
                         view.set_accounts_open(false, cx);
-                        view.switch_account(&id, window, cx);
+                        view.pick_account(agent, account.clone(), window, cx);
                     });
                 })
         })
         .when(!current && busy, |this| {
             this.text_color(theme.muted_foreground)
                 .tooltip(|window, cx| {
-                    Tooltip::new("Switch when Claude has finished").build(window, cx)
+                    Tooltip::new("Switch when the agent has finished").build(window, cx)
                 })
         })
 }
 
-fn add_control(signing_in: bool, view: &WeakEntity<ChatView>, cx: &App) -> gpui_kit::AnyElement {
+fn add_control(shown: &Shown, view: &WeakEntity<ChatView>, cx: &App) -> gpui_kit::AnyElement {
     let view = view.clone();
-    if signing_in {
+    if shown.signing_in {
         return h_flex()
             .gap_2()
             .justify_between()
@@ -245,13 +315,28 @@ fn add_control(signing_in: bool, view: &WeakEntity<ChatView>, cx: &App) -> gpui_
             )
             .into_any_element();
     }
-    Button::new("chat-account-add")
-        .ghost()
-        .row_labelled(Icon::new(IconName::Plus), "Add account")
-        .on_click(move |_, _, cx| {
-            let _ = view.update(cx, ChatView::add_account);
-        })
-        .into_any_element()
+    let several = shown.groups.len() > 1;
+    let buttons = shown.groups.iter().map(|group| {
+        let (agent, view) = (group.agent, view.clone());
+        // The chat's own harness keeps the plain id.
+        let id: SharedString = if agent == shown.agent {
+            "chat-account-add".into()
+        } else {
+            format!("chat-account-add-{agent}").into()
+        };
+        let label: SharedString = if several {
+            format!("Add {} account", title(agent)).into()
+        } else {
+            "Add account".into()
+        };
+        Button::new(id)
+            .ghost()
+            .row_labelled(Icon::new(IconName::Plus), label)
+            .on_click(move |_, _, cx| {
+                let _ = view.update(cx, |view, cx| view.add_account(agent, cx));
+            })
+    });
+    v_flex().children(buttons).into_any_element()
 }
 
 /// A status line, found in tests by its text.

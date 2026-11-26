@@ -155,6 +155,7 @@ fn preview_accounts() -> Accounts {
         id: "account-preview".into(),
         email: "second@example.com".into(),
         plan: "Claude Max".into(),
+        agent: "claude".into(),
     });
     accounts
 }

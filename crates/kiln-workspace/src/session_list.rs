@@ -75,6 +75,13 @@ impl SessionList {
             .map(|session| session.open_elsewhere)
     }
 
+    /// The harness that stored conversation `id`; the default one for a
+    /// conversation not listed.
+    pub fn agent_of(&self, id: &str) -> &'static str {
+        let listed = self.sessions.iter().find(|session| session.id == id);
+        listed.map_or("", |session| session.agent)
+    }
+
     /// Lists the conversations `sessions` reads, replacing a listing still
     /// under way.
     pub fn reload(&mut self, sessions: Pending<Vec<PastSession>>, cx: &mut Context<Self>) {
@@ -96,6 +103,31 @@ impl SessionList {
         cx.emit(SessionListEvent::Loaded);
         cx.notify();
     }
+}
+
+/// Every listing in one, most recently active first. A harness that cannot
+/// list, such as one not installed, leaves the others' conversations
+/// listed; only when all fail is the listing an error.
+pub fn merged(listings: Vec<Pending<Vec<PastSession>>>) -> Pending<Vec<PastSession>> {
+    Box::pin(async move {
+        let mut sessions = Vec::new();
+        let mut failed = None;
+        let mut any_listed = false;
+        for result in futures::future::join_all(listings).await {
+            match result {
+                Ok(listed) => {
+                    any_listed = true;
+                    sessions.extend(listed);
+                }
+                Err(error) => failed = Some(error),
+            }
+        }
+        if let Some(error) = failed.filter(|_| !any_listed) {
+            return Err(error);
+        }
+        sessions.sort_by_key(|session| std::cmp::Reverse(session.updated_at));
+        Ok(sessions)
+    })
 }
 
 /// When the conversation was last active, whether a chat here is working on
@@ -224,5 +256,41 @@ mod tests {
         assert_eq!(day_group(days_ago(6), today), "Previous 7 days");
         assert_eq!(day_group(days_ago(7), today), "Previous 30 days");
         assert_eq!(day_group(days_ago(30), today), "Older");
+    }
+
+    fn listed(sessions: &[(&str, u64)], agent: &'static str) -> Pending<Vec<PastSession>> {
+        let sessions = sessions
+            .iter()
+            .map(|(id, at)| PastSession {
+                id: (*id).to_owned(),
+                title: (*id).to_owned(),
+                updated_at: SystemTime::UNIX_EPOCH + Duration::from_secs(*at),
+                open_elsewhere: false,
+                agent,
+            })
+            .collect();
+        Box::pin(async move { Ok(sessions) })
+    }
+
+    fn failed() -> Pending<Vec<PastSession>> {
+        Box::pin(async { Err(anyhow::anyhow!("codex is not installed")) })
+    }
+
+    #[test]
+    fn every_agents_conversations_list_together_newest_first() {
+        let listing = merged(vec![
+            listed(&[("c-old", 1), ("c-new", 30)], "claude"),
+            listed(&[("x-mid", 20)], "codex"),
+            failed(),
+        ]);
+        let sessions = futures::executor::block_on(listing).unwrap();
+        let ids: Vec<_> = sessions.iter().map(|s| (s.id.as_str(), s.agent)).collect();
+        assert_eq!(
+            ids,
+            [("c-new", "claude"), ("x-mid", "codex"), ("c-old", "claude")],
+            "an agent that cannot list leaves the others"
+        );
+        let none = futures::executor::block_on(merged(vec![failed(), failed()]));
+        assert!(none.is_err(), "unless none can");
     }
 }

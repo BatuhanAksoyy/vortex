@@ -17,7 +17,6 @@ use super::Workspace;
 use crate::{
     chat_panel::{ChatPanel, ChatPanelEvent},
     project::Project,
-    saved_layout::SavedChat,
 };
 
 pub(super) struct ChatTab {
@@ -44,17 +43,19 @@ impl Workspace {
     pub(super) fn new_chat_panel(
         &mut self,
         project: &Entity<Project>,
+        agent: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<ChatPanel> {
-        let (backend, accounts, root) = (
-            self.backend.clone(),
+        let (backends, accounts, root) = (
+            self.backends.clone(),
             self.accounts.clone(),
             project.read(cx).root().to_owned(),
         );
+        let backend = backends.get(agent);
         let notes = self.data_dir.as_ref().map(|dir| dir.join("notes"));
         let chat = cx.new(|cx| {
-            let mut chat = ChatView::new(backend, accounts, root, window, cx);
+            let mut chat = ChatView::new(backend, accounts, root, window, cx).offering(backends);
             if let Some(dir) = notes {
                 chat.keep_notes_in(dir);
             }
@@ -88,9 +89,11 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Entity<ChatView> {
         // A new tab goes on in the mode the user last worked in.
-        let mode = (self.active_chat.as_ref())
-            .and_then(|active| active.read(cx).chat().read(cx).known_mode());
-        let panel = self.new_chat_panel(project, window, cx);
+        let active = (self.active_chat.as_ref()).map(|active| active.read(cx).chat().read(cx));
+        let mode = active.and_then(ChatView::known_mode);
+        // And with the harness the user last worked with.
+        let agent = active.map_or("", ChatView::agent_name);
+        let panel = self.new_chat_panel(project, agent, window, cx);
         let chat = panel.read(cx).chat().clone();
         if let Some(mode) = mode {
             chat.update(cx, |chat, cx| chat.start_in_mode(mode, cx));
@@ -136,28 +139,6 @@ impl Workspace {
             .read(cx)
             .layout(DockPlacement::Center)?
             .find_panel_node(id)
-    }
-
-    /// The conversation the chat in dock panel `id` shows, and its account.
-    pub(super) fn saved_chat_in(&self, id: PanelId, cx: &gpui_kit::App) -> Option<SavedChat> {
-        let tab = self
-            .chats
-            .iter()
-            .find(|tab| PanelId::from(tab.panel.entity_id()) == id)?;
-        let panel = tab.panel.read(cx);
-        let chat = panel.chat().read(cx);
-        let own = panel.session_settings();
-        Some(SavedChat {
-            folder: Some(chat.cwd().to_owned()),
-            session: chat.session_id().map(str::to_owned),
-            account: chat.account().map(str::to_owned),
-            mode: chat.known_mode(),
-            effort: chat.known_effort(),
-            settings: own
-                .as_object()
-                .is_some_and(|it| !it.is_empty())
-                .then(|| own.clone()),
-        })
     }
 
     /// Each running agent's process, under its chat's name.
@@ -221,8 +202,14 @@ impl Workspace {
         if chat.read(cx).status() == Status::Running {
             chat = self.add_chat(Place::Tab, &project, window, cx);
         }
+        let agent = project.read(cx).sessions().read(cx).agent_of(id);
         chat.update(cx, |chat, cx| {
-            chat.open_session(id, open_elsewhere, window, cx);
+            let stored = kiln_chat::Stored {
+                agent,
+                id,
+                open_elsewhere,
+            };
+            chat.open_session(&stored, window, cx);
         });
         self.sync_titles(&project, cx);
         focus(&chat, window, cx);
@@ -338,13 +325,15 @@ impl Workspace {
             ChatEvent::SessionChanged => {
                 // Its turn ended, or it shows another conversation.
                 self.refresh_project(window, cx);
-                let (project, backend) = (panel.read(cx).project().clone(), self.backend.clone());
-                project.update(cx, |project, cx| {
-                    project.reload_sessions(backend.as_ref(), cx);
-                });
+                let (project, backends) = (panel.read(cx).project().clone(), self.backends.clone());
+                project.update(cx, |project, cx| project.reload_sessions(&backends, cx));
                 self.save_layout(cx);
             }
-            ChatEvent::AccountChanged | ChatEvent::ChoicesChanged => self.save_layout(cx),
+            ChatEvent::AccountChanged => {
+                self.sync_brand(cx);
+                self.save_layout(cx);
+            }
+            ChatEvent::ChoicesChanged => self.save_layout(cx),
             ChatEvent::OpenFile(path) => {
                 self.activate(Some(panel), window, cx);
                 self.open_absolute(path.clone(), window, cx);

@@ -20,7 +20,7 @@ use gpui_kit::{
 };
 use kiln_accounts::Accounts;
 use kiln_agent::AgentBackend;
-use kiln_chat::{ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog};
+use kiln_chat::{Backends, ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog};
 
 use crate::{
     browser::Browser,
@@ -61,7 +61,8 @@ pub struct Workspace {
     /// The folders to choose from while no session is open.
     start_page: Option<(Entity<ProjectPicker>, Subscription)>,
     /// Starts the agent behind the chat; injected so tests run no real CLI.
-    backend: Rc<dyn AgentBackend>,
+    /// The harnesses chats run on, the default one first.
+    backends: Backends,
     accounts: Entity<Accounts>,
     /// What every agent's processes use, in the status bar.
     process_meter: Entity<ProcessMeter>,
@@ -103,6 +104,13 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    /// Offers `backends` to the chats, in place of the one `new` took.
+    #[must_use]
+    pub fn offering(mut self, backends: Backends) -> Self {
+        self.backends = backends;
+        self
+    }
+
     /// A window that opens a session in `folder`, if given.
     pub fn new(
         folder: Option<PathBuf>,
@@ -128,6 +136,7 @@ impl Workspace {
             cx.observe_window_activation(window, |this, window, cx| {
                 if window.is_window_active() {
                     crate::windows::make_active(window, cx);
+                    this.sync_brand(cx);
                     this.refresh_project(window, cx);
                 }
             }),
@@ -147,7 +156,7 @@ impl Workspace {
             shown_root: None,
             recent: RecentProjects::default(),
             start_page: None,
-            backend,
+            backends: Backends::new(backend, Vec::new()),
             accounts,
             process_meter: meter,
             cli_version: None,

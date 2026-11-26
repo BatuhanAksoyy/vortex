@@ -1,12 +1,13 @@
-//! The Claude subscription accounts Kiln runs sessions with.
+//! The Claude and Codex subscription accounts Kiln runs sessions with.
 //!
-//! Every account shares the user's Claude Code directory, so sessions,
-//! settings and skills are the same whichever account runs them, and a
-//! conversation started with one account can be resumed with another. Only
-//! the sign-in is kept apart: each added account has a credential store of
-//! its own under Kiln's data directory. Until an account is added, sessions
-//! run with the user's usual Claude Code sign-in.
+//! Every account shares its agent's usual directory, so sessions, settings
+//! and skills are the same whichever account runs them, and a conversation
+//! started with one account can be resumed with another. Only the sign-in
+//! is kept apart: each added account has a credential store of its own
+//! under Kiln's data directory. Until an account is added, sessions run
+//! with the agent's usual sign-in.
 
+mod codex_home;
 mod usage;
 
 use std::{
@@ -16,6 +17,7 @@ use std::{
 };
 
 use anyhow::Context as _;
+pub use codex_home::shared_home as codex_home;
 use serde::{Deserialize, Serialize};
 pub use usage::KnownUsage;
 
@@ -35,7 +37,18 @@ pub struct Account {
     pub email: String,
     #[serde(default)]
     pub plan: String,
+    /// The harness the account signs in to, by its settings name; accounts
+    /// kept before Codex came are Claude's.
+    #[serde(default = "claude")]
+    pub agent: String,
 }
+
+fn claude() -> String {
+    CLAUDE.to_owned()
+}
+
+const CLAUDE: &str = "claude";
+const CODEX: &str = "codex";
 
 /// The added accounts, kept in `<dir>/accounts.json`, and the usage each
 /// last reported, in `<dir>/usage.json`.
@@ -104,23 +117,41 @@ impl Accounts {
         self.added.iter().find(|account| account.id == id)
     }
 
+    /// The added accounts of harness `agent`, in the order they were added.
+    pub fn added_for<'a>(&'a self, agent: &'a str) -> impl Iterator<Item = &'a Account> + 'a {
+        self.added
+            .iter()
+            .filter(move |account| account.agent == agent)
+    }
+
     /// The environment a session of account `id` runs with.
     #[must_use]
     pub fn env(&self, id: &str) -> Vec<(String, String)> {
+        let agent = self
+            .find(id)
+            .map_or(CLAUDE, |account| account.agent.as_str());
+        self.env_for(agent, id)
+    }
+
+    fn env_for(&self, agent: &str, id: &str) -> Vec<(String, String)> {
         let store = self.credentials(id);
+        if agent == CODEX {
+            return codex_home::env(&store);
+        }
         vec![(
             CREDENTIALS_VAR.to_owned(),
             store.to_string_lossy().into_owned(),
         )]
     }
 
-    /// A fresh id and the environment to sign it in with. Nothing is kept
+    /// A fresh id for an account of harness `agent` and the environment to
+    /// sign it in with. Nothing is kept
     /// until `add` is called with the account the sign-in reported.
     ///
     /// Ids are never reused: on macOS a sign-in lives in a Keychain item named
     /// after its store's path, which outlives the store, so a reused id could
     /// come back signed in as a released account.
-    pub fn reserve(&self) -> anyhow::Result<(String, Vec<(String, String)>)> {
+    pub fn reserve(&self, agent: &str) -> anyhow::Result<(String, Vec<(String, String)>)> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -132,7 +163,7 @@ impl Accounts {
         let store = self.credentials(&id);
         std::fs::create_dir_all(&store)
             .with_context(|| format!("cannot create {}", store.display()))?;
-        let env = self.env(&id);
+        let env = self.env_for(agent, &id);
         Ok((id, env))
     }
 
@@ -187,12 +218,12 @@ impl Accounts {
         self.write(USAGE_FILE, &text)
     }
 
-    /// The added account signed in as `email`, if any.
+    /// The added account of harness `agent` signed in as `email`, if any.
     #[must_use]
-    pub fn find_email(&self, email: &str) -> Option<&Account> {
+    pub fn find_email(&self, agent: &str, email: &str) -> Option<&Account> {
         self.added
             .iter()
-            .find(|account| account.email.eq_ignore_ascii_case(email))
+            .find(|account| account.agent == agent && account.email.eq_ignore_ascii_case(email))
     }
 
     fn credentials(&self, id: &str) -> PathBuf {
@@ -227,96 +258,4 @@ pub fn data_dir() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn account(id: &str, email: &str) -> Account {
-        Account {
-            id: id.into(),
-            email: email.into(),
-            plan: "Claude Pro".into(),
-        }
-    }
-
-    #[test]
-    fn an_added_account_has_a_credential_store_of_its_own() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut accounts = Accounts::load(dir.path().to_owned()).unwrap();
-        let (id, env) = accounts.reserve().unwrap();
-        assert!(id.starts_with("account-"), "{id}");
-        let store = dir.path().join("accounts").join(&id);
-        assert_eq!(
-            env,
-            [(
-                CREDENTIALS_VAR.to_owned(),
-                store.to_string_lossy().into_owned()
-            )]
-        );
-        assert!(store.is_dir());
-        accounts.add(account(&id, "a@example.com")).unwrap();
-        assert_ne!(accounts.reserve().unwrap().0, id);
-    }
-
-    #[test]
-    fn added_accounts_are_kept_across_loads() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut accounts = Accounts::load(dir.path().to_owned()).unwrap();
-        let (id, _) = accounts.reserve().unwrap();
-        accounts.add(account(&id, "a@example.com")).unwrap();
-        let again = Accounts::load(dir.path().to_owned()).unwrap();
-        assert_eq!(again.added(), [account(&id, "a@example.com")]);
-        assert_eq!(again.find(&id), Some(&account(&id, "a@example.com")));
-        assert_eq!(
-            again.find_email("A@example.com").map(|a| a.id.as_str()),
-            Some(id.as_str())
-        );
-    }
-
-    #[test]
-    fn an_unfinished_sign_in_leaves_nothing_behind() {
-        let dir = tempfile::tempdir().unwrap();
-        let accounts = Accounts::load(dir.path().to_owned()).unwrap();
-        let (id, _) = accounts.reserve().unwrap();
-        accounts.release(&id);
-        assert!(!dir.path().join("accounts").join(&id).exists());
-        assert_eq!(accounts.added(), Vec::new());
-    }
-
-    #[test]
-    fn a_damaged_list_is_an_error_not_an_empty_list() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(LIST_FILE), "{").unwrap();
-        assert!(Accounts::load(dir.path().to_owned()).is_err());
-    }
-
-    #[test]
-    fn reported_usage_is_kept_across_loads_for_added_accounts_only() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut accounts = Accounts::load(dir.path().to_owned()).unwrap();
-        let (id, _) = accounts.reserve().unwrap();
-        accounts.add(account(&id, "a@example.com")).unwrap();
-        let known = KnownUsage {
-            usage: kiln_agent::Usage {
-                session: Some(kiln_agent::UsageWindow {
-                    percent: 42,
-                    resets_at: Some(UNIX_EPOCH + std::time::Duration::from_hours(1)),
-                }),
-                ..kiln_agent::Usage::default()
-            },
-            reported_at: UNIX_EPOCH,
-        };
-        accounts.set_usage(&id, known).unwrap();
-        accounts.set_usage("account-unknown", known).unwrap();
-        let again = Accounts::load(dir.path().to_owned()).unwrap();
-        assert_eq!(again.usage(&id), Some(known));
-        assert_eq!(again.usage("account-unknown"), None);
-    }
-
-    #[test]
-    fn damaged_usage_is_forgotten_not_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(USAGE_FILE), "{").unwrap();
-        let accounts = Accounts::load(dir.path().to_owned()).unwrap();
-        assert_eq!(accounts.usage("account-1"), None);
-    }
-}
+mod tests;

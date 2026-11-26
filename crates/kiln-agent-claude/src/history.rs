@@ -132,6 +132,7 @@ fn listed(path: &Path) -> Option<PastSession> {
         title,
         updated_at: last_message_at(&tail).unwrap_or(modified),
         open_elsewhere: false,
+        agent: "claude",
     })
 }
 

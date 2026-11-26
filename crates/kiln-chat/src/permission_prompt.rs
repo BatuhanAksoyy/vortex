@@ -154,7 +154,7 @@ impl PermissionPrompt {
         let theme = cx.theme();
         let selected = index == self.selected;
         let (background, foreground) = if selected {
-            (spinner::accent(), theme.primary_foreground)
+            (spinner::accent(cx), theme.primary_foreground)
         } else {
             (theme.background, theme.foreground)
         };
@@ -167,7 +167,7 @@ impl PermissionPrompt {
             .rounded(theme.radius)
             .border_1()
             .border_color(if selected {
-                spinner::accent()
+                spinner::accent(cx)
             } else {
                 theme.border
             })
@@ -264,7 +264,7 @@ impl Render for PermissionPrompt {
             .p_3()
             .rounded(theme.radius * 2.)
             .border_1()
-            .border_color(spinner::accent())
+            .border_color(spinner::accent(cx))
             .bg(theme.secondary)
             .child(
                 div()

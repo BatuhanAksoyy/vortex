@@ -32,8 +32,12 @@ impl ChatView {
                 .justify_center()
                 .gap_2()
                 .text_color(cx.theme().muted_foreground)
-                .child(div().text_2xl().text_color(spinner::accent()).child("✻"))
-                .child("Ask Claude about this project.")
+                .child(div().text_2xl().text_color(spinner::accent(cx)).child("✻"))
+                .child(format!(
+                    "Ask {} about this project.",
+                    self.agent_short_name()
+                ))
+                .children(self.render_agent_picker(cx))
                 .into_any_element();
         }
         let view = cx.entity().downgrade();

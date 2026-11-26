@@ -1,8 +1,9 @@
 use gpui_kit::{
     App, SharedString,
     component::{Theme, ThemeMode, ThemeRegistry},
-    px,
+    px, rgb,
 };
+use kiln_chat::Brand;
 use kiln_settings::{Settings, ThemeMode as ModeSetting};
 
 const KILN_THEMES: &str = include_str!("../../../assets/themes/kiln.json");
@@ -53,6 +54,7 @@ pub fn apply(settings: &Settings, zoom: f32, defaults: &DefaultFonts, cx: &mut A
         ModeSetting::Light => Theme::change(ThemeMode::Light, None, cx),
         ModeSetting::Dark => Theme::change(ThemeMode::Dark, None, cx),
     }
+    apply_brand(cx);
     Theme::update(cx, |theme| {
         theme.font_size = px((settings.ui.font_size + zoom).max(6.0));
         theme.font_family = font_or_default(&settings.ui.font_family, &defaults.ui);
@@ -60,6 +62,36 @@ pub fn apply(settings: &Settings, zoom: f32, defaults: &DefaultFonts, cx: &mut A
         theme.mono_font_family = font_or_default(&settings.editor.font_family, &defaults.mono);
     });
     diagnostics
+}
+
+/// Puts Codex's blue over the theme's brand color while the user works with
+/// Codex; Claude's is the theme's own.
+fn apply_brand(cx: &mut App) {
+    if cx.try_global::<Brand>().copied().unwrap_or_default() != Brand::Codex {
+        return;
+    }
+    let dark = Theme::global(cx).is_dark();
+    // Tailwind's blue scale, a step lighter in the dark theme to keep the
+    // contrast the orange had.
+    let [base, hover, active, link, selection] = if dark {
+        [0x3b_82_f6, 0x60_a5_fa, 0x25_63_eb, 0x7f_b0_ff, 0x3b_82_f6]
+    } else {
+        [0x25_63_eb, 0x1d_4e_d8, 0x1e_40_af, 0x1d_4e_d8, 0xcf_e0_fb]
+    };
+    Theme::update(cx, |theme| {
+        let colors = &mut theme.colors;
+        colors.primary = rgb(base).into();
+        colors.primary_hover = rgb(hover).into();
+        colors.primary_active = rgb(active).into();
+        colors.ring = rgb(base).into();
+        colors.sidebar_primary = rgb(base).into();
+        colors.link = rgb(link).into();
+        colors.selection = if dark {
+            rgb(selection).opacity(0.3).into()
+        } else {
+            rgb(selection).into()
+        };
+    });
 }
 
 fn resolve_theme(

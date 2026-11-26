@@ -152,7 +152,7 @@ pub fn markdown_source(entry: &Entry, toggled: bool) -> Option<String> {
 
 fn user(message: &Message, context: &EntryContext, cx: &App) -> AnyElement {
     let theme = cx.theme();
-    let accent = spinner::accent();
+    let accent = spinner::accent(cx);
     let text = message.text.as_str();
     let lines = text.lines().count();
     let long = lines > USER_PREVIEW_LINES;

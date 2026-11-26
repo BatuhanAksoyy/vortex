@@ -4110,6 +4110,7 @@ dependencies = [
  "anyhow",
  "directories",
  "kiln-agent",
+ "log",
  "serde",
  "serde_json",
  "tempfile",
@@ -4135,6 +4136,22 @@ dependencies = [
  "base64 0.22.1",
  "futures",
  "jiff 0.2.46",
+ "kiln-agent",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "kiln-agent-codex"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "async-process",
+ "base64 0.22.1",
+ "futures",
  "kiln-agent",
  "log",
  "serde",
@@ -4273,6 +4290,7 @@ dependencies = [
  "kiln-accounts",
  "kiln-agent",
  "kiln-agent-claude",
+ "kiln-agent-codex",
  "kiln-bridge",
  "kiln-browser",
  "kiln-chat",

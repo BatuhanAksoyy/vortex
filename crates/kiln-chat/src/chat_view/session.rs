@@ -163,7 +163,7 @@ impl ChatView {
     }
 
     /// The running session's command channel, starting a session if needed.
-    pub(super) fn ensure_session(
+    pub(crate) fn ensure_session(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -202,6 +202,7 @@ impl ChatView {
             resume: self.conversation.as_ref().map(|stored| stored.id.clone()),
             fork: self.conversation.as_ref().is_some_and(|stored| stored.fork),
             tools: self.agent.tools.clone(),
+            handoff: self.handoff.clone(),
         })?;
         let events = session.events;
         let events_task = cx.spawn_in(window, async move |this, cx| {
@@ -229,6 +230,8 @@ impl ChatView {
                 ..
             } => {
                 self.cli.version.clone_from(cli_version);
+                // The conversation holds it from here on.
+                self.handoff = None;
                 // A copy of a conversation keeps its name until listed.
                 let title = self.conversation.take().and_then(|stored| stored.title);
                 self.conversation = Some(super::Conversation {

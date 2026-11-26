@@ -35,13 +35,17 @@ pub async fn ask(program: std::path::PathBuf, ask: OneShot) -> anyhow::Result<St
     let mut command = Command::new(program);
     command
         .args(ARGS)
-        .args(["--model", &ask.model, "--system-prompt", &ask.system])
+        .args(["--system-prompt", &ask.system])
         .current_dir(&ask.cwd)
         .envs(ask.env)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    // No model is the CLI's own default.
+    if !ask.model.is_empty() {
+        command.args(["--model", &ask.model]);
+    }
     for var in PARENT_SESSION_VARS {
         command.env_remove(var);
     }

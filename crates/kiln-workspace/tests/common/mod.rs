@@ -91,6 +91,7 @@ fn session(id: &str, title: &str, updated_at: SystemTime) -> PastSession {
         title: title.into(),
         updated_at,
         open_elsewhere: false,
+        agent: "claude",
     }
 }
 

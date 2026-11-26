@@ -10,11 +10,14 @@ use gpui_kit::{
 };
 use kiln_accounts::Accounts;
 use kiln_agent_claude::ClaudeBackend;
+use kiln_agent_codex::CodexBackend;
+use kiln_chat::Backends;
 
 use crate::{cli_version::CliVersion, commands::ActiveWorkspace, workspace::Workspace};
 
 /// The program each window's chats run.
 const PROGRAM: &str = "claude";
+const CODEX_PROGRAM: &str = "codex";
 
 /// What every window shares.
 struct Windows {
@@ -65,10 +68,13 @@ fn open(folder: Option<PathBuf>, first: bool, cx: &mut App) -> bool {
         ..TitleBar::window_options()
     };
     let opened = gpui_kit::open_window(options, cx, move |window, cx| {
-        let backend = Rc::new(ClaudeBackend::new(PROGRAM));
+        let backend: Rc<dyn kiln_agent::AgentBackend> = Rc::new(ClaudeBackend::new(PROGRAM));
+        let codex: Rc<dyn kiln_agent::AgentBackend> = Rc::new(CodexBackend::new(CODEX_PROGRAM));
+        let backends = Backends::new(backend.clone(), vec![codex]);
         let version = cx.new(|cx| CliVersion::new(PROGRAM.into(), cx));
         cx.new(|cx| {
             let workspace = Workspace::new(folder, backend, accounts, window, cx)
+                .offering(backends)
                 .showing_cli_version(version, window, cx);
             let Some(dir) = data_dir else {
                 return workspace;

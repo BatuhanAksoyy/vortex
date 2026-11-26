@@ -44,7 +44,7 @@ impl ChatView {
             .rounded(theme.radius * 2.)
             .border_1()
             .border_color(if focused {
-                spinner::accent()
+                spinner::accent(cx)
             } else {
                 theme.border
             })
@@ -76,6 +76,7 @@ impl ChatView {
     }
 
     fn strip(&self, view: &WeakEntity<Self>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let features = self.backend.features();
         // The choices wrap in a narrow chat, so the send button stays in view.
         let choices = h_flex()
             .flex_1()
@@ -83,8 +84,11 @@ impl ChatView {
             .flex_wrap()
             .gap_1()
             .child(Self::attach_button(cx))
-            .child(self.skills_button(cx))
-            .child(self.hooks_button(cx))
+            .when(features.skills_and_hooks, |strip| {
+                strip
+                    .child(self.skills_button(cx))
+                    .child(self.hooks_button(cx))
+            })
             .child(self.mode_menu(view))
             .children(self.model_menu(view))
             .children(self.effort_menu(view));
@@ -99,7 +103,9 @@ impl ChatView {
             .child(choices)
             .child(self.agents_button(cx))
             .children(self.tokens_button(cx))
-            .child(self.cache_button(cx))
+            .when(features.prompt_cache, |strip| {
+                strip.child(self.cache_button(cx))
+            })
             .children(self.context_meter(cx))
             .child(self.action_button(cx))
     }
@@ -192,7 +198,7 @@ impl ChatView {
         } else if self.is_limited() {
             round_button("chat-send", IconName::ArrowUp, cx.theme().muted, cx).into_any_element()
         } else {
-            round_button("chat-send", IconName::ArrowUp, spinner::accent(), cx)
+            round_button("chat-send", IconName::ArrowUp, spinner::accent(cx), cx)
                 .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
                 .into_any_element()
         }

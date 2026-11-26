@@ -340,11 +340,12 @@ mod accounts {
         let harness = Harness::new(cx);
         let data = tempfile::tempdir().expect("temp dir");
         let mut kept = kiln_accounts::Accounts::load(data.path().to_owned()).expect("list");
-        let (id, _) = kept.reserve().expect("reserve");
+        let (id, _) = kept.reserve("claude").expect("reserve");
         kept.add(kiln_accounts::Account {
             id: id.clone(),
             email: "a@example.com".into(),
             plan: "Claude Pro".into(),
+            agent: "claude".into(),
         })
         .expect("add");
         let session = |percent| Usage {

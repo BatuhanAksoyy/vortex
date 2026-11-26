@@ -61,7 +61,7 @@ impl Workspace {
                 project: None,
                 chat: None,
                 own: serde_json::Value::Null,
-                agents: vec![self.backend.name().to_owned()],
+                agents: self.backends.names(),
                 models: Vec::new(),
             },
         };

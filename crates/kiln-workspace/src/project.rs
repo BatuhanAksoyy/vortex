@@ -12,7 +12,6 @@ use gpui_kit::{
     Context, Entity, EventEmitter, Subscription, Task, Window,
     component::{WindowExt, notification::Notification},
 };
-use kiln_agent::AgentBackend;
 use kiln_project::ListOptions;
 
 use crate::{
@@ -141,8 +140,14 @@ impl Project {
         self.files.clone()
     }
 
-    pub fn reload_sessions(&self, backend: &dyn AgentBackend, cx: &mut Context<Self>) {
-        let listing = backend.past_sessions(&self.root);
+    /// Lists the conversations every harness stored for the folder, as one
+    /// list.
+    pub fn reload_sessions(&self, backends: &kiln_chat::Backends, cx: &mut Context<Self>) {
+        let listings = backends
+            .iter()
+            .map(|backend| backend.past_sessions(&self.root))
+            .collect();
+        let listing = crate::session_list::merged(listings);
         self.sessions
             .update(cx, |sessions, cx| sessions.reload(listing, cx));
     }

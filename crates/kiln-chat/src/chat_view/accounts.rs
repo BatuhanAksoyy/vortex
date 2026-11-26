@@ -7,10 +7,6 @@ use kiln_accounts::{Account, Accounts, KnownUsage};
 use super::ChatView;
 use crate::transcript::Status;
 
-/// Sent once another account takes over a turn the usage limit cut off:
-/// the resumed session holds the request, so the agent needs only this.
-const CARRY_ON: &str = "Continue where you left off.";
-
 /// A sign-in in progress; dropping it ends the CLI and with it the sign-in.
 pub(super) struct PendingSignIn {
     id: String,
@@ -49,7 +45,7 @@ impl ChatView {
     }
 
     /// Shows the usage this chat's account last reported, in any chat.
-    pub(super) fn recall_usage(&mut self, cx: &Context<Self>) {
+    pub(crate) fn recall_usage(&mut self, cx: &Context<Self>) {
         let known = self
             .account
             .as_ref()
@@ -107,7 +103,7 @@ impl ChatView {
         self.apply_change(change, cx);
         self.ensure_session(window, cx);
         if std::mem::take(&mut self.cut_by_limit) {
-            self.submit(CARRY_ON.into(), window, cx);
+            self.submit(super::handoff::CARRY_ON.into(), window, cx);
         }
         cx.emit(super::ChatEvent::AccountChanged);
         cx.notify();
@@ -119,25 +115,21 @@ impl ChatView {
         if self.account.is_some() {
             return;
         }
-        let first = self
-            .accounts
-            .read(cx)
-            .added()
-            .first()
-            .map(|account| account.id.clone());
+        let first = first_added(self.accounts.read(cx), self.backend.name());
         if let Some(id) = first {
             self.switch_account(&id, window, cx);
         }
     }
 
-    /// Signs a new account in; the CLI's sign-in page opens in the browser.
-    pub(super) fn add_account(&mut self, cx: &mut Context<Self>) {
+    /// Signs a new account of harness `agent` in; the CLI's sign-in page
+    /// opens in the browser.
+    pub(super) fn add_account(&mut self, agent: &str, cx: &mut Context<Self>) {
         if self.accounts_panel.signing_in.is_some() {
             return;
         }
         self.accounts_panel.error = None;
         self.accounts_panel.notice = None;
-        match self.start_sign_in(cx) {
+        match self.start_sign_in(agent, cx) {
             Ok(pending) => self.accounts_panel.signing_in = Some(pending),
             Err(error) => {
                 self.accounts_panel.error = Some(format!("Cannot add an account: {error:#}"));
@@ -146,9 +138,14 @@ impl ChatView {
         cx.notify();
     }
 
-    fn start_sign_in(&self, cx: &mut Context<Self>) -> anyhow::Result<PendingSignIn> {
-        let (id, env) = self.accounts.read(cx).reserve()?;
-        let sign_in = match self.backend.sign_in(env) {
+    fn start_sign_in(&self, agent: &str, cx: &mut Context<Self>) -> anyhow::Result<PendingSignIn> {
+        let backend = match &self.backends {
+            Some(backends) => backends.get(agent),
+            None => self.backend.clone(),
+        };
+        let agent = backend.name();
+        let (id, env) = self.accounts.read(cx).reserve(agent)?;
+        let sign_in = match backend.sign_in(env) {
             Ok(sign_in) => sign_in,
             Err(error) => {
                 self.accounts.read(cx).release(&id);
@@ -165,7 +162,9 @@ impl ChatView {
         let finished = id.clone();
         let done = cx.spawn(async move |this, cx| {
             let result = signing_in.await;
-            let _ = this.update(cx, |this, cx| this.finish_sign_in(&finished, result, cx));
+            let _ = this.update(cx, |this, cx| {
+                this.finish_sign_in(&finished, agent, result, cx);
+            });
         });
         Ok(PendingSignIn {
             id,
@@ -177,13 +176,14 @@ impl ChatView {
     fn finish_sign_in(
         &mut self,
         id: &str,
+        agent: &str,
         result: anyhow::Result<kiln_agent::Account>,
         cx: &mut Context<Self>,
     ) {
         self.accounts_panel.signing_in = None;
         let added = result.and_then(|signed_in| {
             self.accounts.update(cx, |accounts, cx| {
-                let kept = keep(accounts, id, signed_in);
+                let kept = keep(accounts, id, agent, signed_in);
                 cx.notify();
                 kept
             })
@@ -214,14 +214,23 @@ impl ChatView {
     }
 }
 
+/// The id of the first account added for harness `agent`.
+pub(crate) fn first_added(accounts: &Accounts, agent: &str) -> Option<String> {
+    accounts
+        .added_for(agent)
+        .next()
+        .map(|account| account.id.clone())
+}
+
 /// Adds the account signed in under `id`, unless it is already added; what
 /// to tell the user.
 fn keep(
     accounts: &mut Accounts,
     id: &str,
+    agent: &str,
     signed_in: kiln_agent::Account,
 ) -> anyhow::Result<String> {
-    if accounts.find_email(&signed_in.email).is_some() {
+    if accounts.find_email(agent, &signed_in.email).is_some() {
         accounts.release(id);
         return Ok(format!("{} is already added.", signed_in.email));
     }
@@ -230,6 +239,7 @@ fn keep(
         id: id.to_owned(),
         email: signed_in.email,
         plan: signed_in.plan,
+        agent: agent.to_owned(),
     })?;
     Ok(notice)
 }

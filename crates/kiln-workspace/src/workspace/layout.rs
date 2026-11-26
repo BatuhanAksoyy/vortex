@@ -3,7 +3,7 @@
 
 use gpui_kit::{
     App, Axis, Context, Entity, Window,
-    component::dock::{DockLayout, DockPlacement, PaneNode, PaneRef, panel_handle},
+    component::dock::{DockLayout, DockPlacement, PaneNode, PaneRef, PanelId, panel_handle},
     px,
 };
 
@@ -16,6 +16,29 @@ use crate::{
 };
 
 impl Workspace {
+    /// The conversation the chat in dock panel `id` shows, and its account.
+    pub(super) fn saved_chat_in(&self, id: PanelId, cx: &gpui_kit::App) -> Option<SavedChat> {
+        let tab = self
+            .chats
+            .iter()
+            .find(|tab| PanelId::from(tab.panel.entity_id()) == id)?;
+        let panel = tab.panel.read(cx);
+        let chat = panel.chat().read(cx);
+        let own = panel.session_settings();
+        Some(SavedChat {
+            folder: Some(chat.cwd().to_owned()),
+            session: chat.session_id().map(str::to_owned),
+            agent: Some(chat.agent_name().to_owned()),
+            account: chat.account().map(str::to_owned),
+            mode: chat.known_mode(),
+            effort: chat.known_effort(),
+            settings: own
+                .as_object()
+                .is_some_and(|it| !it.is_empty())
+                .then(|| own.clone()),
+        })
+    }
+
     /// Opens the layout kept for the window once its conversations are
     /// listed, then the folder Kiln was started in.
     pub(super) fn start_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -124,7 +147,8 @@ impl Workspace {
         let mut tabs = DockLayout::tabs();
         let mut shown = None;
         for (ix, (saved, open_elsewhere, project)) in listed.into_iter().enumerate() {
-            let panel = self.new_chat_panel(&project, window, cx);
+            let agent = saved.agent.clone().unwrap_or_default();
+            let panel = self.new_chat_panel(&project, &agent, window, cx);
             if let Some(own) = saved.settings.clone() {
                 panel.update(cx, |panel, cx| panel.restore_session_settings(own, cx));
             }
@@ -214,6 +238,12 @@ fn resume(
         chat.start_with_effort(effort, cx);
     }
     if let Some(id) = &saved.session {
-        chat.open_session(id, open_elsewhere, window, cx);
+        let agent = saved.agent.clone().unwrap_or_default();
+        let stored = kiln_chat::Stored {
+            agent: &agent,
+            id,
+            open_elsewhere,
+        };
+        chat.open_session(&stored, window, cx);
     }
 }

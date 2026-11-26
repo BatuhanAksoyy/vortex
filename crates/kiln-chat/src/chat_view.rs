@@ -2,7 +2,9 @@
 //! permission prompt and the composer. Layout lives in `layout`.
 
 mod accounts;
+pub(crate) use accounts::first_added;
 mod accounts_panel;
+mod agent_switch;
 mod agents_dialog;
 mod agents_panel;
 pub mod asking;
@@ -13,6 +15,7 @@ mod composer;
 mod composer_box;
 mod context_panel;
 mod find;
+mod handoff;
 mod header;
 mod history;
 mod hook_form;
@@ -54,8 +57,8 @@ use crate::{
     transcript::{Change, Status, Transcript},
 };
 use accounts::AccountsPanel;
-pub use history::ChatEvent;
 use history::Conversation;
+pub use history::{ChatEvent, Stored};
 use native::ModelPicker;
 use slash_menu::SlashMenu;
 
@@ -89,6 +92,11 @@ enum StripPanel {
 
 pub struct ChatView {
     backend: Rc<dyn AgentBackend>,
+    /// The harnesses the chat may switch to while blank; `None` offers none.
+    backends: Option<crate::Backends>,
+    /// The conversation another harness held, for the first process of the
+    /// one that took it over.
+    handoff: Option<String>,
     /// Shared by every chat; added accounts show in all of them.
     accounts: Entity<Accounts>,
     /// The added account the chat runs with, by id; `None` is the user's
@@ -163,13 +171,12 @@ impl ChatView {
         let subscription = Self::follow_composer(&composer, window, cx);
         let accounts_changed = Self::follow_accounts(&accounts, window, cx);
         let activation = cx.observe_window_activation(window, Self::watch_for_recap);
-        let process_meter = crate::processes::ProcessMeter::for_chat(cx.entity().downgrade(), cx);
-        let meter_opened = process_meter
-            .as_ref()
-            .map(|meter| Self::follow_meter(meter, window, cx));
-        let account = accounts.read(cx).added().first().map(|it| it.id.clone());
+        let (process_meter, meter_opened) = Self::new_meter(window, cx);
+        let account = accounts::first_added(accounts.read(cx), backend.name());
         let mut view = Self {
             backend,
+            backends: None,
+            handoff: None,
             accounts,
             account,
             accounts_panel: AccountsPanel::default(),
@@ -224,6 +231,22 @@ impl ChatView {
         view
     }
 
+    /// The chat's process meter, where the app reads processes, and the
+    /// subscription that opens its page.
+    fn new_meter(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (
+        Option<Entity<crate::processes::ProcessMeter>>,
+        Option<Subscription>,
+    ) {
+        let meter = crate::processes::ProcessMeter::for_chat(cx.entity().downgrade(), cx);
+        let opened = meter
+            .as_ref()
+            .map(|meter| Self::follow_meter(meter, window, cx));
+        (meter, opened)
+    }
+
     fn follow_accounts(
         accounts: &Entity<Accounts>,
         window: &mut Window,
@@ -245,28 +268,6 @@ impl ChatView {
 
     pub fn interrupt(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         self.send_command(SessionCommand::Interrupt);
-        cx.notify();
-    }
-
-    /// Ends the session and starts over with an empty transcript.
-    pub fn new_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.session = None;
-        self.conversation = None;
-        self.history_load = None;
-        self.transcript = Transcript::default();
-        self.toggled.clear();
-        self.find = None;
-        self.agent.reset_context();
-        self.drop_suggestion(window, cx);
-        self.recap = recap::RecapWatch::default();
-        self.scroller
-            .update(cx, |scroller, cx| scroller.reset(1, cx));
-        self.sync_prompt(window, cx);
-        self.sync_spinner(cx);
-        self.ensure_session(window, cx);
-        let focus = self.composer.read(cx).focus_handle(cx);
-        window.focus(&focus, cx);
-        cx.emit(ChatEvent::SessionChanged);
         cx.notify();
     }
 

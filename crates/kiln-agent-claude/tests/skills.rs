@@ -131,6 +131,7 @@ mod live {
             resume: None,
             fork: false,
             tools: None,
+            handoff: None,
         };
         let kiln_agent::Session {
             pid: _,

@@ -3,13 +3,22 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{AppContext as _, Context, EventEmitter, Window};
+use gpui_kit::{AppContext as _, Context, EventEmitter, Focusable as _, Window};
 
 use super::ChatView;
 use crate::{
     kept_notes::KeptNotes,
     transcript::{Status, Transcript},
 };
+
+/// A conversation a harness stored, to open in a chat.
+pub struct Stored<'a> {
+    /// The harness that stored it, by its settings name.
+    pub agent: &'a str,
+    pub id: &'a str,
+    /// Open in another client, so continued as a copy.
+    pub open_elsewhere: bool,
+}
 
 /// What the window's history list follows.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,20 +118,42 @@ impl ChatView {
         }
     }
 
-    /// Shows stored conversation `id` and continues it, as a copy when it
-    /// is `open_elsewhere`: two writers would interleave one file. Not while
+    /// Ends the session and starts over with an empty transcript.
+    pub fn new_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.session = None;
+        self.handoff = None;
+        self.conversation = None;
+        self.history_load = None;
+        self.transcript = Transcript::default();
+        self.toggled.clear();
+        self.find = None;
+        self.agent.reset_context();
+        self.drop_suggestion(window, cx);
+        self.recap = super::recap::RecapWatch::default();
+        self.scroller
+            .update(cx, |scroller, cx| scroller.reset(1, cx));
+        self.sync_prompt(window, cx);
+        self.sync_spinner(cx);
+        self.ensure_session(window, cx);
+        let focus = self.composer.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+        cx.emit(ChatEvent::SessionChanged);
+        cx.notify();
+    }
+
+    /// Shows the stored conversation and continues it, as a copy when it
+    /// is open elsewhere: two writers would interleave one file. Not while
     /// a turn runs, which the restart would cut off.
-    pub fn open_session(
-        &mut self,
-        id: &str,
-        open_elsewhere: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn open_session(&mut self, stored: &Stored, window: &mut Window, cx: &mut Context<Self>) {
+        let (id, open_elsewhere) = (stored.id, stored.open_elsewhere);
         if self.session_id() == Some(id) || self.status() == Status::Running {
             return;
         }
+        if self.switch_backend(stored.agent, cx) {
+            cx.emit(ChatEvent::AccountChanged);
+        }
         self.session = None;
+        self.handoff = None;
         self.conversation = Some(Conversation {
             id: id.to_owned(),
             fork: open_elsewhere,

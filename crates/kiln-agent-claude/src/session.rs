@@ -39,21 +39,7 @@ pub(crate) const ARGS: &[&str] = &[
     "summarized",
 ];
 
-/// Set by a parent Claude Code process. Inherited, they make the child behave
-/// as a nested session of whatever terminal launched Kiln.
-pub(crate) const PARENT_SESSION_VARS: &[&str] = &[
-    "CLAUDECODE",
-    "CLAUDE_CODE_ENTRYPOINT",
-    "CLAUDE_CODE_SESSION_ID",
-    "CLAUDE_CODE_CHILD_SESSION",
-    "CLAUDE_CODE_SESSION_ATTENDED",
-    "CLAUDE_CODE_MESSAGING_SOCKET",
-    "CLAUDE_CODE_MESSAGING_TOKEN",
-    "CLAUDE_CODE_EXECPATH",
-    "CLAUDE_PID",
-    "CLAUDE_EFFORT",
-    "AI_AGENT",
-];
+pub(crate) use kiln_agent::PARENT_SESSION_VARS;
 
 /// Keeps a few kilobytes of stderr for the exit message.
 const STDERR_TAIL_BYTES: usize = 4096;
@@ -92,6 +78,15 @@ impl ClaudeBackend {
     }
 }
 
+/// Kiln's tools and what another harness handed over, as arguments.
+fn extra_args(spec: &SessionSpec) -> Vec<String> {
+    match (&spec.tools, &spec.handoff) {
+        (Some(server), handoff) => tool_server::args(server, handoff.as_deref()).into(),
+        (None, Some(handoff)) => vec!["--append-system-prompt".to_owned(), handoff.clone()],
+        (None, None) => Vec::new(),
+    }
+}
+
 impl AgentBackend for ClaudeBackend {
     fn name(&self) -> &'static str {
         "claude"
@@ -118,9 +113,7 @@ impl AgentBackend for ClaudeBackend {
                 command.arg("--fork-session");
             }
         }
-        if let Some(server) = &spec.tools {
-            command.args(tool_server::args(server));
-        }
+        command.args(extra_args(&spec));
         let resumed = spec
             .resume
             .clone()

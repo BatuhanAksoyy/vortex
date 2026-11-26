@@ -15,6 +15,9 @@ pub struct PastSession {
     /// Open in another client right now; sending to it from here as well
     /// would interleave both conversations.
     pub open_elsewhere: bool,
+    /// The harness that stored it, by `AgentBackend::name`; only it can
+    /// continue the conversation.
+    pub agent: &'static str,
 }
 
 /// One message of a stored conversation. The agent's side is told as the

@@ -41,7 +41,7 @@ impl QuestionPrompt {
                     .font_weight(FontWeight::MEDIUM)
                     .border_b_2()
                     .border_color(if active {
-                        spinner::accent()
+                        spinner::accent(cx)
                     } else {
                         transparent_black()
                     })
@@ -127,7 +127,7 @@ impl QuestionPrompt {
             .rounded(theme.radius)
             .border_l_2()
             .border_color(if highlighted {
-                spinner::accent()
+                spinner::accent(cx)
             } else {
                 transparent_black()
             })
@@ -147,7 +147,7 @@ impl QuestionPrompt {
             .px_3()
             .py_1p5()
             .rounded(theme.radius)
-            .bg(spinner::accent())
+            .bg(spinner::accent(cx))
             .text_color(theme.primary_foreground)
             .font_weight(FontWeight::MEDIUM)
             .when(!ready, |this| this.opacity(0.5))
@@ -201,13 +201,13 @@ fn indicator(multi: bool, picked: bool, cx: &App) -> impl IntoElement + use<> {
         .justify_center()
         .border_1()
         .border_color(if picked {
-            spinner::accent()
+            spinner::accent(cx)
         } else {
             theme.muted_foreground.opacity(0.6)
         });
     if multi {
         mark.rounded(px(3.)).when(picked, |this| {
-            this.bg(spinner::accent()).child(
+            this.bg(spinner::accent(cx)).child(
                 Icon::new(IconName::Check)
                     .in_row()
                     .text_color(theme.primary_foreground),
@@ -215,7 +215,7 @@ fn indicator(multi: bool, picked: bool, cx: &App) -> impl IntoElement + use<> {
         })
     } else {
         mark.rounded_full().when(picked, |this| {
-            this.child(div().size_2().rounded_full().bg(spinner::accent()))
+            this.child(div().size_2().rounded_full().bg(spinner::accent(cx)))
         })
     }
 }

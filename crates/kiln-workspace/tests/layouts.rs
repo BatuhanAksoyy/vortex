@@ -111,11 +111,12 @@ mod layouts {
     fn two_accounts(dir: &std::path::Path) -> (String, String) {
         let mut accounts = Accounts::load(dir.to_owned()).expect("list");
         let mut add = |email: &str| {
-            let (id, _) = accounts.reserve().expect("reserve");
+            let (id, _) = accounts.reserve("claude").expect("reserve");
             let account = Account {
                 id: id.clone(),
                 email: email.into(),
                 plan: "Claude Pro".into(),
+                agent: "claude".into(),
             };
             accounts.add(account).expect("add");
             id

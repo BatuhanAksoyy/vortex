@@ -234,6 +234,7 @@ mod replay {
                 resume: None,
                 fork: false,
                 tools: None,
+                handoff: None,
             })
             .unwrap()
     }
@@ -345,6 +346,7 @@ mod live {
             resume: None,
             fork: false,
             tools: None,
+            handoff: None,
         };
         let kiln_agent::Session {
             pid: _,

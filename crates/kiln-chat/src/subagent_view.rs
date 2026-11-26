@@ -146,7 +146,7 @@ pub fn small_dot(end: Option<SubagentEnd>, cx: &App) -> impl IntoElement + use<>
 pub fn dot(end: Option<SubagentEnd>, cx: &App) -> Hsla {
     let theme = cx.theme();
     match end {
-        None => spinner::accent(),
+        None => spinner::accent(cx),
         Some(SubagentEnd::Completed) => theme.success,
         Some(SubagentEnd::Failed) => theme.danger,
         Some(SubagentEnd::Stopped) => theme.muted_foreground,

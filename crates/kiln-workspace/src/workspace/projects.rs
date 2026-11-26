@@ -48,10 +48,8 @@ impl Workspace {
         let project = cx.new(|cx| Project::new(root, window, cx));
         let subscription = cx.subscribe_in(&project, window, Self::on_project);
         self.projects.push((project.clone(), subscription));
-        let backend = self.backend.clone();
-        project.update(cx, |project, cx| {
-            project.reload_sessions(backend.as_ref(), cx);
-        });
+        let backends = self.backends.clone();
+        project.update(cx, |project, cx| project.reload_sessions(&backends, cx));
         project
     }
 
@@ -83,6 +81,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         self.active_chat = panel;
+        self.sync_brand(cx);
         self.sync_browser(window, cx);
         let root = self.project(cx).map(|p| p.read(cx).root().to_owned());
         if self.shown_root == root {
@@ -91,6 +90,14 @@ impl Workspace {
         self.shown_root = root;
         self.load_project(window, cx);
         cx.notify();
+    }
+
+    /// Colors Kiln after the active chat's harness.
+    pub(super) fn sync_brand(&self, cx: &mut Context<Self>) {
+        if let Some(panel) = &self.active_chat {
+            let agent = panel.read(cx).chat().read(cx).agent_name();
+            crate::config::set_brand(kiln_chat::Brand::of(agent), cx);
+        }
     }
 
     /// Starts working in `folder`: the active chat moves there when nothing
