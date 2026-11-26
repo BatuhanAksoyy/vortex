@@ -18,7 +18,10 @@ pub(super) fn render(
     cx: &App,
 ) -> AnyElement {
     let muted = cx.theme().muted_foreground;
-    let has_words = !text.trim().is_empty();
+    // The CLI streams blank lines around a summary, which would show as a
+    // gap under it.
+    let text = text.trim();
+    let has_words = !text.is_empty();
     let expanded = context.toggled && has_words;
     let arrow = match (has_words, expanded) {
         (false, _) => "",
