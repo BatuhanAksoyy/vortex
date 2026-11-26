@@ -63,6 +63,8 @@ pub struct ChatPanel {
     /// A commit the agent asked for, while it waits for the user.
     review: Option<(Entity<CommitReview>, Subscription)>,
     turn: turn_commit::TurnWatch,
+    /// Kiln committed for this chat, so it may push as the chat ends.
+    made_commit: bool,
     /// Whether it is the only tab, which then offers its own close button.
     alone: bool,
     /// The dock tracks the active panel's handle on the group around it, so
@@ -103,6 +105,7 @@ impl ChatPanel {
             picker: None,
             review: None,
             turn: turn_commit::TurnWatch::default(),
+            made_commit: false,
             projects: None,
             alone: false,
             focus,
@@ -208,6 +211,10 @@ impl BasePanel for ChatPanel {
     }
 
     fn on_removed(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        if self.made_commit {
+            let project = self.project.read(cx).root().to_path_buf();
+            crate::pushing::push_on(kiln_settings::PushPolicy::SessionEnd, project, cx);
+        }
         cx.emit(ChatPanelEvent::Removed);
     }
 }

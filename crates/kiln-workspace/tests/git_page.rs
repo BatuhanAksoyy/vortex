@@ -194,4 +194,43 @@ mod git_page {
         })
         .await;
     }
+
+    fn remote_branches(remote: &std::path::Path) -> String {
+        let out = std::process::Command::new("git")
+            .args(["branch", "--list", "--format=%(refname:short)"])
+            .current_dir(remote)
+            .output()
+            .expect("git branch");
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    }
+
+    #[gpui_kit::test]
+    async fn pushing_main_asks_first(cx: &mut TestAppContext) {
+        let dir = changed_project();
+        let root = dir.path();
+        let remote = tempfile::tempdir().expect("tempdir");
+        git(remote.path(), &["init", "-q", "--bare"]);
+        git(
+            root,
+            &["remote", "add", "origin", &remote.path().to_string_lossy()],
+        );
+        let (window, _) = open_workspace(cx, root.to_path_buf());
+        let window = window.into();
+        click(cx, window, "activity-git");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("git-push").is_some()
+        })
+        .await;
+        click(cx, window, "git-push");
+        assert_eq!(
+            remote_branches(remote.path()),
+            "",
+            "not before the user confirms"
+        );
+        click_label(cx, window, "Push");
+        cx.wait_for(window, Duration::from_secs(5), |_, _| {
+            remote_branches(remote.path()) == "main"
+        })
+        .await;
+    }
 }

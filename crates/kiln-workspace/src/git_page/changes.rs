@@ -96,6 +96,7 @@ impl GitPage {
                     .child(self.render_branch_menu(branch, cx))
                     .children(status.and_then(|status| distance(status, theme)))
                     .child(div().flex_1())
+                    .children(status.and_then(|status| self.render_push(status, cx)))
                     .child(
                         Button::new("git-refresh")
                             .ghost()

@@ -17,6 +17,7 @@ mod name_prompt;
 mod pickers;
 mod project;
 mod project_picker;
+mod pushing;
 mod recent_projects;
 mod repo_status;
 mod saved_layout;

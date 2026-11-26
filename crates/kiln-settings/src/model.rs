@@ -56,6 +56,23 @@ pub struct FilesSettings {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct GitSettings {
     pub commit: CommitSettings,
+    pub push: PushSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct PushSettings {
+    pub policy: PushPolicy,
+    pub protected: Vec<String>,
+    pub remote: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PushPolicy {
+    Never,
+    Manual,
+    AfterCommit,
+    SessionEnd,
 }
 
 /// The rules every commit message is held to.

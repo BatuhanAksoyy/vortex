@@ -22,6 +22,7 @@ use gpui_kit::{
 use kiln_bridge::Reply;
 use kiln_chat::scale::{ScaledButton as _, ScaledText as _};
 use kiln_git::{MessageRules, Status};
+use kiln_settings::PushPolicy;
 
 const WIDTH: f32 = 420.;
 const FILES_HEIGHT: f32 = 160.;
@@ -89,7 +90,7 @@ pub(crate) fn files(status: &Status, targets: &[PathBuf]) -> Vec<File> {
 }
 
 pub enum CommitReviewEvent {
-    Closed,
+    Closed { committed: bool },
 }
 
 pub struct CommitReview {
@@ -189,7 +190,8 @@ impl CommitReview {
                 let _ = self
                     .reply
                     .try_send(committed_reply(&id, message, &self.asked));
-                cx.emit(CommitReviewEvent::Closed);
+                crate::pushing::push_on(PushPolicy::AfterCommit, self.project.clone(), cx);
+                cx.emit(CommitReviewEvent::Closed { committed: true });
             }
             // A hook refused, say: the user may fix it and try again.
             Err(error) => self.error = Some(error.into()),
@@ -201,7 +203,7 @@ impl CommitReview {
         let _ = self.reply.try_send(Reply::failed(
             "The user rejected the commit; nothing was committed. Ask them what they want changed.",
         ));
-        cx.emit(CommitReviewEvent::Closed);
+        cx.emit(CommitReviewEvent::Closed { committed: false });
     }
 
     fn on_key(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {

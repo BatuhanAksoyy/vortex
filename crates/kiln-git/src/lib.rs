@@ -26,7 +26,7 @@ pub use lines::{LineChange, LineKind, base_text, line_changes, patch};
 pub use log::{Commit, log, show};
 pub use message::MessageRules;
 pub use status::{Area, Change, Kind, Status};
-pub use write::{commit, commit_paths, stage, unstage};
+pub use write::{commit, commit_paths, push, stage, unstage};
 
 /// A diff the parser can read whatever the user's `diff.*` settings are.
 const PLAIN_DIFF: [&str; 7] = [

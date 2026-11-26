@@ -97,6 +97,23 @@ fn commit_with(root: &Path, message: &str, extra: &[&str]) -> anyhow::Result<Str
     Ok(String::from_utf8_lossy(&head.stdout).trim().to_owned())
 }
 
+/// Pushes the checked-out branch to the branch it tracks, or, with none,
+/// to a branch of the same name on `remote`, which it then tracks.
+///
+/// # Errors
+/// When the remote refuses, or `git` cannot run or fails.
+pub fn push(root: &Path, branch: &str, upstream: Option<&str>, remote: &str) -> anyhow::Result<()> {
+    let output = match upstream {
+        Some(_) => git(root, &["push", "--quiet"], &[0]),
+        None => git(
+            root,
+            &["push", "--quiet", "--set-upstream", remote, branch],
+            &[0],
+        ),
+    };
+    output.map(drop)
+}
+
 /// The paths a change touches, where a staged rename came from as well.
 fn paths(changes: &[Change]) -> Vec<String> {
     let mut paths = Vec::new();

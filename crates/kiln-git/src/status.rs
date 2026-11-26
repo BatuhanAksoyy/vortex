@@ -16,6 +16,8 @@ pub struct Status {
     pub(crate) prefix: PathBuf,
     /// `None` while no branch is checked out, as during a rebase.
     pub branch: Option<String>,
+    /// The branch it tracks, such as `origin/main`.
+    pub upstream: Option<String>,
     /// Commits the upstream branch lacks, and commits it has on top.
     pub ahead: usize,
     pub behind: usize,
@@ -153,6 +155,7 @@ pub fn parse(output: &str) -> Status {
     while let Some(record) = records.next() {
         if let Some(branch) = record.strip_prefix("## ") {
             status.branch = branch_name(branch);
+            status.upstream = upstream(branch);
             status.ahead = number_after(branch, "ahead ");
             status.behind = number_after(branch, "behind ");
             continue;
@@ -182,6 +185,13 @@ fn branch_name(line: &str) -> Option<String> {
     }
     let name = line.split("...").next().unwrap_or(line);
     let name = name.split(' ').next().unwrap_or(name);
+    Some(name.to_owned())
+}
+
+/// The tracked branch in a `## main...origin/main [ahead 1]` line.
+fn upstream(line: &str) -> Option<String> {
+    let (_, rest) = line.split_once("...")?;
+    let name = rest.split(' ').next().unwrap_or(rest);
     Some(name.to_owned())
 }
 

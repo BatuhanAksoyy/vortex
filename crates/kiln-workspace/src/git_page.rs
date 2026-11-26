@@ -7,6 +7,7 @@ mod changes;
 mod committing;
 mod diff_pane;
 mod history;
+mod pushing;
 
 use std::{collections::HashSet, path::PathBuf};
 

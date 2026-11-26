@@ -48,6 +48,16 @@
       "trigger": "agent",
       // Writes the message after a turn, on the chat's account.
       "model": "haiku"
+    },
+    "push": {
+      // When Kiln pushes: "never"; "manual", with the Git page's Push;
+      // "after_commit", also after each commit it makes of an agent's work;
+      // "session_end", also when a chat that committed closes.
+      "policy": "manual",
+      // Pushed only once the user confirms, also by hand.
+      "protected": ["main", "master"],
+      // Where a branch that tracks none is pushed to.
+      "remote": "origin"
     }
   }
 }

@@ -309,3 +309,21 @@ fn commits_only_the_paths_asked_for() {
     assert_eq!(super::status(root).expect("status").changes, []);
     assert!(super::commit_paths(root, "Nothing", &[]).is_err());
 }
+
+#[test]
+fn pushes_and_then_tracks_the_branch() {
+    let dir = repository();
+    let root = dir.path();
+    let remote = tempfile::tempdir().expect("temp dir");
+    run(remote.path(), &["init", "-q", "--bare"]);
+    let url = remote.path().to_string_lossy().into_owned();
+    run(root, &["remote", "add", "origin", &url]);
+    super::push(root, "main", None, "origin").expect("first push");
+    let status = super::status(root).expect("status");
+    assert_eq!(status.upstream.as_deref(), Some("origin/main"));
+    fs::write(root.join("kept.txt"), "edited\n").expect("write");
+    super::commit_paths(root, "Edit", &[]).expect("commit");
+    assert_eq!(super::status(root).expect("status").ahead, 1);
+    super::push(root, "main", Some("origin/main"), "origin").expect("push");
+    assert_eq!(super::status(root).expect("status").ahead, 0);
+}

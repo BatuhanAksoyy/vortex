@@ -9,7 +9,7 @@ mod watch;
 pub use load::{DEFAULT_SETTINGS, Diagnostic, LoadedSettings, SettingsSources, load};
 pub use model::{
     CommitSettings, CommitTrigger, EditorSettings, FilesSettings, GitSettings, MinimapSettings,
-    Settings, ThemeMode, ThemeSettings, UiSettings,
+    PushPolicy, PushSettings, Settings, ThemeMode, ThemeSettings, UiSettings,
 };
 pub use paths::{
     project_settings_paths, user_config_dir, user_keybindings_path, user_settings_path,

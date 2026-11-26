@@ -6,6 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{Context, Focusable as _, Window};
 use kiln_bridge::Reply;
 use kiln_git::Status;
+use kiln_settings::PushPolicy;
 
 use super::ChatPanel;
 use crate::commit_review::{self, CommitCall, CommitReview, CommitReviewEvent, Pending};
@@ -101,16 +102,20 @@ impl ChatPanel {
                 reply,
                 ..
             } = pending;
+            let push = crate::pushing::wanted(PushPolicy::AfterCommit, cx);
+            self.made_commit = true;
             let commit = cx.background_spawn(async move {
-                let made = kiln_git::commit_paths(&project, &cleaned, &paths);
-                made.map(|id| commit_review::committed_reply(&id, &cleaned, &sent))
+                let id = kiln_git::commit_paths(&project, &cleaned, &paths)?;
+                push_after(&project, push.as_ref());
+                Ok(commit_review::committed_reply(&id, &cleaned, &sent))
             });
             cx.background_spawn(answer(commit, reply)).detach();
             return;
         }
         let review = cx.new(|cx| CommitReview::new(pending, window, cx));
         let closed = cx.subscribe_in(&review, window, |this, _, event, window, cx| {
-            let CommitReviewEvent::Closed = event;
+            let CommitReviewEvent::Closed { committed } = event;
+            this.made_commit |= committed;
             this.review = None;
             this.chat.focus_handle(cx).focus(window, cx);
             cx.notify();
@@ -123,6 +128,16 @@ impl ChatPanel {
         }
         self.review = Some((review, closed));
         cx.notify();
+    }
+}
+
+/// Pushes as the settings ask after a commit; off the main thread.
+fn push_after(project: &std::path::Path, push: Option<&kiln_settings::PushSettings>) {
+    let Some(push) = push else {
+        return;
+    };
+    if let Err(error) = crate::pushing::push_unattended(project, push) {
+        log::warn!("cannot push {}: {error:#}", project.display());
     }
 }
 
