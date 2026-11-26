@@ -311,4 +311,50 @@ mod chat {
             "the click opens the file, not the row"
         );
     }
+
+    #[gpui_kit::test]
+    fn command_output_wraps_and_can_be_selected(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "list it");
+        harness.emit(
+            cx,
+            AgentEvent::ToolCall(ToolCall {
+                id: "tool-1".into(),
+                parent: None,
+                name: "Bash".into(),
+                input: json!({ "command": "ls" }),
+            }),
+        );
+        let long = "word ".repeat(60);
+        harness.emit(
+            cx,
+            AgentEvent::ToolResult {
+                id: "tool-1".into(),
+                output: format!("{long}\nlast line"),
+                pictures: Vec::new(),
+                is_error: false,
+                patch: Vec::new(),
+            },
+        );
+        let (bounds, width) = harness.with_window(cx, |window, _| {
+            let bounds = window.find(("tool-output", 2_u64)).bounds();
+            (bounds, window.bounds().size.width)
+        });
+        assert!(bounds.right() <= width, "it stays in the chat: {bounds:?}");
+        assert!(
+            bounds.size.height > gpui_kit::px(60.),
+            "the long line wraps: {bounds:?}"
+        );
+
+        let (from, to) = (
+            bounds.origin + gpui_kit::point(gpui_kit::px(8.), gpui_kit::px(8.)),
+            bounds.bottom_right() - gpui_kit::point(gpui_kit::px(8.), gpui_kit::px(4.)),
+        );
+        let copied = harness.with_window(cx, move |window, cx| {
+            window.drag(from, to, cx);
+            gpui_kit::base::TextSelection::selected_text(window, cx)
+        });
+        assert!(copied.contains("word word"), "{copied:?}");
+        assert!(copied.ends_with("last line"), "{copied:?}");
+    }
 }

@@ -230,6 +230,7 @@ pub struct SessionHandle {
 
 - Claude Code CLI'a benzer akış: katlanabilir tool kartları.
   - Bash: komut + çıktı.
+  - Çıktı ve diff kutusu (`code_block`): en fazla 168px yüksekliğinde, dikeyde kayar; uzun satırlar kaydırılmaz, sarılır, kutu sohbetin genişliğini aşmaz. Her satırın metni bir `SelectableText`'tir ve pencerenin seçimine katılır: satırlar arasında sürükleyerek seçilir, kopyada satır numaraları olmaz. Kopyalama sırası için her satırın `document_order`'ı girdinin numarası (üst bitler) ve satır numarasıdır (alt 16 bit). İlk 200 satır gösterilir; fazlası için "N more lines not shown" yazar.
   - Edit, `MultiEdit`, Write: diff kutusu. Tool çalışınca CLI sonucun yanında yamayı da gönderir (`tool_use_result.structuredPatch`, kayıtta `toolUseResult`); kart onu `git diff` gibi gösterir: değişmeyen bağlam satırları, dosyadaki gerçek satır numaraları (silinen satır eski, eklenen yeni dosyadaki numarasıyla), satır başında `-`/`+` ve renkli arka plan, hunk'lar arasında `⋯`. Yama yoksa (yeni dosya, tool henüz çalışmadı, izin bekliyor) çağrının kendi girdisinden silinen ve eklenen satırlar gösterilir. Sözdizimi renklendirmesi henüz yok.
   - Read: yol + aralık.
   - Subagent düğmesi: composer şeridinde, ilk subagent başlamadan da görünür. Çalışan subagent sayısını (`Agents 2`) ve solunda bir nokta gösterir; nokta çalışan varken yeşil yanar. Genişliği toplam sayı arttıkça değişmez. Kaçının çalıştığı ve toplamı ipucunda yazar; tıklamak subagent görünümünü açar, hiç subagent yokken düğme pasiftir.

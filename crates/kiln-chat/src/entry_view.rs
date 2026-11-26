@@ -268,7 +268,6 @@ fn tool_body(
     context: &EntryContext,
     cx: &App,
 ) -> Vec<AnyElement> {
-    let id = ("tool-output", context.id);
     if let Some(diff) = tool_format::edit_diff(&call.name, &call.input) {
         let error = result.filter(|result| result.is_error);
         let summary = error.map_or_else(|| diff.summary(), |result| result.output.clone());
@@ -282,7 +281,7 @@ fn tool_body(
         };
         return vec![
             sub_line(&summary, error.is_some(), cx),
-            code_block::render(id, &lines, numbered, cx),
+            code_block::render(context.id, &lines, numbered, cx),
         ];
     }
     let Some(result) = result else {
@@ -301,7 +300,7 @@ fn tool_body(
         .lines()
         .map(|line| CodeLine::new(line, LineKind::Plain))
         .collect();
-    vec![code_block::render(id, &lines, false, cx)]
+    vec![code_block::render(context.id, &lines, false, cx)]
 }
 
 fn diff_lines(diff: &EditDiff) -> Vec<CodeLine> {

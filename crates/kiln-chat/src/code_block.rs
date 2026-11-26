@@ -1,15 +1,24 @@
 //! The bordered, scrollable code box used for tool output and file diffs.
+//! Each row's text is selectable on its own and takes part in the window's
+//! selection, so a drag across rows copies them without their numbers.
+//! Long lines wrap: the box is as wide as the chat and does not scroll
+//! sideways.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, ElementId, Pixels, TestSupportExt,
+    AnyElement, App, Pixels, TestSupportExt,
+    base::SelectableText,
     component::{ActiveTheme, h_flex, v_flex},
     div, px,
 };
 use kiln_agent::Hunk;
 
+use crate::transcript::EntryId;
+
 /// Rows kept per block; the rest would never be read in a chat.
-const MAX_ROWS: usize = 400;
+const MAX_ROWS: usize = 200;
+/// The low bits of a row's document order, which hold its index.
+const ROW_BITS: u32 = 16;
 /// About eight rows, like the reference panel, before the box scrolls.
 const MAX_HEIGHT: f32 = 168.;
 const GUTTER_WIDTH: f32 = 36.;
@@ -75,14 +84,9 @@ pub fn patch_lines(patch: &[Hunk]) -> Vec<CodeLine> {
     lines
 }
 
-/// `numbered` shows line numbers from 1, which is only true for whole files
-/// and command output.
-pub fn render(
-    id: impl Into<ElementId>,
-    lines: &[CodeLine],
-    numbered: bool,
-    cx: &App,
-) -> AnyElement {
+/// The box for transcript entry `entry`. `numbered` shows line numbers
+/// from 1, which is only true for whole files and command output.
+pub fn render(entry: EntryId, lines: &[CodeLine], numbered: bool, cx: &App) -> AnyElement {
     let theme = cx.theme();
     // Plain unnumbered output (a terminal) has nothing to put in a gutter.
     let gutter_shown = numbered
@@ -121,19 +125,18 @@ pub fn render(
                             .child(gutter),
                     )
                 })
+                .items_start()
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
                         .px_1()
-                        .whitespace_nowrap()
-                        .overflow_hidden()
                         .when_some(background, Styled::bg)
-                        .child(shown_text(line, marker, signed)),
+                        .child(row_text(entry, index, shown_text(line, marker, signed))),
                 )
         });
     div()
-        .id(id)
+        .id(("tool-output", entry))
         .test_support()
         .max_h(px(MAX_HEIGHT))
         .overflow_y_scroll()
@@ -143,8 +146,27 @@ pub fn render(
         .bg(theme.secondary)
         .text_sm()
         .font_family(theme.mono_font_family.clone())
-        .child(v_flex().py_1().children(rows))
+        .child(v_flex().py_1().children(rows).children(left_out(lines, cx)))
         .into_any_element()
+}
+
+/// A row's text, placed in reading order: the window copies a selection
+/// in its participants' document order, which would otherwise be the same
+/// for every row and leave them in no particular order.
+fn row_text(entry: EntryId, index: usize, text: String) -> SelectableText {
+    let row = u64::try_from(index).unwrap_or(u64::MAX);
+    SelectableText::new(("line", index), text).document_order(entry << ROW_BITS | row)
+}
+
+/// Says how many rows past `MAX_ROWS` the box leaves out, if any.
+fn left_out(lines: &[CodeLine], cx: &App) -> Option<gpui_kit::Div> {
+    let left_out = lines.len().checked_sub(MAX_ROWS).filter(|n| *n > 0)?;
+    Some(
+        div()
+            .px_2()
+            .text_color(cx.theme().muted_foreground)
+            .child(format!("{left_out} more lines not shown")),
+    )
 }
 
 /// Wide enough for the largest line number a patch shows.
