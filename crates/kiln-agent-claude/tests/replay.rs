@@ -14,8 +14,9 @@ mod replay {
     };
     use kiln_agent_claude::{ClaudeBackend, Translator};
 
-    const FIXTURES: [&str; 15] = [
+    const FIXTURES: [&str; 16] = [
         "allow",
+        "edit",
         "deny",
         "interrupt",
         "controls",

@@ -34,9 +34,11 @@ impl ChatView {
             usage: self.agent.usage(),
             reported_at,
         };
-        let kept = self
-            .accounts
-            .update(cx, |accounts, _| accounts.set_usage(id, known));
+        let kept = self.accounts.update(cx, |accounts, cx| {
+            let kept = accounts.set_usage(id, known);
+            cx.notify();
+            kept
+        });
         if let Err(error) = kept {
             log::warn!("cannot keep the account's usage: {error:#}");
         }

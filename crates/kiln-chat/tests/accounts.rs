@@ -204,15 +204,22 @@ mod accounts {
     }
 
     #[gpui_kit::test]
-    fn an_added_account_reads_its_usage_from_its_own_turns(cx: &mut TestAppContext) {
+    fn an_added_account_asks_for_usage_only_now_and_then(cx: &mut TestAppContext) {
         let harness = ready(cx);
         click(&harness, cx, "chat-account");
         add(&harness, cx, "second@example.com");
+        let usage_asks = |asked: &[SessionCommand]| {
+            let usage = asked.iter().filter(|c| **c == SessionCommand::RefreshUsage);
+            usage.count()
+        };
         harness.emit(cx, AgentEvent::Ready(SessionInfo::default()));
+        assert_eq!(usage_asks(&harness.commands()), 1);
+        // Asked again a moment later, the CLI could answer with numbers it
+        // fetched for another account.
         harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
         let asked = harness.commands();
         assert!(asked.contains(&SessionCommand::RefreshContext));
-        assert!(!asked.contains(&SessionCommand::RefreshUsage), "{asked:?}");
+        assert_eq!(usage_asks(&asked), 0, "{asked:?}");
     }
 
     #[gpui_kit::test]

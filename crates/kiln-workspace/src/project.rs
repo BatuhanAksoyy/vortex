@@ -62,7 +62,7 @@ impl Project {
         let editor = cx.new(EditorPane::new);
         let files_page =
             cx.new(|cx| FilesPage::new(root.clone(), editor.clone(), repo.clone(), cx));
-        let git_page = cx.new(|cx| GitPage::new(repo.clone(), cx));
+        let git_page = cx.new(|cx| GitPage::new(repo.clone(), window, cx));
         let search_page = cx.new(|cx| SearchPage::new(root.clone(), editor.clone(), window, cx));
         let subscriptions = [
             cx.subscribe(&sessions, |_, _, event, cx| match event {

@@ -1,11 +1,12 @@
 //! The git CLI, as Kiln reads it: the branch, what changed in the working
-//! tree and the index, and each change's diff. Kiln runs the user's own
+//! tree and the index, and each change's diff. It also stages and commits. Kiln runs the user's own
 //! `git`, so their configuration applies.
 
 mod counts;
 mod lines;
 mod log;
 mod status;
+mod write;
 
 use std::{
     path::{Path, PathBuf},
@@ -18,6 +19,7 @@ pub use counts::Counts;
 pub use lines::{LineChange, LineKind, base_text, line_changes, patch};
 pub use log::{Commit, log, show};
 pub use status::{Area, Change, Kind, Status};
+pub use write::{commit, stage, unstage};
 
 /// A diff the parser can read whatever the user's `diff.*` settings are.
 const PLAIN_DIFF: [&str; 7] = [

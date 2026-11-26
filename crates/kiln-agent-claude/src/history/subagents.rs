@@ -53,6 +53,8 @@ enum Line {
         #[serde(default)]
         origin: Option<Origin>,
         message: wire::UserMessage,
+        #[serde(default, rename = "toolUseResult")]
+        tool_use_result: Option<wire::ToolUseResult>,
     },
     Assistant {
         message: wire::AssistantMessage,
@@ -127,7 +129,14 @@ fn segments(call: &str, text: &str) -> VecDeque<Vec<AgentEvent>> {
                 segments.push_back(Vec::new());
                 continue;
             }
-            Line::User { message, .. } => translate::tool_results(wire::User { message }),
+            Line::User {
+                message,
+                tool_use_result,
+                ..
+            } => translate::tool_results(wire::User {
+                message,
+                tool_use_result,
+            }),
             Line::Assistant { message } => {
                 let mut events = subagent::message(call, &message);
                 events.extend(translate::calls(message.content, Some(call)));

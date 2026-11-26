@@ -164,7 +164,7 @@ SESSION_DROP = {"api-request", "api-request-blob", "api-request-shape", "atis-la
 SESSION_KEEP = ("type", "subtype", "uuid", "parentUuid", "logicalParentUuid", "isSidechain",
                 "isMeta", "isCompactSummary", "sessionId", "timestamp", "message", "attachment",
                 "lastPrompt", "leafUuid", "operation", "content", "aiTitle", "customTitle",
-                "entrypoint", "version", "agentId", "origin")
+                "entrypoint", "version", "agentId", "origin", "toolUseResult")
 MESSAGE_KEEP = ("id", "type", "role", "model", "content", "usage")
 
 
@@ -200,11 +200,46 @@ def session_line(line):
     return kept
 
 
+def json_delta(record):
+    """The streamed tool input piece a record carries, if it is one."""
+    msg = record.get("msg")
+    event = msg.get("event") if isinstance(msg, dict) else None
+    delta = event.get("delta") if isinstance(event, dict) else None
+    if isinstance(delta, dict) and delta.get("type") == "input_json_delta":
+        return msg.get("parent_tool_use_id"), event.get("index"), delta
+    return None
+
+
+def join_json_deltas(records):
+    """Puts each tool input's streamed pieces in its first one, so a path
+    split across pieces is whole again for the path patterns. Kiln reads
+    the input from the finished message, not from the pieces."""
+    joined, open_pieces = [], {}
+    for record in records:
+        piece = json_delta(record)
+        if piece is None:
+            # A new message numbers its blocks from 0 again.
+            msg = record.get("msg")
+            if isinstance(msg, dict) and msg.get("type") == "assistant":
+                open_pieces.clear()
+            joined.append(record)
+            continue
+        parent, index, delta = piece
+        first = open_pieces.get((parent, index))
+        if first is None:
+            open_pieces[(parent, index)] = delta
+            joined.append(record)
+        else:
+            first["partial_json"] += delta.get("partial_json", "")
+    return joined
+
+
 def main(raw_path, out_path):
     placeholders = Placeholders()
-    with open(raw_path) as raw, open(out_path, "w") as out:
-        for line in raw:
-            record = json.loads(line)
+    with open(raw_path) as raw:
+        records = [json.loads(line) for line in raw]
+    with open(out_path, "w") as out:
+        for record in join_json_deltas(records):
             if "dir" not in record:
                 record = session_line(record)
                 if record is not None:

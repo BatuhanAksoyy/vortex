@@ -1,8 +1,9 @@
 //! The Git page, which the side panel shows beside the chats: the
-//! branch, what changed, and the diff of the change picked. It only reads;
-//! committing is the commit pipeline's, which comes with its rules.
+//! branch, what changed, the diff of the change picked, and staging and
+//! committing by hand.
 
 mod changes;
+mod committing;
 mod diff_pane;
 mod history;
 
@@ -10,10 +11,11 @@ use std::{collections::HashSet, path::PathBuf};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Context, Entity, EventEmitter, FocusHandle, KeyDownEvent, ScrollHandle, Subscription, Task,
-    TestSupportExt, Window,
+    Context, Entity, EventEmitter, FocusHandle, KeyDownEvent, ScrollHandle, SharedString,
+    Subscription, Task, TestSupportExt, Window,
     component::{
         diff::{DiffFile, DiffState},
+        input::TextareaState,
         resizable::{h_resizable, resizable_panel, v_resizable},
     },
     div,
@@ -46,14 +48,20 @@ pub struct GitPage {
     /// The commit whose changes the diff shows, instead of a change.
     picked_commit: Option<String>,
     log_load: Option<Task<()>>,
-    _status_read: Subscription,
+    message: Entity<TextareaState>,
+    /// The staging or commit running; the others wait for it.
+    write: Option<Task<()>>,
+    write_error: Option<SharedString>,
+    _subscriptions: [Subscription; 2],
 }
 
 impl EventEmitter<GitPageEvent> for GitPage {}
 
 impl GitPage {
-    pub fn new(repo: Entity<RepoStatus>, cx: &mut Context<Self>) -> Self {
+    pub fn new(repo: Entity<RepoStatus>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let status_read = cx.subscribe(&repo, |this, _, _: &StatusRead, cx| this.follow(cx));
+        let message = committing::new_message(window, cx);
+        let typed = committing::follow_message(&message, window, cx);
         Self {
             repo,
             selected: None,
@@ -67,7 +75,10 @@ impl GitPage {
             commits: Vec::new(),
             picked_commit: None,
             log_load: None,
-            _status_read: status_read,
+            message,
+            write: None,
+            write_error: None,
+            _subscriptions: [status_read, typed],
         }
     }
 

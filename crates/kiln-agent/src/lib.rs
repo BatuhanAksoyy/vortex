@@ -286,6 +286,9 @@ pub enum AgentEvent {
         /// Pictures the tool returned, such as an image file it read.
         pictures: Vec<Picture>,
         is_error: bool,
+        /// How a file tool changed the file, hunk by hunk; empty for other
+        /// tools and for a new file.
+        patch: Vec<Hunk>,
     },
     PermissionRequest(PermissionRequest),
     Ready(SessionInfo),
@@ -367,4 +370,14 @@ pub enum TurnOutcome {
     Completed,
     Interrupted,
     Failed(String),
+}
+
+/// One hunk of a file change, as `git diff` shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hunk {
+    /// The first line's number in the file before and after the change.
+    pub old_start: usize,
+    pub new_start: usize,
+    /// Each line led by ` ` (unchanged), `-` (removed) or `+` (added).
+    pub lines: Vec<String>,
 }

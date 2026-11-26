@@ -215,3 +215,60 @@ fn the_log_lists_commits_and_shows_what_each_changed() {
     run(empty.path(), &["init", "-q"]);
     assert_eq!(crate::log(empty.path(), 10).expect("log"), []);
 }
+
+#[test]
+fn stages_unstages_and_commits() {
+    let dir = repository();
+    let root = dir.path();
+    run(root, &["config", "user.name", "Kiln"]);
+    run(root, &["config", "user.email", "kiln@example.com"]);
+    fs::write(root.join("kept.txt"), "one\n").expect("write");
+    fs::remove_file(root.join("old.txt")).expect("remove");
+    fs::write(root.join("new.txt"), "new\n").expect("write");
+    let areas = || -> Vec<(String, Area)> {
+        let status = status(root).expect("status");
+        let mut areas: Vec<_> = status
+            .changes
+            .iter()
+            .map(|c| (c.path.to_string_lossy().into_owned(), c.area))
+            .collect();
+        areas.sort();
+        areas
+    };
+    let changes = status(root).expect("status").changes;
+    super::stage(root, &changes).expect("stage");
+    let staged = |path: &str| (path.to_owned(), Area::Staged);
+    assert_eq!(
+        areas(),
+        [staged("kept.txt"), staged("new.txt"), staged("old.txt")]
+    );
+
+    let new = change("new.txt", Area::Staged, Kind::Added);
+    super::unstage(root, &[new]).expect("unstage");
+    assert!(areas().contains(&("new.txt".to_owned(), Area::Untracked)));
+
+    let id = super::commit(root, "Trim kept\n\n# a comment git strips\n").expect("commit");
+    let log = super::log(root, 1).expect("log");
+    assert_eq!(log[0].id, id);
+    assert_eq!(log[0].subject, "Trim kept");
+    assert_eq!(areas(), [("new.txt".to_owned(), Area::Untracked)]);
+}
+
+#[test]
+fn a_commit_with_nothing_staged_says_why_it_failed() {
+    let dir = repository();
+    let error = super::commit(dir.path(), "Nothing").expect_err("nothing staged");
+    assert!(error.to_string().contains("nothing"), "{error}");
+}
+
+#[test]
+fn unstages_before_the_first_commit() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    run(dir.path(), &["init", "-q", "-b", "main"]);
+    fs::write(dir.path().join("a.txt"), "a\n").expect("write");
+    run(dir.path(), &["add", "."]);
+    let staged = change("a.txt", Area::Staged, Kind::Added);
+    super::unstage(dir.path(), &[staged]).expect("unstage");
+    let status = status(dir.path()).expect("status");
+    assert_eq!(status.changes[0].area, Area::Untracked);
+}

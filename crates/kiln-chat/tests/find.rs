@@ -65,6 +65,7 @@ mod find {
                 output: "[profile.release] # build settings".into(),
                 pictures: Vec::new(),
                 is_error: false,
+                patch: Vec::new(),
             },
         );
         harness.emit(

@@ -223,3 +223,21 @@ fn the_context_is_read_again_as_each_request_of_a_turn_starts() {
         [SessionCommand::RefreshContext]
     );
 }
+
+#[test]
+fn recalled_usage_replaces_only_older_usage() {
+    let now = SystemTime::now();
+    let at = |percent: u8| Usage {
+        session: Some(kiln_agent::UsageWindow {
+            percent,
+            resets_at: None,
+        }),
+        ..Usage::default()
+    };
+    let mut state = AgentState::default();
+    state.recall_usage(at(10), Some(now));
+    state.recall_usage(at(20), Some(now - Duration::from_mins(1)));
+    assert_eq!(state.usage(), at(10), "an older report is left out");
+    state.recall_usage(at(30), Some(now + Duration::from_mins(1)));
+    assert_eq!(state.usage(), at(30), "another chat learned newer usage");
+}

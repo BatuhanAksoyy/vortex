@@ -2,11 +2,15 @@
 """Drive `claude -p` over stream-json and record both directions as JSONL.
 
 usage: capture.py <case> <out.jsonl>
-  case: allow | deny | interrupt | controls | plan | usage | fallback | commands | ask
+  case: allow | edit | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
         | running | attach | followup | models | suggestion | thinking | recap
         | nested | stop
 
+"edit" has the model read a ten-line file and change two lines next to each
+other with one Edit, to record the patch the CLI reports with the result.
+It keeps its session and copies it beside the output as `<out>-session.jsonl`,
+where the stored result holds the patch too.
 "controls" sends no prompt, so it spends no usage: it changes the model and
 mode, asks for context and plan usage, and sends one invalid mode to record
 an error.
@@ -108,6 +112,7 @@ PROMPTS = {
     "suggestion": "Write a Python function that returns the sum of a list of numbers. Reply with only the code.",
     "thinking": "Think step by step: how many times does the letter r appear in 'strawberry raspberry'? Reply with only the number.",
     "recap": "Write a haiku about rust. Reply with only the haiku.",
+    "edit": "Read lines.txt with the Read tool, then use the Edit tool once to replace the line `four` with `FOUR` and the line `five` with `5`, then reply with the single word done.",
     "plan": "Plan how to create the file kiln-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -132,6 +137,10 @@ if case == "attach":
         note.write("lantern\n")
     with open("picture.png", "wb") as picture:
         picture.write(square_png((0, 0, 255)))
+if case == "edit":
+    with open("lines.txt", "w") as lines:
+        lines.write("".join(f"{word}\n" for word in
+                            "one two three four five six seven eight nine ten".split()))
 if case in ("subagent", "nested"):
     with open("note.txt", "w") as note:
         note.write("lantern\n")
@@ -258,7 +267,7 @@ if case == "running":
     sys.exit(0)
 resumed = first_session() if case == "resume" else None
 proc = subprocess.Popen(
-    BASE + ([] if case in ("followup", "recap", "nested") else ["--no-session-persistence"])
+    BASE + ([] if case in ("edit", "followup", "recap", "nested") else ["--no-session-persistence"])
     + (["--permission-mode", "plan"] if case == "plan" else [])
     + (["--forward-subagent-text"] if case in ("subagent", "followup", "nested", "stop") else [])
     + (["--prompt-suggestions"] if case == "suggestion" else [])
@@ -360,7 +369,7 @@ for line in proc.stdout:
     kind = msg.get("type")
     if kind == "control_request" and msg["request"].get("subtype") == "can_use_tool":
         req = msg["request"]
-        if case in ("allow", "plan", "subagent", "attach", "followup", "nested", "stop"):
+        if case in ("allow", "edit", "plan", "subagent", "attach", "followup", "nested", "stop"):
             response = {"behavior": "allow", "updatedInput": req["input"]}
         elif case == "questions":
             answers = {}
@@ -525,6 +534,6 @@ def copy_session():
     print(f"no session file for {session_id}")
 
 
-if case in ("followup", "recap", "nested"):
+if case in ("edit", "followup", "recap", "nested"):
     copy_session()
 print(case, "exit", proc.returncode, "lines", sum(1 for _ in open(out_path)))

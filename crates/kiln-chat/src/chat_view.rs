@@ -224,6 +224,9 @@ impl ChatView {
     ) -> Subscription {
         cx.observe_in(accounts, window, |this, _, window, cx| {
             this.adopt_added_account(window, cx);
+            // Another chat with the same account may have learned newer
+            // usage.
+            this.recall_usage(cx);
             cx.notify();
         })
     }

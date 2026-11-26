@@ -104,6 +104,7 @@ mod attachments {
                     data: PNG.into(),
                 }],
                 is_error: false,
+                patch: Vec::new(),
             },
         );
         harness.with_window(cx, |window, _| {

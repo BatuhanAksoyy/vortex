@@ -168,7 +168,12 @@ impl AgentState {
     /// Takes `usage`, reported at `updated_at` in another chat, unless this
     /// one has had a report of its own.
     pub fn recall_usage(&mut self, usage: Usage, updated_at: Option<SystemTime>) {
-        if self.usage_updated_at.is_none() {
+        let newer = match (self.usage_updated_at, updated_at) {
+            (None, _) => true,
+            (Some(known), Some(recalled)) => recalled > known,
+            (Some(_), None) => false,
+        };
+        if newer {
             self.usage = usage;
             self.usage_updated_at = updated_at;
         }

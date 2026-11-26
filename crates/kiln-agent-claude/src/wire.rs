@@ -2,6 +2,10 @@
 //! line types and subtypes decode to `Other` so new CLI versions degrade
 //! gracefully instead of failing.
 
+mod user;
+
+pub use user::{ToolUseResult, User, UserBlock, UserContent, UserMessage};
+
 use std::collections::HashMap;
 
 use kiln_agent::Picture;
@@ -224,37 +228,6 @@ pub enum AssistantBlock {
     },
     Text {
         text: String,
-    },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct User {
-    pub message: UserMessage,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UserMessage {
-    pub content: UserContent,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum UserContent {
-    Text(String),
-    Blocks(Vec<UserBlock>),
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum UserBlock {
-    ToolResult {
-        tool_use_id: String,
-        #[serde(default)]
-        content: ToolOutput,
-        #[serde(default)]
-        is_error: bool,
     },
     #[serde(other)]
     Other,

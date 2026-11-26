@@ -272,9 +272,17 @@ fn tool_body(
     if let Some(diff) = tool_format::edit_diff(&call.name, &call.input) {
         let error = result.filter(|result| result.is_error);
         let summary = error.map_or_else(|| diff.summary(), |result| result.output.clone());
+        // Once the tool ran, its patch shows where in the file the lines
+        // changed, around the lines left as they were.
+        let patch = result.map_or(&[][..], |result| result.patch.as_slice());
+        let (lines, numbered) = if patch.is_empty() {
+            (diff_lines(&diff), diff.whole_file)
+        } else {
+            (code_block::patch_lines(patch), false)
+        };
         return vec![
             sub_line(&summary, error.is_some(), cx),
-            code_block::render(id, &diff_lines(&diff), diff.whole_file, cx),
+            code_block::render(id, &lines, numbered, cx),
         ];
     }
     let Some(result) = result else {

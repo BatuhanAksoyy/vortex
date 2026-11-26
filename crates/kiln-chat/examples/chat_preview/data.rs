@@ -290,6 +290,7 @@ pub fn subagent(root: &str) -> Vec<AgentEvent> {
             output: format!("{root}/src/test/date.test.ts\n{root}/src/test/i18n.test.ts"),
             pictures: Vec::new(),
             is_error: false,
+            patch: Vec::new(),
         },
         call(
             "a2",

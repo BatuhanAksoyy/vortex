@@ -97,7 +97,7 @@ impl ChatView {
             .border_t_1()
             .border_color(cx.theme().border)
             .child(choices)
-            .children(self.agents_button(cx))
+            .child(self.agents_button(cx))
             .children(self.tokens_button(cx))
             .child(self.cache_button(cx))
             .children(self.context_meter(cx))

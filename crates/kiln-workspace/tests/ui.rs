@@ -240,6 +240,46 @@ mod workspace {
     }
 
     #[gpui_kit::test]
+    async fn the_git_page_stages_and_commits(cx: &mut TestAppContext) {
+        let dir = changed_project();
+        let root = dir.path();
+        git(root, &["config", "user.name", "Kiln"]);
+        git(root, &["config", "user.email", "kiln@example.com"]);
+        let (window, _) = open_workspace(cx, root.to_path_buf());
+        let window = window.into();
+        click(cx, window, "activity-git");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("git-change-unstaged-README.md").is_some()
+        })
+        .await;
+        click(cx, window, "git-stage-unstaged-README.md");
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("git-change-staged-README.md").is_some()
+        })
+        .await;
+        click_label(cx, window, "Commit message");
+        type_text(cx, window, "Change the readme");
+        press(cx, window, &primary("enter"));
+        cx.wait_for(window, Duration::from_secs(5), |window, _| {
+            window.try_find("git-change-staged-README.md").is_none()
+        })
+        .await;
+        let log = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%s"])
+            .current_dir(root)
+            .output()
+            .expect("git log");
+        assert_eq!(
+            String::from_utf8_lossy(&log.stdout).trim(),
+            "Change the readme"
+        );
+        assert!(
+            has(cx, window, "git-change-unstaged-src/main.rs"),
+            "left unstaged"
+        );
+    }
+
+    #[gpui_kit::test]
     async fn the_file_tree_marks_changes(cx: &mut TestAppContext) {
         let dir = changed_project();
         let (window, _) = open_workspace(cx, dir.path().to_path_buf());

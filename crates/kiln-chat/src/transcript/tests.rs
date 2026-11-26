@@ -56,6 +56,7 @@ fn tool_result_updates_its_call_even_after_other_entries() {
         output: "a\nb".into(),
         pictures: Vec::new(),
         is_error: false,
+        patch: Vec::new(),
     };
     assert_eq!(
         transcript.apply(result),
@@ -122,6 +123,7 @@ fn a_stored_conversation_is_restored_idle() {
             output: "ok".into(),
             pictures: Vec::new(),
             is_error: false,
+            patch: Vec::new(),
         }),
         PastMessage::Agent(text(0, "hello")),
     ]);
@@ -226,12 +228,14 @@ fn a_subagent_gathers_its_steps_and_report_in_its_card() {
         output: "Async agent launched".into(),
         pictures: Vec::new(),
         is_error: false,
+        patch: Vec::new(),
     };
     transcript.apply(AgentEvent::ToolResult {
         id: "agent".into(),
         output: launched.output.clone(),
         pictures: Vec::new(),
         is_error: false,
+        patch: Vec::new(),
     });
     assert_eq!(transcript.apply(step("read", "Read")).updated, Some(1));
     transcript.apply(AgentEvent::ToolResult {
@@ -239,6 +243,7 @@ fn a_subagent_gathers_its_steps_and_report_in_its_card() {
         output: "lantern".into(),
         pictures: Vec::new(),
         is_error: false,
+        patch: Vec::new(),
     });
     transcript.apply(subagent(SubagentChange::Model("haiku".into())));
     transcript.apply(subagent(SubagentChange::Text("lantern".into())));

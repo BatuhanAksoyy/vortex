@@ -193,6 +193,38 @@ fn result(id: &str, output: &str) -> AgentEvent {
         output: output.into(),
         pictures: Vec::new(),
         is_error: false,
+        patch: Vec::new(),
+    }
+}
+
+/// An Edit's result, with the patch the CLI reports.
+fn edited(id: &str) -> AgentEvent {
+    AgentEvent::ToolResult {
+        id: id.into(),
+        output: "The file has been updated successfully.".into(),
+        pictures: Vec::new(),
+        is_error: false,
+        patch: vec![edit_patch()],
+    }
+}
+
+/// What the CLI reports the Edit changed, with the lines around it.
+fn edit_patch() -> kiln_agent::Hunk {
+    let lines = [
+        " export function formatDate(date: Date, locale: string): string {",
+        "   if (Number.isNaN(date.getTime())) return '';",
+        "-  return date.toLocaleDateString();",
+        "+  return date.toLocaleDateString(locale, {",
+        "+    timeZone: 'UTC',",
+        "+  });",
+        " }",
+        " ",
+        " export function translateKey(key: string): string {",
+    ];
+    kiln_agent::Hunk {
+        old_start: 118,
+        new_start: 118,
+        lines: lines.map(str::to_owned).to_vec(),
     }
 }
 
@@ -256,6 +288,7 @@ fn script(prompt: bool) -> Vec<AgentEvent> {
             "Edit",
             json!({ "file_path": file, "old_string": "  return date.toLocaleDateString();", "new_string": "  return date.toLocaleDateString(locale, {\n    timeZone: 'UTC',\n  });" }),
         ),
+        edited("t4"),
     ]);
     if prompt {
         events.push(AgentEvent::PermissionRequest(PermissionRequest {

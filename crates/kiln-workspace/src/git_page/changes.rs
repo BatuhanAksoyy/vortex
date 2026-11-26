@@ -56,6 +56,9 @@ impl GitPage {
             .border_r_1()
             .border_color(theme.border)
             .child(self.summary(status, cx))
+            .when(status.is_some(), |this| {
+                this.child(self.render_commit_box(cx))
+            })
             .child(
                 v_flex()
                     .id("git-change-list")
@@ -196,6 +199,7 @@ impl GitPage {
                     .text_color(theme.muted_foreground)
                     .child(count.to_string()),
             )
+            .child(self.stage_all_button(id, area, cx))
             .into_any_element()
     }
 
@@ -217,12 +221,13 @@ impl GitPage {
         h_flex()
             .id(SharedString::from(format!("git-change-{section}-{path}")))
             .test_support()
+            .group(super::committing::ROW_GROUP)
             .aria_label(SharedString::from(path.clone()))
             .flex_none()
             .gap_2()
             .pl_2()
-            .pr_3()
-            .py_1()
+            .pr_1()
+            .py_0p5()
             .border_l_2()
             .border_color(gpui_kit::transparent_black())
             .cursor_pointer()
@@ -235,18 +240,7 @@ impl GitPage {
                 this.focus(window, cx);
                 this.select(Some(picked.clone()), cx);
             }))
-            .child(
-                div()
-                    .flex_none()
-                    .w_5()
-                    .text_center()
-                    .text_caption()
-                    .font_weight(FontWeight::BOLD)
-                    .rounded(theme.radius)
-                    .bg(color.opacity(0.15))
-                    .text_color(color)
-                    .child(change.kind.letter().to_string()),
-            )
+            .child(letter(change, color, theme))
             .child(file_icon::file(name, cx))
             .child(
                 div()
@@ -265,8 +259,23 @@ impl GitPage {
                     .child(folder.to_owned()),
             )
             .children(counts.map(|counts| line_counts(counts, theme)))
+            .child(self.stage_button(&format!("{section}-{path}"), change, selected, cx))
             .into_any_element()
     }
+}
+
+/// The change's kind as a letter in its color.
+fn letter(change: &Change, color: gpui_kit::Hsla, theme: &Theme) -> impl IntoElement + use<> {
+    div()
+        .flex_none()
+        .w_5()
+        .text_center()
+        .text_caption()
+        .font_weight(FontWeight::BOLD)
+        .rounded(theme.radius)
+        .bg(color.opacity(0.15))
+        .text_color(color)
+        .child(change.kind.letter().to_string())
 }
 
 /// What the row's letter means, and the whole path.

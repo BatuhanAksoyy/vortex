@@ -44,6 +44,10 @@ pub struct Accounts {
     dir: PathBuf,
     added: Vec<Account>,
     usage: HashMap<String, KnownUsage>,
+    /// When a chat last asked the CLI for an added account's usage.
+    last_ask: Option<SystemTime>,
+    /// The CLI's global configuration; `None` reads no snapshot.
+    cli_config: Option<PathBuf>,
 }
 
 impl Accounts {
@@ -59,7 +63,13 @@ impl Accounts {
             }
         };
         let usage = usage::load(&dir.join(USAGE_FILE));
-        Ok(Self { dir, added, usage })
+        Ok(Self {
+            dir,
+            added,
+            usage,
+            last_ask: None,
+            cli_config: None,
+        })
     }
 
     /// No added accounts, kept in `dir` once one is added.
@@ -69,7 +79,18 @@ impl Accounts {
             dir,
             added: Vec::new(),
             usage: HashMap::new(),
+            last_ask: None,
+            cli_config: None,
         }
+    }
+
+    /// Reads when the CLI last fetched usage before letting a chat ask for
+    /// an added account's (`ask_usage`); without it, only Kiln's own asks
+    /// are spaced out.
+    #[must_use]
+    pub fn reading_cli_usage(mut self) -> Self {
+        self.cli_config = usage::cli_config();
+        self
     }
 
     /// The accounts added in Kiln, in the order they were added.
@@ -133,6 +154,27 @@ impl Accounts {
     #[must_use]
     pub fn usage(&self, id: &str) -> Option<KnownUsage> {
         self.usage.get(id).copied()
+    }
+
+    /// Whether a chat with added account `id` may ask the CLI for its usage
+    /// at `now`. A yes counts as the ask. Asks are spaced out across all chats, as within a
+    /// minute of a fetch the CLI answers with the numbers it fetched, which
+    /// may be another account's; usage reported moments ago is not asked
+    /// again.
+    pub fn ask_usage(&mut self, id: &str, now: SystemTime) -> bool {
+        let reported = self.usage(id).map(|known| known.reported_at);
+        let fresh = reported
+            .and_then(|at| now.duration_since(at).ok())
+            .is_some_and(|age| age < usage::ASK_GAP);
+        if fresh {
+            return false;
+        }
+        let fetched_at = self.cli_config.as_deref().and_then(usage::cli_fetched_at);
+        if !usage::may_ask(now, self.last_ask, fetched_at) {
+            return false;
+        }
+        self.last_ask = Some(now);
+        true
     }
 
     /// Keeps the usage added account `id` reported, across restarts.

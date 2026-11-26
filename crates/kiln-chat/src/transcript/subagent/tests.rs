@@ -83,6 +83,7 @@ fn each_keeps_its_own_words_calls_and_end() {
         output: "b's report".into(),
         pictures: Vec::new(),
         is_error: false,
+        patch: Vec::new(),
     });
     let (a, b) = (agent(&transcript, "a"), agent(&transcript, "b"));
     assert!(a.steps.contains(&Step::Text("from a".into())));
@@ -101,6 +102,7 @@ fn a_refused_start_fails_only_its_own_card() {
         output: "depth limit".into(),
         pictures: Vec::new(),
         is_error: true,
+        patch: Vec::new(),
     });
     assert_eq!(agent(&transcript, "deep").end, Some(SubagentEnd::Failed));
     assert_eq!(agent(&transcript, "a").end, None);

@@ -1,57 +1,23 @@
 //! The chat transcript as data: agent events fold into a list of entries.
 //! Kept free of GPUI so the folding rules are unit-tested directly.
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
+mod entry;
 mod subagent;
 mod thinking;
 mod turn_end;
 
+pub use entry::{Entry, ToolResult};
 use subagent::{Holder, Place};
 pub use subagent::{Step, StopAttempt, Subagent, Subagents};
 
 use kiln_agent::{
-    AgentEvent, BlockKey, Message, PastMessage, PermissionRequest, Picture, ToolCall, TurnOutcome,
+    AgentEvent, BlockKey, Message, PastMessage, PermissionRequest, ToolCall, TurnOutcome,
 };
 
 /// Stable identity of an entry, used for element ids and expansion state.
 pub type EntryId = u64;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Entry {
-    User(Message),
-    Text {
-        block: BlockKey,
-        text: String,
-    },
-    Thinking {
-        block: BlockKey,
-        /// A summary of the thought, as the CLI sends it.
-        text: String,
-        /// About how many tokens the model thought.
-        tokens: u64,
-        /// How long it thought, once it is done.
-        took: Option<Duration>,
-    },
-    Tool {
-        call: ToolCall,
-        result: Option<ToolResult>,
-    },
-    /// The call that started a subagent, once the agent reports it running;
-    /// the subagent has the entry's id.
-    Subagent,
-    Notice {
-        text: String,
-        is_error: bool,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ToolResult {
-    pub output: String,
-    pub pictures: Vec<Picture>,
-    pub is_error: bool,
-}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Status {
@@ -261,12 +227,14 @@ impl Transcript {
                 output,
                 pictures,
                 is_error,
+                patch,
             } => self.finish_tool(
                 &id,
                 ToolResult {
                     output,
                     pictures,
                     is_error,
+                    patch,
                 },
             ),
             AgentEvent::Subagent(event) => self.apply_subagent(event),

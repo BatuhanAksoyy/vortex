@@ -75,7 +75,7 @@ mod usage {
         let harness = Harness::new(cx);
         harness.emit(cx, ready());
         harness.commands();
-        cx.executor().advance_clock(Duration::from_mins(5));
+        cx.executor().advance_clock(Duration::from_mins(2));
         cx.run_until_parked();
         assert_eq!(harness.commands(), [SessionCommand::RefreshUsage]);
     }

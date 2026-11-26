@@ -90,6 +90,7 @@ mod chat {
                 output: String::new(),
                 pictures: Vec::new(),
                 is_error: false,
+                patch: Vec::new(),
             },
         );
         harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
@@ -284,6 +285,7 @@ mod chat {
                 output: "fn main() {}".into(),
                 pictures: Vec::new(),
                 is_error: false,
+                patch: Vec::new(),
             },
         );
         let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));

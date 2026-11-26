@@ -44,6 +44,12 @@ mod subagents {
         })
     }
 
+    #[gpui_kit::test]
+    fn the_button_shows_before_any_subagent_starts(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        assert_eq!(label(&harness, cx, "chat-agents"), "Agents 0");
+    }
+
     /// A turn whose subagent has started and made one call.
     fn started(cx: &mut TestAppContext) -> Harness {
         let harness = Harness::new(cx);
@@ -131,7 +137,7 @@ mod subagents {
             })),
         );
         harness.with_window(cx, |window, _| {
-            assert_eq!(window.find("chat-agents").label(), Some("1 agent running"));
+            assert_eq!(window.find("chat-agents").label(), Some("Agents 1"));
         });
         harness.emit(
             cx,
@@ -142,7 +148,7 @@ mod subagents {
             }),
         );
         harness.with_window(cx, |window, cx| {
-            assert_eq!(window.find("chat-agents").label(), Some("1 agent"));
+            assert_eq!(window.find("chat-agents").label(), Some("Agents 0"));
             window.click("chat-agents", cx);
         });
         harness.with_window(cx, |window, cx| {
@@ -214,7 +220,7 @@ mod subagents {
     #[gpui_kit::test]
     fn the_agents_dialog_lists_subagents_as_a_tree(cx: &mut TestAppContext) {
         let harness = nested(cx);
-        assert_eq!(label(&harness, cx, "chat-agents"), "2 agents running");
+        assert_eq!(label(&harness, cx, "chat-agents"), "Agents 2");
         harness.with_window(cx, |window, cx| window.click("chat-agents", cx));
         assert_eq!(label(&harness, cx, "chat-agent-detail"), "Read the note");
         harness.with_window(cx, |window, cx| window.click("chat-agent-inner-3", cx));

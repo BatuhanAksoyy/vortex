@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::{
     picture,
-    wire::{ImageSource, ToolOutput},
+    wire::{ImageSource, ToolOutput, ToolUseResult},
 };
 
 /// What the CLI writes as the user's message when a turn is interrupted.
@@ -28,6 +28,8 @@ enum Stored {
         #[serde(default)]
         is_compact_summary: bool,
         message: UserMessage,
+        #[serde(default)]
+        tool_use_result: Option<ToolUseResult>,
     },
     #[serde(rename_all = "camelCase")]
     Assistant {
@@ -136,6 +138,7 @@ pub fn user_prompt(line: &Value) -> Option<String> {
         is_meta: false,
         is_compact_summary: false,
         message,
+        ..
     }) = Stored::deserialize(line)
     else {
         return None;
@@ -192,7 +195,8 @@ fn shown(line: Stored) -> Vec<PastMessage> {
             is_meta: false,
             is_compact_summary: false,
             message,
-        } => user_messages(message.content),
+            tool_use_result,
+        } => user_messages(message.content, tool_use_result),
         Stored::Assistant {
             uuid,
             api_block_index,
@@ -211,13 +215,14 @@ fn shown(line: Stored) -> Vec<PastMessage> {
     }
 }
 
-fn user_messages(content: UserContent) -> Vec<PastMessage> {
+fn user_messages(content: UserContent, result: Option<ToolUseResult>) -> Vec<PastMessage> {
     let blocks = match content {
         UserContent::Text(text) => return typed(&text).into_iter().collect(),
         UserContent::Blocks(blocks) => blocks,
     };
     let mut pictures: Vec<Picture> = Vec::new();
     let mut messages: Vec<PastMessage> = Vec::new();
+    let mut patch = ToolUseResult::patch(result);
     for block in blocks {
         match block {
             UserBlock::Text { text } => messages.extend(typed(&text)),
@@ -233,6 +238,7 @@ fn user_messages(content: UserContent) -> Vec<PastMessage> {
                     output,
                     pictures,
                     is_error,
+                    patch: std::mem::take(&mut patch),
                 }));
             }
             UserBlock::Other => {}

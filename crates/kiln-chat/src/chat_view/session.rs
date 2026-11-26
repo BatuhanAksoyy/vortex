@@ -9,7 +9,7 @@ use kiln_agent::{AgentEvent, Effort, PermissionMode, SessionCommand, SessionSpec
 
 use super::{ChatView, LiveSession};
 
-const USAGE_POLL: std::time::Duration = std::time::Duration::from_mins(5);
+const USAGE_POLL: std::time::Duration = std::time::Duration::from_mins(2);
 use crate::agent_state::{AgentState, next_mode};
 
 impl ChatView {
@@ -91,18 +91,23 @@ impl ChatView {
 
     /// Asks for fresh plan usage; usage spent elsewhere (another session,
     /// claude.ai) shows only when asked for.
-    pub fn refresh_usage(&mut self, _: &mut Context<Self>) {
-        if self.asks_usage() {
+    pub fn refresh_usage(&mut self, cx: &mut Context<Self>) {
+        if self.asks_usage(cx) {
             self.send_command(SessionCommand::RefreshUsage);
         }
     }
 
-    /// An added account's usage comes only from the limits reported during
-    /// its turns. Asked for, the CLI answers from a cache in the profile all
-    /// accounts share, which holds the usage of whichever account signed in
-    /// last.
-    fn asks_usage(&self) -> bool {
-        self.account.is_none()
+    /// Whether to ask the process for usage now. An added account's asks
+    /// are spaced out across chats (`Accounts::ask_usage`), as the CLI may
+    /// otherwise answer with the numbers it fetched for another account.
+    fn asks_usage(&self, cx: &mut Context<Self>) -> bool {
+        let Some(id) = &self.account else {
+            return true;
+        };
+        self.session.is_some()
+            && self
+                .accounts
+                .update(cx, |accounts, _| accounts.ask_usage(id, SystemTime::now()))
     }
 
     /// Keeps the header's usage current while the chat sits idle.
@@ -275,7 +280,7 @@ impl ChatView {
 
     fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
         for command in AgentState::refreshes_after(&event) {
-            if *command != SessionCommand::RefreshUsage || self.asks_usage() {
+            if *command != SessionCommand::RefreshUsage || self.asks_usage(cx) {
                 self.send_command(command.clone());
             }
         }

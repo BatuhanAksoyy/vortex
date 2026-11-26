@@ -219,6 +219,8 @@ fn shorten(text: &str) -> String {
 }
 
 #[cfg(test)]
+mod edit_tests;
+#[cfg(test)]
 mod nested_tests;
 #[cfg(test)]
 mod tests;

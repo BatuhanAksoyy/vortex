@@ -333,6 +333,7 @@ pub(crate) fn tool_results(message: wire::User) -> Vec<AgentEvent> {
     let wire::UserContent::Blocks(blocks) = message.message.content else {
         return Vec::new();
     };
+    let mut patch = wire::ToolUseResult::patch(message.tool_use_result);
     blocks
         .into_iter()
         .filter_map(|block| match block {
@@ -347,6 +348,9 @@ pub(crate) fn tool_results(message: wire::User) -> Vec<AgentEvent> {
                     output,
                     pictures,
                     is_error,
+                    // The CLI sends one result per message, so the patch is
+                    // its only result's.
+                    patch: std::mem::take(&mut patch),
                 })
             }
             wire::UserBlock::Other => None,
