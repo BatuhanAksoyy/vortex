@@ -4091,236 +4091,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
-name = "kiln"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "gpui-kit",
- "kiln-accounts",
- "kiln-agent-claude",
- "kiln-bridge",
- "kiln-update",
- "kiln-workspace",
- "log",
-]
-
-[[package]]
-name = "kiln-accounts"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "directories",
- "kiln-agent",
- "log",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-agent"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "kiln-agent-claude"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "async-process",
- "base64 0.22.1",
- "futures",
- "jiff 0.2.46",
- "kiln-agent",
- "log",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-agent-codex"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "async-process",
- "base64 0.22.1",
- "futures",
- "kiln-agent",
- "log",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-bridge"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "base64 0.22.1",
- "kiln-agent",
- "log",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-browser"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "base64 0.22.1",
- "directories",
- "futures",
- "log",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-chat"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "gpui-kit",
- "jiff 0.2.46",
- "kiln-accounts",
- "kiln-agent",
- "kiln-file-icons",
- "kiln-services",
- "log",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-devices"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "base64 0.22.1",
- "futures",
- "hidapi",
- "nusb",
- "serde_json",
- "serialport",
-]
-
-[[package]]
-name = "kiln-file-icons"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "kiln-git"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "regex",
- "similar",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-keymap"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "jsonc-parser",
- "serde",
- "serde_json_lenient",
-]
-
-[[package]]
-name = "kiln-project"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ignore",
- "nucleo-matcher",
- "tempfile",
- "trash",
-]
-
-[[package]]
-name = "kiln-services"
-version = "0.1.0"
-dependencies = [
- "sysinfo 0.40.4",
-]
-
-[[package]]
-name = "kiln-settings"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "directories",
- "jsonc-parser",
- "notify",
- "serde",
- "serde_ignored",
- "serde_json",
- "serde_json_lenient",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-update"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "kiln-workspace"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "futures",
- "gpui-kit",
- "jiff 0.2.46",
- "kiln-accounts",
- "kiln-agent",
- "kiln-agent-claude",
- "kiln-agent-codex",
- "kiln-bridge",
- "kiln-browser",
- "kiln-chat",
- "kiln-devices",
- "kiln-file-icons",
- "kiln-git",
- "kiln-keymap",
- "kiln-project",
- "kiln-services",
- "kiln-settings",
- "kiln-update",
- "log",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "kqueue"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8541,6 +8311,236 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vortex"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "gpui-kit",
+ "log",
+ "vortex-accounts",
+ "vortex-agent-claude",
+ "vortex-bridge",
+ "vortex-update",
+ "vortex-workspace",
+]
+
+[[package]]
+name = "vortex-accounts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "vortex-agent",
+]
+
+[[package]]
+name = "vortex-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "vortex-agent-claude"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "async-process",
+ "base64 0.22.1",
+ "futures",
+ "jiff 0.2.46",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "vortex-agent",
+]
+
+[[package]]
+name = "vortex-agent-codex"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "async-process",
+ "base64 0.22.1",
+ "futures",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "vortex-agent",
+]
+
+[[package]]
+name = "vortex-bridge"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "base64 0.22.1",
+ "log",
+ "serde_json",
+ "tempfile",
+ "vortex-agent",
+]
+
+[[package]]
+name = "vortex-browser"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "base64 0.22.1",
+ "directories",
+ "futures",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "vortex-chat"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "gpui-kit",
+ "jiff 0.2.46",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "vortex-accounts",
+ "vortex-agent",
+ "vortex-file-icons",
+ "vortex-services",
+]
+
+[[package]]
+name = "vortex-devices"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "base64 0.22.1",
+ "futures",
+ "hidapi",
+ "nusb",
+ "serde_json",
+ "serialport",
+]
+
+[[package]]
+name = "vortex-file-icons"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "vortex-git"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "regex",
+ "similar",
+ "tempfile",
+]
+
+[[package]]
+name = "vortex-keymap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jsonc-parser",
+ "serde",
+ "serde_json_lenient",
+]
+
+[[package]]
+name = "vortex-project"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ignore",
+ "nucleo-matcher",
+ "tempfile",
+ "trash",
+]
+
+[[package]]
+name = "vortex-services"
+version = "0.1.0"
+dependencies = [
+ "sysinfo 0.40.4",
+]
+
+[[package]]
+name = "vortex-settings"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "jsonc-parser",
+ "notify",
+ "serde",
+ "serde_ignored",
+ "serde_json",
+ "serde_json_lenient",
+ "tempfile",
+]
+
+[[package]]
+name = "vortex-update"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "vortex-workspace"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "futures",
+ "gpui-kit",
+ "jiff 0.2.46",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "vortex-accounts",
+ "vortex-agent",
+ "vortex-agent-claude",
+ "vortex-agent-codex",
+ "vortex-bridge",
+ "vortex-browser",
+ "vortex-chat",
+ "vortex-devices",
+ "vortex-file-icons",
+ "vortex-git",
+ "vortex-keymap",
+ "vortex-project",
+ "vortex-services",
+ "vortex-settings",
+ "vortex-update",
+]
 
 [[package]]
 name = "vswhom"

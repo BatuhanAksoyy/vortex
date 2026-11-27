@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "xtask"]
-default-members = ["crates/kiln"]
+default-members = ["crates/vortex"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,22 +12,22 @@ license = "UNLICENSED"
 repository = "https://github.com/BatuhanAksoyy/kiln"
 
 [workspace.dependencies]
-kiln-accounts = { path = "crates/kiln-accounts" }
-kiln-agent = { path = "crates/kiln-agent" }
-kiln-agent-claude = { path = "crates/kiln-agent-claude" }
-kiln-agent-codex = { path = "crates/kiln-agent-codex" }
-kiln-bridge = { path = "crates/kiln-bridge" }
-kiln-browser = { path = "crates/kiln-browser" }
-kiln-chat = { path = "crates/kiln-chat" }
-kiln-devices = { path = "crates/kiln-devices" }
-kiln-file-icons = { path = "crates/kiln-file-icons" }
-kiln-git = { path = "crates/kiln-git" }
-kiln-keymap = { path = "crates/kiln-keymap" }
-kiln-project = { path = "crates/kiln-project" }
-kiln-services = { path = "crates/kiln-services" }
-kiln-settings = { path = "crates/kiln-settings" }
-kiln-update = { path = "crates/kiln-update" }
-kiln-workspace = { path = "crates/kiln-workspace" }
+vortex-accounts = { path = "crates/vortex-accounts" }
+vortex-agent = { path = "crates/vortex-agent" }
+vortex-agent-claude = { path = "crates/vortex-agent-claude" }
+vortex-agent-codex = { path = "crates/vortex-agent-codex" }
+vortex-bridge = { path = "crates/vortex-bridge" }
+vortex-browser = { path = "crates/vortex-browser" }
+vortex-chat = { path = "crates/vortex-chat" }
+vortex-devices = { path = "crates/vortex-devices" }
+vortex-file-icons = { path = "crates/vortex-file-icons" }
+vortex-git = { path = "crates/vortex-git" }
+vortex-keymap = { path = "crates/vortex-keymap" }
+vortex-project = { path = "crates/vortex-project" }
+vortex-services = { path = "crates/vortex-services" }
+vortex-settings = { path = "crates/vortex-settings" }
+vortex-update = { path = "crates/vortex-update" }
+vortex-workspace = { path = "crates/vortex-workspace" }
 
 anyhow = "1.0.104"
 async-channel = "2.5.0"

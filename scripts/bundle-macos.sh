@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Packs a release build of Kiln into Kiln.app and zips it as the release
-# asset the in-app updater looks for: Kiln-<version>-macos-<arch>.zip.
+# Packs a release build of Vortex into Vortex.app and zips it as the release
+# asset the in-app updater looks for: Vortex-<version>-macos-<arch>.zip.
 #
 #   scripts/bundle-macos.sh <target> <version> <out-dir>
 #   e.g. scripts/bundle-macos.sh aarch64-apple-darwin 0.2.0 dist
@@ -16,16 +16,16 @@ case "$target" in
   *) echo "unsupported target: $target" >&2; exit 1 ;;
 esac
 
-binary="target/$target/release/kiln"
+binary="target/$target/release/vortex"
 [ -x "$binary" ] || { echo "build $binary first" >&2; exit 1; }
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-app="$work/Kiln.app"
+app="$work/Vortex.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "$binary" "$app/Contents/MacOS/kiln"
-if [ -f assets/macos/Kiln.icns ]; then
-  cp assets/macos/Kiln.icns "$app/Contents/Resources/Kiln.icns"
+cp "$binary" "$app/Contents/MacOS/vortex"
+if [ -f assets/macos/Vortex.icns ]; then
+  cp assets/macos/Vortex.icns "$app/Contents/Resources/Vortex.icns"
 fi
 
 cat > "$app/Contents/Info.plist" <<PLIST
@@ -33,11 +33,11 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Kiln</string>
-  <key>CFBundleDisplayName</key><string>Kiln</string>
-  <key>CFBundleIdentifier</key><string>io.github.batuhanaksoyy.kiln</string>
-  <key>CFBundleExecutable</key><string>kiln</string>
-  <key>CFBundleIconFile</key><string>Kiln</string>
+  <key>CFBundleName</key><string>Vortex</string>
+  <key>CFBundleDisplayName</key><string>Vortex</string>
+  <key>CFBundleIdentifier</key><string>io.github.batuhanaksoyy.vortex</string>
+  <key>CFBundleExecutable</key><string>vortex</string>
+  <key>CFBundleIconFile</key><string>Vortex</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
@@ -53,5 +53,5 @@ PLIST
 codesign --force --deep --sign - "$app"
 
 mkdir -p "$out"
-ditto -c -k --keepParent "$app" "$out/Kiln-$version-macos-$arch.zip"
-echo "$out/Kiln-$version-macos-$arch.zip"
+ditto -c -k --keepParent "$app" "$out/Vortex-$version-macos-$arch.zip"
+echo "$out/Vortex-$version-macos-$arch.zip"

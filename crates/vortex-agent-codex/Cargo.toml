@@ -1,0 +1,33 @@
+[package]
+name = "vortex-agent-codex"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-channel.workspace = true
+async-process.workspace = true
+base64.workspace = true
+futures.workspace = true
+vortex-agent.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde.workspace = true
+tempfile.workspace = true
+
+# Replays a captured fixture in place of the real app-server, for
+# process-level tests.
+[[bin]]
+name = "fake-codex"
+path = "tests/support/fake_codex.rs"
+test = false
+doctest = false
+
+[lints]
+workspace = true

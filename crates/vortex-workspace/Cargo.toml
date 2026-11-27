@@ -1,0 +1,39 @@
+[package]
+name = "vortex-workspace"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-channel.workspace = true
+futures.workspace = true
+jiff.workspace = true
+gpui-kit.workspace = true
+vortex-accounts.workspace = true
+vortex-agent.workspace = true
+vortex-agent-claude.workspace = true
+vortex-agent-codex.workspace = true
+vortex-bridge.workspace = true
+vortex-browser.workspace = true
+vortex-chat.workspace = true
+vortex-devices.workspace = true
+vortex-file-icons.workspace = true
+vortex-git.workspace = true
+vortex-keymap.workspace = true
+vortex-project.workspace = true
+vortex-services.workspace = true
+vortex-settings.workspace = true
+vortex-update.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,3 +1,4 @@
 /target
+.vortex/local.json
 .kiln/local.json
 .claude/settings.local.json

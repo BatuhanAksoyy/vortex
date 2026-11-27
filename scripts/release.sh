@@ -40,10 +40,10 @@ fi
 mv CHANGELOG.md.new CHANGELOG.md
 
 cat <<DONE
-Kiln is now $version and CHANGELOG.md lists what changed. Edit it, then:
+Vortex is now $version and CHANGELOG.md lists what changed. Edit it, then:
 
   git add Cargo.toml Cargo.lock CHANGELOG.md
   git commit -m "Release $version"
-  git tag -a v$version -m "Kiln $version"
+  git tag -a v$version -m "Vortex $version"
   git push origin main v$version
 DONE

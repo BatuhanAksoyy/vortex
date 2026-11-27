@@ -1,15 +1,15 @@
 # AGENTS.md
 
-Kiln is a lightweight, GPUI-based IDE for running Claude Code and Codex sessions side by side.
+Vortex is a lightweight, GPUI-based IDE for running Claude Code and Codex sessions side by side.
 The design is in `docs/ARCHITECTURE.md`. Read it before you change structure, add a crate, or add a dependency.
 
 ## Ground rules
 
 - All code, identifiers, UI strings and commit messages are in English.
 - YAGNI, DRY, KISS. Build what the current milestone needs, nothing speculative.
-- Crates are split by capability. Protocol, settings, git and process logic live in GPUI-free crates and are unit-tested without UI. Only view-owning feature crates (`kiln-workspace`, later `kiln-chat`, …) and the `kiln` binary depend on `gpui-kit`.
+- Crates are split by capability. Protocol, settings, git and process logic live in GPUI-free crates and are unit-tested without UI. Only view-owning feature crates (`vortex-workspace`, later `vortex-chat`, …) and the `vortex` binary depend on `gpui-kit`.
 - For any GPUI code, load the `gpui-kit` skill in `.claude/skills/` first and follow its Coding Guides. Never invent a GPUI API; search the source in `~/.cargo/registry/src/*/gpui-component-0.10.0`.
-- `unsafe` lives only in `kiln-sys`.
+- `unsafe` lives only in `vortex-sys`.
 - No LSP, no plugin system, no Chromium/webview dependencies.
 - Code comments explain *why* something non-obvious is the way it is. Never write narrative comments ("fixed X", "there was a problem with Y"); that belongs in commit messages.
 
@@ -28,7 +28,7 @@ If you believe a threshold is wrong, stop and ask the user. Do not work around i
 
 ## Agent protocol code
 
-- Claude (`kiln-agent-claude`) and Codex (`kiln-agent-codex`) protocols are not formally stable.
+- Claude (`vortex-agent-claude`) and Codex (`vortex-agent-codex`) protocols are not formally stable.
 - Every new event shape needs a captured real-world fixture under the crate's `tests/fixtures/` and a replay test.
 - Capture with `tests/fixtures/capture.py` in an empty directory outside the repo (never inside it: project hooks would run in the child), then run `scrub.py` on the result. Commit only scrubbed fixtures; `fixtures_hold_no_personal_data` enforces it.
 - Spawned CLIs must not inherit the parent Claude Code session's variables (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, …); see `PARENT_SESSION_VARS`.
