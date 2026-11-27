@@ -46,6 +46,8 @@ pub enum ChatEvent {
     OpenFile(PathBuf),
     /// The user asked to install the CLI of harness `agent`, missing here.
     InstallAgent(&'static str),
+    /// Customize mode changed how every chat is laid out.
+    LookChanged(crate::look::ChatLook),
 }
 
 impl EventEmitter<ChatEvent> for ChatView {}

@@ -197,7 +197,7 @@ impl Render for QuestionPrompt {
         v_flex()
             .id("question-prompt")
             .test_support()
-            .aria_label("Claude's questions")
+            .aria_label("The agent's questions")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key))
             .gap_2()

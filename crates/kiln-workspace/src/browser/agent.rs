@@ -27,6 +27,20 @@ pub(super) struct AgentUse {
     /// How many questions the page has asked the user, so an action that
     /// sets one off can end instead of waiting on it.
     pub asked: u64,
+    /// The harness the chat's agent runs on, as the page names it; empty
+    /// until the agent first uses the browser.
+    pub title: &'static str,
+}
+
+impl AgentUse {
+    /// Who uses the browser, for the lines that say so.
+    pub fn who(&self) -> &'static str {
+        if self.title.is_empty() {
+            "The agent"
+        } else {
+            self.title
+        }
+    }
 }
 
 pub(super) struct Waiting {
@@ -36,6 +50,12 @@ pub(super) struct Waiting {
 }
 
 impl Browser {
+    /// Names the harness the chat's agent runs on, such as `Codex`; a chat
+    /// can move to another between calls.
+    pub fn set_agent(&mut self, title: &'static str) {
+        self.agent.title = title;
+    }
+
     /// Does what the agent asks, once the site it is for may be used.
     pub fn serve(
         &mut self,
@@ -328,6 +348,14 @@ async fn act(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_browser_names_the_harness_the_agent_runs_on() {
+        let mut agent = AgentUse::default();
+        assert_eq!(agent.who(), "The agent");
+        agent.title = kiln_chat::agent_title("codex");
+        assert_eq!(agent.who(), "Codex");
+    }
 
     #[test]
     fn only_sites_off_this_machine_are_asked_about() {

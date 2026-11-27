@@ -176,6 +176,7 @@ impl Render for ChatView {
             .size_full()
             .bg(cx.theme().background)
             .child(self.render_header(cx))
+            .children(self.render_look_bar(cx))
             .children(self.render_find(cx))
             .child(self.render_transcript(cx))
             .child(

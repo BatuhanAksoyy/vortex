@@ -225,7 +225,8 @@ mod workspace {
 
     #[gpui_kit::test]
     fn the_browser_opens_on_the_chats_right(cx: &mut TestAppContext) {
-        let dir = project();
+        // As by default, whatever the user's own settings say.
+        let dir = laid_out(r#"{ "side_panel": "left", "browser": "right" }"#);
         let (window, _) = open_workspace(cx, dir.path().to_path_buf());
         let window = window.into();
         click(cx, window, "activity-files");
@@ -242,5 +243,108 @@ mod workspace {
         click(cx, window, "browser-close");
         assert!(!has(cx, window, "browser"));
         assert!(has(cx, window, "side-panel"));
+    }
+
+    /// A project whose own settings set `layout`.
+    fn laid_out(layout: &str) -> tempfile::TempDir {
+        let dir = project();
+        std::fs::create_dir_all(dir.path().join(".kiln")).expect("mkdir");
+        let settings = format!("{{ \"layout\": {layout} }}");
+        std::fs::write(dir.path().join(".kiln/settings.json"), settings).expect("write");
+        dir
+    }
+
+    fn bounds(
+        cx: &mut TestAppContext,
+        window: gpui_kit::AnyWindowHandle,
+        ids: [&'static str; 3],
+    ) -> [gpui_kit::Bounds<gpui_kit::Pixels>; 3] {
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            ids.map(|id| window.find(id).bounds())
+        })
+        .expect("window")
+    }
+
+    #[gpui_kit::test]
+    fn the_side_panel_and_browser_go_where_the_settings_put_them(cx: &mut TestAppContext) {
+        let dir = laid_out(r#"{ "side_panel": "right", "browser": "left" }"#);
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        click(cx, window, "activity-files");
+        click(cx, window, "toggle-browser");
+        let [browser, chat, side] = bounds(cx, window, ["browser", "chat", "side-panel"]);
+        assert!(browser.left() < chat.left() && chat.left() < side.left());
+        let [_, side, bar] = bounds(cx, window, ["chat", "side-panel", "activity-bar"]);
+        assert!(side.left() < bar.left(), "the bar is on the window's edge");
+        let [browser, _, side] =
+            bounds(cx, window, ["toggle-browser", "chat", "toggle-side-panel"]);
+        let middle = chat.center().x;
+        assert!(
+            browser.right() < middle && middle < side.left(),
+            "each on its side"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_browser_can_sit_under_the_chats(cx: &mut TestAppContext) {
+        let dir = laid_out(r#"{ "browser": "bottom", "title_bar_buttons": false }"#);
+        let (window, workspace) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        assert!(!has(cx, window, "toggle-browser"), "hidden by the settings");
+        cx.update_window(window, |_, window, cx| {
+            workspace.update(cx, |workspace, cx| workspace.toggle_browser(window, cx));
+        })
+        .expect("window");
+        let [chat, browser, _] = bounds(cx, window, ["chat", "browser", "activity-bar"]);
+        assert!(chat.bottom() <= browser.top(), "{chat:?} {browser:?}");
+    }
+
+    #[gpui_kit::test]
+    fn the_gear_and_cmd_comma_open_the_settings_page(cx: &mut TestAppContext) {
+        let dir = project();
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        assert!(has(cx, window, "activity-settings"));
+        press(cx, window, &primary(","));
+        assert!(has(cx, window, "settings-page"));
+        assert!(
+            has(cx, window, "chat"),
+            "beside the work, which shows each change"
+        );
+        let [bar, page, chat] = bounds(cx, window, ["activity-bar", "settings-page", "chat"]);
+        assert!(
+            bar.left() < page.left() && page.right() <= chat.left(),
+            "by the gear"
+        );
+        press(cx, window, "escape");
+        assert!(!has(cx, window, "settings-page"));
+        assert!(has(cx, window, "chat"));
+    }
+
+    #[gpui_kit::test]
+    fn split_editor_moves_the_file_beside_the_editor(cx: &mut TestAppContext) {
+        let dir = project();
+        let root = std::fs::canonicalize(dir.path()).expect("canonical root");
+        let (window, workspace) = open_workspace(cx, root.clone());
+        let window = window.into();
+        press(cx, window, &primary("shift-e"));
+        click_label(cx, window, "src");
+        click_label(cx, window, "main.rs");
+        press(cx, window, &primary("\\"));
+        assert!(has(cx, window, "files-aside"), "the editor is split");
+        assert!(
+            has(cx, window, "files-empty"),
+            "the first pane is left empty"
+        );
+        let active = cx.update(|cx| workspace.read(cx).active_file(cx));
+        assert_eq!(
+            active,
+            Some(root.join("src/main.rs")),
+            "and the file beside it"
+        );
+        click_label(cx, window, "README.md");
+        let active = cx.update(|cx| workspace.read(cx).active_file(cx));
+        assert_eq!(active, Some(root.join("README.md")));
     }
 }

@@ -1,4 +1,4 @@
-//! The panel on the chats' right: the active session's browser.
+//! The panel beside or under the chats: the active session's browser.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -7,7 +7,7 @@ use gpui_kit::{
     base::Selectable as _,
     component::{
         button::{Button, ButtonVariants as _},
-        resizable::{ResizableState, h_resizable, resizable_panel},
+        resizable::{ResizableState, h_resizable, resizable_panel, v_resizable},
     },
     px,
 };
@@ -17,47 +17,87 @@ use super::{
     Workspace, chats,
     side::{MIN_WIDTH, share},
 };
+use kiln_settings::BrowserPlace;
+
 use crate::{
     browser::{Browser, BrowserEvent},
     chat_panel::ChatPanel,
+    config,
     side_panel::MAX_BAR,
 };
 
+/// Lower, the browser's page or the chats cannot be used.
+const MIN_HEIGHT: f32 = 200.;
+
 impl Workspace {
-    /// The chats and, while it is open, the browser on their right.
+    /// The chats and, while it is open, the browser on the side the
+    /// settings put it.
     pub(super) fn render_chats(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
         let chats = self.dock.clone();
         let Some(browser) = self.browser().filter(|_| self.side_panel.browser_open) else {
             return chats.into_any_element();
         };
+        let place = config::settings(cx).layout.browser;
+        let first = place == BrowserPlace::Left;
         let this = cx.entity().downgrade();
         let resized = move |state: &Entity<ResizableState>, _: &mut Window, cx: &mut App| {
-            let width = state.read(cx).sizes().get(1).copied().map(f32::from);
-            let _ = this.update(cx, |this, cx| {
-                this.side_panel.browser_width = width;
-                this.save_side_panel(cx);
-            });
+            let size = state.read(cx).sizes().get(usize::from(!first)).copied();
+            let size = size.map(f32::from);
+            let _ = this.update(cx, |this, cx| this.keep_browser_size(place, size, cx));
         };
-        h_resizable("chats-and-browser")
-            .child(
-                resizable_panel()
-                    .size_range(px(MIN_WIDTH)..Pixels::MAX)
-                    .child(chats),
-            )
-            .child(
-                resizable_panel()
-                    .size(self.browser_width(window))
-                    .fixed()
-                    .size_range(px(MIN_WIDTH)..Pixels::MAX)
-                    .child(browser.clone()),
-            )
+        let (size, least) = if place == BrowserPlace::Bottom {
+            (self.browser_height(window), px(MIN_HEIGHT))
+        } else {
+            (self.browser_width(window, cx), px(MIN_WIDTH))
+        };
+        let browser = resizable_panel()
+            .size(size)
+            .fixed()
+            .size_range(least..Pixels::MAX)
+            .child(browser.clone());
+        let chats = resizable_panel()
+            .size_range(least..Pixels::MAX)
+            .child(chats);
+        let (one, two) = if first {
+            (browser, chats)
+        } else {
+            (chats, browser)
+        };
+        let split = match place {
+            BrowserPlace::Bottom => v_resizable("chats-over-browser"),
+            BrowserPlace::Left => h_resizable("browser-and-chats"),
+            BrowserPlace::Right => h_resizable("chats-and-browser"),
+        };
+        split
+            .child(one)
+            .child(two)
             .on_resize(resized)
             .into_any_element()
     }
 
-    fn browser_width(&self, window: &Window) -> Pixels {
+    fn keep_browser_size(
+        &mut self,
+        place: BrowserPlace,
+        size: Option<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        if place == BrowserPlace::Bottom {
+            self.side_panel.browser_height = size;
+        } else {
+            self.side_panel.browser_width = size;
+        }
+        self.save_side_panel(cx);
+    }
+
+    fn browser_height(&self, window: &Window) -> Pixels {
+        let height = window.viewport_size().height;
+        let kept = self.side_panel.browser_height.map_or(height * 0.4, px);
+        kept.min(height - px(MIN_HEIGHT * 2.)).max(px(MIN_HEIGHT))
+    }
+
+    fn browser_width(&self, window: &Window, cx: &App) -> Pixels {
         let side = if self.side_open() {
-            self.side_width(window)
+            self.side_width(window, cx)
         } else {
             px(0.)
         };
@@ -146,6 +186,9 @@ impl Workspace {
         cx: &Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         self.project(cx)?;
+        if !config::settings(cx).layout.title_bar_buttons {
+            return None;
+        }
         let open = self.side_panel.browser_open;
         let toggle = Button::new("toggle-browser")
             .ghost()

@@ -1,6 +1,6 @@
 //! Kiln's tools for the chats' agents. Each chat's agent gets a token of its
-//! own, and a call carrying it goes to that chat: its browser, or its
-//! commit review.
+//! own, and a call carrying it goes to that chat: its browser, its commit
+//! review, or its project's settings.
 
 use std::path::Path;
 
@@ -97,9 +97,16 @@ impl Workspace {
                 };
                 panel.ask_commit(call, window, cx);
             }),
+            Request::Settings(request) => {
+                let project = panel.read(cx).chat().read(cx).cwd().to_owned();
+                let reply = self.settings_call(request, &project, window, cx);
+                let _ = call.reply.try_send(reply);
+            }
             Request::Browse(request) => {
                 let browser = self.agent_browser(&panel, window, cx);
+                let agent = panel.read(cx).chat().read(cx).agent_name();
                 browser.update(cx, |browser, cx| {
+                    browser.set_agent(kiln_chat::agent_title(agent));
                     browser.serve(request, call.reply, window, cx);
                 });
             }

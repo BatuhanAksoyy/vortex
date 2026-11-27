@@ -9,6 +9,7 @@ edition = "2024"
 rust-version = "1.100"
 publish = false
 license = "UNLICENSED"
+repository = "https://github.com/BatuhanAksoyy/kiln"
 
 [workspace.dependencies]
 kiln-accounts = { path = "crates/kiln-accounts" }
@@ -25,6 +26,7 @@ kiln-keymap = { path = "crates/kiln-keymap" }
 kiln-project = { path = "crates/kiln-project" }
 kiln-services = { path = "crates/kiln-services" }
 kiln-settings = { path = "crates/kiln-settings" }
+kiln-update = { path = "crates/kiln-update" }
 kiln-workspace = { path = "crates/kiln-workspace" }
 
 anyhow = "1.0.104"

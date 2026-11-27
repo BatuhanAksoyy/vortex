@@ -5,11 +5,13 @@
 //! user entries come after the defaults, and an entry whose command starts with
 //! `-` removes matching earlier bindings.
 
+mod edit;
 mod keystroke;
 
 use anyhow::Context as _;
 use serde::Deserialize;
 
+pub use edit::{changes, rebind, reset};
 pub use keystroke::to_gpui_keystrokes;
 
 pub const DEFAULT_KEYBINDINGS: &str = include_str!("../assets/default-keybindings.jsonc");

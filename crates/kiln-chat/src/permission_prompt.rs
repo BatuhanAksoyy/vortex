@@ -209,7 +209,7 @@ fn describe(request: &PermissionRequest, root: &Path) -> (String, String) {
                 .get("plan")
                 .and_then(serde_json::Value::as_str);
             (
-                "Claude's plan is ready. Start implementing?".to_owned(),
+                "The plan is ready. Start implementing?".to_owned(),
                 plan.unwrap_or_default().to_owned(),
             )
         }

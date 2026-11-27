@@ -10,6 +10,8 @@ pub struct Settings {
     pub chat: ChatSettings,
     pub files: FilesSettings,
     pub git: GitSettings,
+    pub layout: LayoutSettings,
+    pub update: UpdateSettings,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -42,6 +44,36 @@ pub struct EditorSettings {
     pub soft_wrap: bool,
     pub indent_guides: bool,
     pub minimap: MinimapSettings,
+    pub gutter: GutterSettings,
+    pub typing: TypingSettings,
+    pub show_whitespace: Whitespace,
+    pub scroll_beyond_last_line: ScrollBeyond,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct GutterSettings {
+    pub folds: bool,
+}
+
+/// What the editor does as the user types.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct TypingSettings {
+    pub auto_close_brackets: bool,
+    pub auto_indent: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Whitespace {
+    None,
+    All,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScrollBeyond {
+    HalfPage,
+    Off,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -52,6 +84,40 @@ pub struct MinimapSettings {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ChatSettings {
     pub sleep_after_minutes: u64,
+    pub toolbar: ChatToolbar,
+    pub usage_meter: UsageMeter,
+    pub colors: HarnessColors,
+}
+
+/// The items of each place, by name; unknown names are left out.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ChatToolbar {
+    pub top: Vec<String>,
+    pub bottom_start: Vec<String>,
+    pub bottom_end: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageMeter {
+    Fuller,
+    Session,
+    Weekly,
+    Both,
+}
+
+/// `#rrggbb`, or empty for the harness's own color.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct HarnessColors {
+    pub claude: String,
+    pub codex: String,
+}
+
+/// `color` as `0xrrggbb`, when it is a `#rrggbb` color.
+#[must_use]
+pub fn parse_color(color: &str) -> Option<u32> {
+    let hex = color.strip_prefix('#').filter(|hex| hex.len() == 6)?;
+    u32::from_str_radix(hex, 16).ok()
 }
 
 impl ChatSettings {
@@ -66,6 +132,75 @@ impl ChatSettings {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct FilesSettings {
     pub exclude: Vec<String>,
+    pub auto_save: AutoSave,
+    pub auto_save_delay: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoSave {
+    Off,
+    AfterDelay,
+}
+
+/// Where the window's parts sit, and which are shown.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct LayoutSettings {
+    pub side_panel: Side,
+    pub browser: BrowserPlace,
+    pub file_tree: Side,
+    pub activity_bar: bool,
+    pub status_bar: bool,
+    pub title_bar_buttons: bool,
+    pub activity_order: Vec<ActivityPage>,
+}
+
+impl LayoutSettings {
+    /// The activity bar's pages in the user's order, each once; a page the
+    /// order leaves out comes after the rest.
+    #[must_use]
+    pub fn activity_pages(&self) -> Vec<ActivityPage> {
+        let mut pages: Vec<ActivityPage> = Vec::new();
+        let all = [
+            ActivityPage::Files,
+            ActivityPage::Search,
+            ActivityPage::Changes,
+        ];
+        for page in self.activity_order.iter().chain(&all) {
+            if !pages.contains(page) {
+                pages.push(*page);
+            }
+        }
+        pages
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Side {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserPlace {
+    Left,
+    Right,
+    Bottom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityPage {
+    Files,
+    Search,
+    Changes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct UpdateSettings {
+    pub check: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -124,6 +259,7 @@ pub struct WriterSettings {
 
 const FONT_SIZE_RANGE: std::ops::RangeInclusive<f32> = 6.0..=72.0;
 const TAB_SIZE_RANGE: std::ops::RangeInclusive<u8> = 1..=16;
+const AUTO_SAVE_DELAY_RANGE: std::ops::RangeInclusive<u64> = 100..=60_000;
 
 impl Settings {
     /// Returns a message for each value outside its accepted range.
@@ -148,6 +284,24 @@ impl Settings {
                 TAB_SIZE_RANGE.end(),
                 self.editor.tab_size
             ));
+        }
+        if !AUTO_SAVE_DELAY_RANGE.contains(&self.files.auto_save_delay) {
+            errors.push(format!(
+                "`files.auto_save_delay` must be between {} and {}, got {}",
+                AUTO_SAVE_DELAY_RANGE.start(),
+                AUTO_SAVE_DELAY_RANGE.end(),
+                self.files.auto_save_delay
+            ));
+        }
+        for (key, color) in [
+            ("chat.colors.claude", &self.chat.colors.claude),
+            ("chat.colors.codex", &self.chat.colors.codex),
+        ] {
+            if !color.is_empty() && parse_color(color).is_none() {
+                errors.push(format!(
+                    "`{key}` must be a color like #e5484d, got {color:?}"
+                ));
+            }
         }
         errors
     }

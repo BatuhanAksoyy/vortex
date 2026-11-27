@@ -4099,6 +4099,7 @@ dependencies = [
  "kiln-accounts",
  "kiln-agent-claude",
  "kiln-bridge",
+ "kiln-update",
  "kiln-workspace",
  "log",
 ]
@@ -4241,6 +4242,7 @@ name = "kiln-keymap"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "jsonc-parser",
  "serde",
  "serde_json_lenient",
 ]
@@ -4279,6 +4281,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kiln-update"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "kiln-workspace"
 version = "0.1.0"
 dependencies = [
@@ -4301,6 +4313,7 @@ dependencies = [
  "kiln-project",
  "kiln-services",
  "kiln-settings",
+ "kiln-update",
  "log",
  "serde",
  "serde_json",

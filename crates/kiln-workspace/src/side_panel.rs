@@ -34,6 +34,8 @@ pub struct SidePanel {
     pub browser_open: bool,
     /// The browser's width, in pixels; `None` until the user sizes it.
     pub browser_width: Option<f32>,
+    /// Its height while it is under the chats.
+    pub browser_height: Option<f32>,
 }
 
 impl Default for SidePanel {
@@ -46,6 +48,7 @@ impl Default for SidePanel {
             hidden: false,
             browser_open: false,
             browser_width: None,
+            browser_height: None,
         }
     }
 }

@@ -21,7 +21,10 @@ actions!(
         ToggleSidePanel,
         ToggleBrowser,
         ToggleChanges,
+        ShowSettings,
+        ShowShortcuts,
         OpenSettings,
+        CheckForUpdates,
         OpenCommitSettings,
         OpenDefaultSettings,
         OpenKeybindings,
@@ -30,6 +33,7 @@ actions!(
         NewWindow,
         Save,
         CloseEditor,
+        SplitEditor,
         NextEditor,
         PreviousEditor,
         ZoomIn,
@@ -80,6 +84,12 @@ pub const COMMANDS: &[CommandSpec] = &[
     spec("git.openChange", "Show File Changes", || {
         Box::new(ToggleChanges)
     }),
+    spec("workbench.action.openSettings", "Open Settings", || {
+        Box::new(ShowSettings)
+    }),
+    spec("update.checkForUpdate", "Check for Updates…", || {
+        Box::new(CheckForUpdates)
+    }),
     spec(
         "workbench.action.openSettingsJson",
         "Open User Settings (JSON)",
@@ -92,6 +102,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         "workbench.action.openRawDefaultSettings",
         "Open Default Settings (JSON)",
         || Box::new(OpenDefaultSettings),
+    ),
+    spec(
+        "workbench.action.openGlobalKeybindings",
+        "Keyboard Shortcuts",
+        || Box::new(ShowShortcuts),
     ),
     spec(
         "workbench.action.openGlobalKeybindingsFile",
@@ -114,6 +129,9 @@ pub const COMMANDS: &[CommandSpec] = &[
     spec("workbench.action.files.save", "Save", || Box::new(Save)),
     spec("workbench.action.closeActiveEditor", "Close Editor", || {
         Box::new(CloseEditor)
+    }),
+    spec("workbench.action.splitEditor", "Split Editor", || {
+        Box::new(SplitEditor)
     }),
     spec("workbench.action.nextEditor", "Next Editor", || {
         Box::new(NextEditor)
@@ -161,7 +179,10 @@ pub fn register(cx: &mut App) {
     on::<ToggleSidePanel>(cx, Workspace::toggle_side_panel);
     on::<ToggleBrowser>(cx, Workspace::toggle_browser);
     on::<ToggleChanges>(cx, Workspace::toggle_changes);
+    on::<ShowSettings>(cx, Workspace::toggle_settings_page);
+    on::<ShowShortcuts>(cx, Workspace::toggle_shortcuts_page);
     on::<OpenSettings>(cx, Workspace::open_user_settings);
+    on::<CheckForUpdates>(cx, Workspace::check_for_updates);
     on::<OpenCommitSettings>(cx, Workspace::open_commit_settings);
     on::<OpenDefaultSettings>(cx, Workspace::open_default_settings);
     on::<OpenKeybindings>(cx, Workspace::open_user_keybindings);
@@ -169,6 +190,7 @@ pub fn register(cx: &mut App) {
     on::<OpenFolder>(cx, Workspace::prompt_open_folder);
     on::<Save>(cx, Workspace::save);
     on::<CloseEditor>(cx, Workspace::close_editor);
+    on::<SplitEditor>(cx, Workspace::split_editor);
     on::<NextEditor>(cx, Workspace::next_editor);
     on::<PreviousEditor>(cx, Workspace::previous_editor);
     on::<ZoomIn>(cx, Workspace::zoom_in);

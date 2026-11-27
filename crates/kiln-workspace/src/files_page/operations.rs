@@ -75,9 +75,7 @@ impl FilesPage {
 
     fn created(&mut self, path: &Path, window: &mut Window, cx: &mut Context<Self>) {
         self.reveal_new(path, cx);
-        self.editor.update(cx, |editor, cx| {
-            editor.open_path(path.to_path_buf(), window, cx);
-        });
+        self.open_in_editor(path.to_path_buf(), None, window, cx);
     }
 
     fn reveal_new(&mut self, path: &Path, cx: &mut Context<Self>) {
@@ -107,8 +105,7 @@ impl FilesPage {
         let submit = move |name: &str, _: &mut Window, cx: &mut gpui_kit::App| {
             let to = kiln_project::rename(&path, name)?;
             page.update(cx, |page, cx| {
-                page.editor
-                    .update(cx, |editor, cx| editor.renamed(&path, &to, cx));
+                page.renamed_file(&path, &to, cx);
                 page.reveal_new(&to, cx);
             })
         };
@@ -145,8 +142,7 @@ impl FilesPage {
             let result = delete.await;
             let _ = this.update_in(cx, |this, window, cx| match result {
                 Ok(path) => {
-                    this.editor
-                        .update(cx, |editor, cx| editor.deleted(&path, window, cx));
+                    this.deleted_file(&path, window, cx);
                     cx.emit(FilesChanged);
                 }
                 Err(error) => {

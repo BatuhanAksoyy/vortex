@@ -14,18 +14,18 @@ use gpui_kit::{
         ActiveTheme as _, WindowExt as _,
         diff::{Diff, DiffFile, DiffState},
         h_flex,
-        input::{Editor, EditorState, InputEvent, Position, Rope, TabSize},
+        input::{Editor, EditorState, InputEvent, Position, Rope},
         notification::Notification,
     },
     div,
 };
 use kiln_git::LineChange;
-use kiln_settings::EditorSettings;
 
 use super::{
     Saved,
     changes::Marks,
     minimap::Minimap,
+    options,
     preview::{self, Kind},
 };
 use crate::config;
@@ -64,6 +64,7 @@ pub struct Document {
     base_load: Option<Task<()>>,
     compare: Option<Task<()>>,
     reload: Option<Task<()>>,
+    pub(super) auto_save: Option<Task<()>>,
     _edited: Subscription,
 }
 
@@ -73,13 +74,8 @@ impl Document {
     pub fn new(contents: Contents, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let settings = config::settings(cx).editor.clone();
         let editor = cx.new(|cx| {
-            EditorState::new(window, cx)
-                .language(contents.language)
-                .line_number(settings.line_numbers)
-                .indent_guides(settings.indent_guides)
-                .soft_wrap(settings.soft_wrap)
-                .tab_size(tab_size(&settings))
-                .default_value(contents.text)
+            let editor = EditorState::new(window, cx).language(contents.language);
+            options::built(editor, &settings).default_value(contents.text)
         });
         let edited = cx.subscribe(&editor, |this, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {
@@ -102,6 +98,7 @@ impl Document {
             base_load: None,
             compare: None,
             reload: None,
+            auto_save: None,
             _edited: edited,
         };
         this.load_base(cx);
@@ -146,7 +143,7 @@ impl Document {
 
     /// The file, unless it is a picture, which is never read or written as
     /// text.
-    fn text_path(&self) -> Option<PathBuf> {
+    pub(super) fn text_path(&self) -> Option<PathBuf> {
         self.path.clone().filter(|_| self.kind != Kind::Image)
     }
 
@@ -174,10 +171,7 @@ impl Document {
     pub fn apply_settings(&self, window: &mut Window, cx: &mut Context<Self>) {
         let settings = config::settings(cx).editor.clone();
         self.editor.update(cx, |editor, cx| {
-            editor.set_line_number(settings.line_numbers, window, cx);
-            editor.set_soft_wrap(settings.soft_wrap, window, cx);
-            editor.set_indent_guides(settings.indent_guides, window, cx);
-            editor.set_tab_size(tab_size(&settings), cx);
+            options::apply(editor, &settings, window, cx);
         });
         // The minimap is shown by the settings it reads when drawn.
         cx.notify();
@@ -196,8 +190,7 @@ impl Document {
             let result = write.await;
             this.update_in(cx, |this, window, cx| match result {
                 Ok(()) => {
-                    this.saved = written;
-                    this.check_dirty(cx);
+                    this.saved_as(written, cx);
                     cx.emit(Saved);
                     true
                 }
@@ -242,8 +235,19 @@ impl Document {
 
     fn text_changed(&mut self, cx: &mut Context<Self>) {
         self.check_dirty(cx);
+        self.save_after_typing(cx);
         self.minimap.update(cx, Minimap::text_changed);
         self.compare(cx);
+    }
+
+    pub(super) fn text(&self, cx: &gpui_kit::App) -> Rope {
+        self.editor.read(cx).text().clone()
+    }
+
+    /// `text` is on disk now.
+    pub(super) fn saved_as(&mut self, text: Rope, cx: &mut Context<Self>) {
+        self.saved = text;
+        self.check_dirty(cx);
     }
 
     fn check_dirty(&mut self, cx: &mut Context<Self>) {
@@ -355,13 +359,6 @@ impl Render for Document {
 
 fn same(one: &Rope, other: &Rope) -> bool {
     one.len() == other.len() && one == other
-}
-
-fn tab_size(settings: &EditorSettings) -> TabSize {
-    TabSize {
-        tab_size: usize::from(settings.tab_size),
-        hard_tabs: false,
-    }
 }
 
 pub fn file_title(path: &Path) -> SharedString {

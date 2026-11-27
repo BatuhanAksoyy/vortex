@@ -20,6 +20,7 @@ use gpui_kit::{
 use kiln_agent::{Effort, ModelOption, PermissionMode};
 
 use super::ChatView;
+use crate::look::Spot;
 use crate::{
     agent_state::{self, MENU_MODES},
     clock,
@@ -33,7 +34,7 @@ impl ChatView {
     pub(super) fn render_composer(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let focused = self.composer.read(cx).focus_handle(cx).is_focused(window);
         let view = cx.entity().downgrade();
-        let strip = self.strip(&view, cx);
+        let strip = self.strip(cx);
         let paste_view = view.clone();
         let menu = self
             .render_model_picker(cx)
@@ -75,23 +76,8 @@ impl ChatView {
             .into_any_element()
     }
 
-    fn strip(&self, view: &WeakEntity<Self>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let features = self.backend.features();
-        // The choices wrap in a narrow chat, so the send button stays in view.
-        let choices = h_flex()
-            .flex_1()
-            .min_w_0()
-            .flex_wrap()
-            .gap_1()
-            .child(Self::attach_button(cx))
-            .when(features.skills_and_hooks, |strip| {
-                strip
-                    .child(self.skills_button(cx))
-                    .child(self.hooks_button(cx))
-            })
-            .child(self.mode_menu(view))
-            .children(self.model_menu(view))
-            .children(self.effort_menu(view));
+    fn strip(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let choices = self.render_spot(Spot::BottomStart, cx);
         h_flex()
             .items_end()
             .gap_1()
@@ -101,12 +87,7 @@ impl ChatView {
             .border_t_1()
             .border_color(cx.theme().border)
             .child(choices)
-            .child(self.agents_button(cx))
-            .children(self.tokens_button(cx))
-            .when(features.prompt_cache, |strip| {
-                strip.child(self.cache_button(cx))
-            })
-            .children(self.context_meter(cx))
+            .child(self.render_spot(Spot::BottomEnd, cx))
             .child(self.action_button(cx))
     }
 
@@ -117,7 +98,7 @@ impl ChatView {
         cx.stop_propagation();
     }
 
-    fn mode_menu(&self, view: &WeakEntity<Self>) -> impl IntoElement {
+    pub(super) fn mode_menu(&self, view: &WeakEntity<Self>) -> impl IntoElement {
         let current = self.agent.mode();
         let view = view.clone();
         Button::new("chat-mode")
@@ -137,7 +118,7 @@ impl ChatView {
             })
     }
 
-    fn model_menu(&self, view: &WeakEntity<Self>) -> Option<impl IntoElement> {
+    pub(super) fn model_menu(&self, view: &WeakEntity<Self>) -> Option<impl IntoElement> {
         let label = self.agent.model_label()?;
         let selected = self.agent.selected_model().map(|option| option.id.clone());
         let options = self.agent.models().to_vec();
@@ -160,7 +141,7 @@ impl ChatView {
     }
 
     /// Shown once the agent names the effort, for a model that takes one.
-    fn effort_menu(&self, view: &WeakEntity<Self>) -> Option<impl IntoElement> {
+    pub(super) fn effort_menu(&self, view: &WeakEntity<Self>) -> Option<impl IntoElement> {
         let current = self.agent.effort()?;
         let efforts = self.agent.efforts().to_vec();
         if efforts.is_empty() {

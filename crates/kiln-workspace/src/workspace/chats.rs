@@ -335,6 +335,7 @@ impl Workspace {
             }
             ChatEvent::ChoicesChanged => self.save_layout(cx),
             ChatEvent::InstallAgent(agent) => self.install_cli(agent, cx),
+            ChatEvent::LookChanged(look) => self.keep_chat_look(look, window, cx),
             ChatEvent::OpenFile(path) => {
                 self.activate(Some(panel), window, cx);
                 self.open_absolute(path.clone(), window, cx);

@@ -171,7 +171,12 @@ impl Browser {
             .shadow_md()
             .text_sm()
             .when(!doing.done, |line| line.child(Spinner::new().small()))
-            .child(div().flex_none().text_color(theme.primary).child("Claude"))
+            .child(
+                div()
+                    .flex_none()
+                    .text_color(theme.primary)
+                    .child(self.agent.who()),
+            )
             .child(div().min_w_0().truncate().child(doing.what.clone()));
         let foot = div()
             .absolute()

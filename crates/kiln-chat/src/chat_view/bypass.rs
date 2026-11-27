@@ -9,7 +9,7 @@ use kiln_agent::PermissionMode;
 
 use super::ChatView;
 
-const WARNING: &str = "Claude will run commands, change and delete files, and use the network \
+const WARNING: &str = "The agent will run commands, change and delete files, and use the network \
                        without asking. Use it only in a sandbox or where you can lose the data.";
 
 impl ChatView {

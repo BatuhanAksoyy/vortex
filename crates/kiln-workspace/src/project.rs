@@ -43,7 +43,6 @@ pub struct Project {
     root: PathBuf,
     sessions: Entity<SessionList>,
     repo: Entity<RepoStatus>,
-    editor: Entity<EditorPane>,
     files_page: Entity<FilesPage>,
     git_page: Entity<GitPage>,
     search_page: Entity<SearchPage>,
@@ -51,7 +50,7 @@ pub struct Project {
     /// Lists the files; replaced by the next scan, so a slow one cannot
     /// land after it.
     scan: Option<Task<()>>,
-    _subscriptions: [Subscription; 5],
+    _subscriptions: [Subscription; 6],
 }
 
 impl EventEmitter<ProjectEvent> for Project {}
@@ -61,8 +60,9 @@ impl Project {
         let sessions = cx.new(|_| SessionList::default());
         let repo = cx.new(|_| RepoStatus::new(root.clone()));
         let editor = cx.new(EditorPane::new);
-        let files_page =
-            cx.new(|cx| FilesPage::new(root.clone(), editor.clone(), repo.clone(), cx));
+        let aside = cx.new(EditorPane::new);
+        let panes = [editor.clone(), aside.clone()];
+        let files_page = cx.new(|cx| FilesPage::new(root.clone(), panes, repo.clone(), cx));
         let git_page = cx.new(|cx| GitPage::new(repo.clone(), window, cx));
         let search_page = cx.new(|cx| SearchPage::new(root.clone(), editor.clone(), window, cx));
         let subscriptions = [
@@ -72,10 +72,14 @@ impl Project {
             cx.subscribe(&editor, |this, _, _: &Saved, cx| {
                 this.repo.update(cx, RepoStatus::refresh);
             }),
+            cx.subscribe(&aside, |this, _, _: &Saved, cx| {
+                this.repo.update(cx, RepoStatus::refresh);
+            }),
             // Read together: what a file is compared with may have changed.
             cx.subscribe_in(&repo, window, |this, _, _: &StatusRead, window, cx| {
-                this.editor
-                    .update(cx, |editor, cx| editor.refresh(window, cx));
+                for editor in this.editors(cx) {
+                    editor.update(cx, |editor, cx| editor.refresh(window, cx));
+                }
             }),
             cx.subscribe_in(
                 &files_page,
@@ -93,7 +97,6 @@ impl Project {
             root,
             sessions,
             repo,
-            editor,
             files_page,
             git_page,
             search_page,
@@ -120,8 +123,14 @@ impl Project {
         &self.sessions
     }
 
-    pub fn editor(&self) -> &Entity<EditorPane> {
-        &self.editor
+    /// The editor pane the editor's commands go to: the one last clicked.
+    pub fn active_editor(&self, cx: &gpui_kit::App) -> Entity<EditorPane> {
+        self.files_page.read(cx).active_editor(cx).clone()
+    }
+
+    /// Both editor panes of the Files page.
+    pub fn editors(&self, cx: &gpui_kit::App) -> [Entity<EditorPane>; 2] {
+        self.files_page.read(cx).editors()
     }
 
     pub fn files_page(&self) -> &Entity<FilesPage> {
@@ -215,8 +224,8 @@ impl Project {
             self.files_page
                 .update(cx, |files, cx| files.reveal(relative, cx));
         }
-        self.editor
-            .update(cx, |pane, cx| pane.open_path(path, window, cx));
+        self.files_page
+            .update(cx, |files, cx| files.open_in_editor(path, None, window, cx));
     }
 }
 

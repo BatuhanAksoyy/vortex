@@ -2,6 +2,8 @@
 
 use serde_json::{Value, json};
 
+use crate::settings_tools::{self, SettingsCall};
+
 /// What an agent asks of Kiln.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Request {
@@ -11,6 +13,7 @@ pub enum Request {
         message: String,
         paths: Vec<String>,
     },
+    Settings(SettingsCall),
 }
 
 /// What an agent asks of the browser beside its chat.
@@ -147,6 +150,7 @@ pub(crate) fn list() -> Value {
     ];
     tools.extend(question_tools());
     tools.push(commit_tool());
+    tools.extend(settings_tools::list());
     Value::Array(tools)
 }
 
@@ -185,7 +189,7 @@ fn commit_tool() -> Value {
     )
 }
 
-fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) -> Value {
+pub(crate) fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) -> Value {
     json!({
         "name": name,
         "description": description,
@@ -197,6 +201,9 @@ fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) ->
 pub(crate) fn parse(name: &str, arguments: &Value) -> Result<Request, String> {
     if name == "commit" {
         return commit(arguments);
+    }
+    if let Some(call) = settings_tools::parse(name, arguments) {
+        return call;
     }
     browse(name, arguments).map(Request::Browse)
 }
@@ -281,7 +288,7 @@ mod tests {
     fn every_listed_tool_can_be_called() {
         let arguments = json!({
             "url": "x", "ref": 1, "text": "x", "key": "x", "expression": "x",
-            "question": "device", "accept": true, "message": "x",
+            "question": "device", "accept": true, "message": "x", "value": 1,
         });
         let tools = list();
         for tool in tools.as_array().unwrap() {

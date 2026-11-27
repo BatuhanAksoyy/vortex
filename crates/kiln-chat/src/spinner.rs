@@ -49,20 +49,51 @@ impl Brand {
         }
     }
 
+    /// The harness's color, or the one the user gave it.
     #[must_use]
     pub fn color(self, cx: &App) -> Hsla {
+        self.chosen(cx)
+            .map_or_else(|| self.own_color(cx), |color| rgb(color).into())
+    }
+
+    #[must_use]
+    pub fn own_color(self, cx: &App) -> Hsla {
         match self {
             Self::Claude => rgb(0xd9_77_57).into(),
             Self::Codex => cx.theme().foreground,
         }
     }
 
+    fn chosen(self, cx: &App) -> Option<u32> {
+        let look = crate::look::ChatLook::current(cx);
+        match self {
+            Self::Claude => look.claude_color,
+            Self::Codex => look.codex_color,
+        }
+    }
+
     /// What is drawn on the brand color.
     #[must_use]
     pub fn foreground(self, cx: &App) -> Hsla {
+        if self.chosen(cx).is_some() {
+            // Dark on a light color, light on a dark one.
+            return if self.color(cx).l > 0.6 {
+                gpui_kit::black()
+            } else {
+                white()
+            };
+        }
         match self {
             Self::Claude => white(),
             Self::Codex => cx.theme().background,
+        }
+    }
+
+    #[must_use]
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::Claude => "Claude Code",
+            Self::Codex => "Codex",
         }
     }
 

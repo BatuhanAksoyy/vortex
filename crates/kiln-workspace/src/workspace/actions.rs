@@ -131,9 +131,20 @@ impl Workspace {
         command: impl FnOnce(&mut EditorPane, &mut Window, &mut Context<EditorPane>),
     ) {
         if let Some(project) = self.project(cx).cloned() {
-            let editor = project.read(cx).editor().clone();
+            let editor = project.read(cx).active_editor(cx);
             editor.update(cx, |pane, cx| command(pane, window, cx));
         }
+    }
+
+    /// Moves the shown file to the editor beside it, on the Files page.
+    pub fn split_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(project) = self.project(cx).cloned() else {
+            Self::needs_project(window, cx);
+            return;
+        };
+        self.show_page(Page::Files, window, cx);
+        let files = project.read(cx).files_page().clone();
+        files.update(cx, |files, cx| files.split_editor(window, cx));
     }
 
     pub fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {

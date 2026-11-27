@@ -14,7 +14,6 @@ use gpui_kit::{
         dock::{DockArea, DockEvent},
         h_flex,
         notification::Notification,
-        status_bar::StatusBar,
         v_flex,
     },
 };
@@ -31,22 +30,32 @@ use crate::{
     project_picker::ProjectPicker,
     recent_projects::RecentProjects,
     saved_layout::{LayoutFile, Pane},
+    settings_page::SettingsPage,
+    shortcuts_page::ShortcutsPage,
     side_panel::SidePanel,
 };
 
 mod actions;
 mod activity_bar;
 mod agent_tools;
+mod body;
 mod browsers;
+mod chat_look;
 mod chats;
 mod cli_update;
 mod layout;
 mod processes;
 mod projects;
+mod settings;
+mod settings_tools;
+mod shortcuts;
 mod side;
 mod switcher;
 mod tabs;
+mod update_offer;
 mod worktrees;
+
+pub(crate) use chat_look::apply as apply_chat_look;
 
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(150);
 
@@ -96,6 +105,9 @@ pub struct Workspace {
     _process_watch: Task<()>,
     /// Every agent's processes over the whole window, while open.
     processes_page: Option<(Entity<ProcessesDialog>, Subscription)>,
+    /// The settings page, shown over the panels and chats while open.
+    settings_page: Option<(Entity<SettingsPage>, Subscription)>,
+    shortcuts_page: Option<(Entity<ShortcutsPage>, Subscription)>,
     focus_handle: FocusHandle,
     /// Dropping the task stops the watcher, so it is replaced, not detached,
     /// when another folder is opened.
@@ -123,7 +135,7 @@ impl Workspace {
         let processes = Processes::shared(cx);
         let meter = cx.new(|cx| ProcessMeter::all(processes.clone(), cx));
         let dock = chats::new_dock(window, cx);
-        let subscriptions = vec![
+        let mut subscriptions = vec![
             cx.subscribe_in(&meter, window, |this, _, event, window, cx| match event {
                 ProcessMeterEvent::Open => this.open_processes(window, cx),
             }),
@@ -146,6 +158,7 @@ impl Workspace {
                 }
             }),
         ];
+        subscriptions.extend(Self::follow_updates(window, cx));
         // Deferred: notifications need the window's Root, which exists only
         // after this constructor returns, and the chats wait for
         // `keeping_layouts_in`.
@@ -175,6 +188,8 @@ impl Workspace {
             processes,
             _process_watch: Self::watch_processes(cx),
             processes_page: None,
+            settings_page: None,
+            shortcuts_page: None,
             focus_handle: cx.focus_handle(),
             config_watch: None,
             _subscriptions: subscriptions,
@@ -246,7 +261,7 @@ impl Workspace {
 
     /// The file shown in the active session's editor, if any.
     pub fn active_file(&self, cx: &gpui_kit::App) -> Option<PathBuf> {
-        let editor = self.project(cx)?.read(cx).editor();
+        let editor = self.project(cx)?.read(cx).active_editor(cx);
         editor.read(cx).active_path(cx).map(Path::to_path_buf)
     }
 
@@ -272,12 +287,15 @@ impl Workspace {
             window.push_notification(Notification::warning(message), cx);
         }
         for (project, _) in &self.projects {
-            let editor = project.read(cx).editor().clone();
-            editor.update(cx, |pane, cx| pane.apply_settings(window, cx));
+            for editor in project.read(cx).editors(cx) {
+                editor.update(cx, |pane, cx| pane.apply_settings(window, cx));
+            }
         }
         for tab in &self.chats {
             tab.panel.update(cx, ChatPanel::settings_changed);
         }
+        self.reread_settings_page(cx);
+        self.reread_shortcuts_page(cx);
         cx.notify();
     }
 
@@ -336,6 +354,8 @@ impl Render for Workspace {
             Some(root) => folder_name(root),
             None => "Kiln".to_owned(),
         };
+        let side_right = Self::side_on_right(cx);
+        let browser_left = config::settings(cx).layout.browser == kiln_settings::BrowserPlace::Left;
         v_flex()
             .id("workspace")
             .track_focus(&self.focus_handle)
@@ -348,7 +368,13 @@ impl Render for Workspace {
                         .w_full()
                         .pr_2()
                         .gap_2()
-                        .children(self.render_panel_toggle(cx))
+                        // Each button on the side of what it opens.
+                        .when(!side_right, |bar| {
+                            bar.children(self.render_panel_toggle(cx))
+                        })
+                        .when(browser_left, |bar| {
+                            bar.children(self.render_browser_toggle(cx))
+                        })
                         .child(
                             // A row, so the menu's button keeps to the left.
                             h_flex()
@@ -357,31 +383,16 @@ impl Render for Workspace {
                                 .justify_start()
                                 .child(self.render_switcher(name, cx)),
                         )
-                        .children(self.render_browser_toggle(cx)),
+                        .when(!browser_left, |bar| {
+                            bar.children(self.render_browser_toggle(cx))
+                        })
+                        .when(side_right, |bar| bar.children(self.render_panel_toggle(cx))),
                 ),
             )
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .children(self.render_activity_bar(window, cx))
-                    .child(
-                        gpui_kit::div()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .child(self.render_main(window, cx)),
-                    ),
-            )
+            .child(self.render_body(window, cx))
             .children(self.render_processes(window, cx))
-            .child(
-                StatusBar::new()
-                    .left(self.process_meter.clone())
-                    .left(root.display().to_string())
-                    .right(active_file.unwrap_or_default())
-                    .when_some(self.shown_cli_version(cx), |bar, version| {
-                        bar.right(version)
-                    }),
-            )
+            .when(config::settings(cx).layout.status_bar, |this| {
+                this.child(self.render_status_bar(&root, active_file, cx))
+            })
     }
 }

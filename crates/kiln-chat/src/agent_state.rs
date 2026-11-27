@@ -314,12 +314,12 @@ pub fn mode_label(mode: PermissionMode) -> &'static str {
 
 pub fn mode_description(mode: PermissionMode) -> &'static str {
     match mode {
-        PermissionMode::AskBeforeEdits => "Claude asks before each edit and most commands",
-        PermissionMode::EditAutomatically => "Claude edits files without asking",
-        PermissionMode::Plan => "Claude plans first and changes nothing until you approve",
+        PermissionMode::AskBeforeEdits => "Asks before each edit and most commands",
+        PermissionMode::EditAutomatically => "Edits files without asking",
+        PermissionMode::Plan => "Plans first and changes nothing until you approve",
         PermissionMode::Auto => "A classifier approves most actions instead of asking",
         PermissionMode::DontAsk => "Anything not already allowed is denied",
-        PermissionMode::BypassPermissions => "Claude runs everything without asking",
+        PermissionMode::BypassPermissions => "Runs everything without asking",
     }
 }
 

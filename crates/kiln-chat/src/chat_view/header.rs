@@ -7,7 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, Context, Hsla, TestSupportExt, WeakEntity,
     component::{
-        ActiveTheme, Icon, IconName,
+        ActiveTheme, Icon,
         button::{Button, ButtonVariants},
         h_flex,
         popover::Popover,
@@ -17,9 +17,12 @@ use gpui_kit::{
 };
 use kiln_agent::{Usage, UsageWindow};
 
+mod customize;
+
 use super::{ChatView, StripPanel};
 use crate::{
     clock,
+    look::{ChatLook, Spot, UsageShown},
     scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
 };
 
@@ -67,26 +70,22 @@ impl ChatView {
                         ),
                 ),
             )
-            .children(self.process_meter.clone())
-            .child(self.account_button(cx))
-            .child(usage_meter(
-                self.agent.usage(),
-                UsageTimes {
-                    updated: self.agent.usage_updated_at(),
-                    refused_until: self.usage_refused_until(cx),
-                },
-                self.is_open(StripPanel::Usage),
-                cx.entity().downgrade(),
-                cx,
-            ))
-            .child(
-                Button::new("chat-new")
-                    .ghost()
-                    .control_icon(IconName::Plus)
-                    .accessibility_label("New conversation")
-                    .tooltip("New conversation")
-                    .on_click(cx.listener(|this, _, window, cx| this.new_conversation(window, cx))),
-            )
+            .child(self.render_spot(Spot::Top, cx))
+            .child(Self::customize_button(cx))
+    }
+
+    fn usage_element(&self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+        usage_meter(
+            self.agent.usage(),
+            UsageTimes {
+                updated: self.agent.usage_updated_at(),
+                refused_until: self.usage_refused_until(cx),
+            },
+            self.is_open(StripPanel::Usage),
+            cx.entity().downgrade(),
+            cx,
+        )
+        .into_any_element()
     }
 }
 
@@ -125,11 +124,8 @@ fn usage_meter(
     view: WeakEntity<ChatView>,
     cx: &gpui_kit::App,
 ) -> impl IntoElement + use<> {
-    let (label, color) = match fuller(&usage) {
-        Some((name, window)) => (
-            format!("{name} {}%", window.percent),
-            level_color(window.percent, cx),
-        ),
+    let (label, color) = match meter_label(&usage, ChatLook::current(cx).usage) {
+        Some((label, percent)) => (label, level_color(percent, cx)),
         None => ("Usage".to_owned(), cx.theme().muted_foreground),
     };
     let trigger = Button::new("chat-usage")
@@ -159,6 +155,28 @@ pub(crate) fn fuller(usage: &Usage) -> Option<(&'static str, UsageWindow)> {
         (Some(session), Some(weekly)) if weekly.1.percent > session.1.percent => Some(weekly),
         (session, weekly) => session.or(weekly),
     }
+}
+
+/// What the meter reads with `shown`, and the percent it is colored by.
+/// A window the plan lacks falls back to the fuller one.
+fn meter_label(usage: &Usage, shown: UsageShown) -> Option<(String, u8)> {
+    let named =
+        |name: &str, window: UsageWindow| (format!("{name} {}%", window.percent), window.percent);
+    let picked = match shown {
+        UsageShown::Session => usage.session.map(|window| named("Session", window)),
+        UsageShown::Weekly => usage.weekly.map(|window| named(long_name(usage), window)),
+        UsageShown::Both => usage.session.zip(usage.weekly).map(|(session, weekly)| {
+            let label = format!(
+                "Session {}% · {} {}%",
+                session.percent,
+                long_name(usage),
+                weekly.percent
+            );
+            (label, session.percent.max(weekly.percent))
+        }),
+        UsageShown::Fuller => None,
+    };
+    picked.or_else(|| fuller(usage).map(|(name, window)| named(name, window)))
 }
 
 /// What the long window is called: weekly, or monthly for a 30-day one.

@@ -26,6 +26,7 @@ kiln-keymap.workspace = true
 kiln-project.workspace = true
 kiln-services.workspace = true
 kiln-settings.workspace = true
+kiln-update.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true

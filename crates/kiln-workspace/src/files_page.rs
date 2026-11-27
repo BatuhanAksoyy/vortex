@@ -2,6 +2,7 @@
 //! project's files as a tree beside the editor.
 
 mod operations;
+mod split;
 mod tree;
 
 use std::{
@@ -54,14 +55,17 @@ pub struct FilesPage {
     tree_hidden: bool,
     /// Held here, not by the window, so the split the user sized outlives
     /// the panel being closed.
-    split: Entity<ResizableState>,
+    tree_split: Entity<ResizableState>,
+    /// The same, while the tree is on the right.
+    split_right: Entity<ResizableState>,
+    split: split::Split,
     _subscriptions: [Subscription; 3],
 }
 
 impl FilesPage {
     pub fn new(
         root: PathBuf,
-        editor: Entity<EditorPane>,
+        [editor, aside]: [Entity<EditorPane>; 2],
         repo: Entity<RepoStatus>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -85,7 +89,9 @@ impl FilesPage {
             pending: None,
             followed: None,
             tree_hidden: false,
-            split: cx.new(|_| ResizableState::default()),
+            tree_split: cx.new(|_| ResizableState::default()),
+            split_right: cx.new(|_| ResizableState::default()),
+            split: split::Split::new(aside, cx),
             _subscriptions: subscriptions,
         }
     }
@@ -139,7 +145,7 @@ impl FilesPage {
 
     /// Selects the file the editor switched to.
     fn follow_editor(&mut self, cx: &mut Context<Self>) {
-        let active = self.editor.read(cx).active_path(cx);
+        let active = self.active_editor(cx).read(cx).active_path(cx);
         let active = active.map(Path::to_path_buf);
         if active != self.followed {
             self.followed.clone_from(&active);
@@ -155,8 +161,7 @@ impl FilesPage {
 
     fn open(&mut self, relative: &Path, window: &mut Window, cx: &mut Context<Self>) {
         let path = self.root.join(relative);
-        self.editor
-            .update(cx, |editor, cx| editor.open_path(path, window, cx));
+        self.open_in_editor(path, None, window, cx);
     }
 
     fn is_folder(&self, id: &str) -> bool {
@@ -237,11 +242,18 @@ impl FilesPage {
     }
 
     fn side(&self, cx: &Context<Self>) -> impl IntoElement {
+        let right = crate::config::settings(cx).layout.file_tree == kiln_settings::Side::Right;
         v_flex()
             .id("files-tree")
             .test_support()
             .size_full()
-            .border_r_1()
+            .map(|tree| {
+                if right {
+                    tree.border_l_1()
+                } else {
+                    tree.border_r_1()
+                }
+            })
             .border_color(cx.theme().border)
             .on_key_down(cx.listener(Self::on_tree_key))
             .child(self.header(cx))
@@ -290,16 +302,24 @@ impl Render for FilesPage {
         } else {
             self.editor.clone().into_any_element()
         };
+        let editor = self.render_editors(editor, cx);
         let side = (!self.tree_hidden).then(|| self.side(cx));
+        let tree = resizable_panel()
+            .size(window.rem_size() * TREE_WIDTH_REMS)
+            .fixed()
+            .visible(!self.tree_hidden)
+            .children(side);
+        let editor = resizable_panel().child(editor);
+        if crate::config::settings(cx).layout.file_tree == kiln_settings::Side::Right {
+            // A split of its own: the sizes are kept by their order.
+            return h_resizable("files-page-tree-right")
+                .with_state(&self.split_right)
+                .child(editor)
+                .child(tree);
+        }
         h_resizable("files-page")
-            .with_state(&self.split)
-            .child(
-                resizable_panel()
-                    .size(window.rem_size() * TREE_WIDTH_REMS)
-                    .fixed()
-                    .visible(!self.tree_hidden)
-                    .children(side),
-            )
-            .child(resizable_panel().child(editor))
+            .with_state(&self.tree_split)
+            .child(tree)
+            .child(editor)
     }
 }

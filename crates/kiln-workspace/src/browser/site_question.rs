@@ -19,6 +19,7 @@ const WIDTH: f32 = 360.;
 impl Browser {
     pub(super) fn render_site_question(&self, cx: &Context<Self>) -> Option<AnyElement> {
         let site = &self.agent.waiting.first()?.site;
+        let who = self.agent.who();
         let theme = cx.theme();
         let buttons = h_flex()
             .justify_end()
@@ -52,10 +53,10 @@ impl Browser {
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(format!("Let Claude use {site}?")),
+                    .child(format!("Let {who} use {site}?")),
             )
             .child(div().text_sm().child(format!(
-                "Claude wants to open and use pages on {site}. It would see \
+                "{who} wants to open and use pages on {site}. It would see \
                  what you are signed in to there, until this chat is closed."
             )))
             .child(buttons);

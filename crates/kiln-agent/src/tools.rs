@@ -21,7 +21,9 @@ impl ToolServer {
             "This session runs in Kiln, an IDE whose tools are named mcp__{name}__*. Commit with \
              mcp__{name}__commit, never with `git commit`: Kiln holds the message to the \
              project's rules and the user may review it first. Do not push; Kiln pushes as the \
-             user set it to."
+             user set it to. When the user asks to change how Kiln looks or works (fonts, theme, \
+             editor, layout, auto save), use mcp__{name}__settings_get and \
+             mcp__{name}__settings_set rather than editing its settings files."
         );
         if !self.commit_directives.is_empty() {
             told.push_str("\n\nThe project asks this of every commit message:");

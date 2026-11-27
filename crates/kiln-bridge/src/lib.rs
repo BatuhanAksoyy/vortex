@@ -2,16 +2,18 @@
 //! which speaks MCP on its standard streams and hands every line on to the
 //! running Kiln over a local socket; no port is opened. Each chat gets a
 //! token of its own, which tells Kiln which chat a call is from: whose
-//! browser it drives, or whose changes it commits. No UI
-//! dependencies.
+//! browser it drives, whose changes it commits, or whose project's settings
+//! it changes. No UI dependencies.
 
 mod bridge;
 mod mcp;
 mod relay;
+mod settings_tools;
 mod tools;
 
 pub use bridge::{Bridge, Call};
 pub use relay::relay;
+pub use settings_tools::{SettingsCall, SettingsScope};
 pub use tools::{Answer, Browse, Content, Question, Reply, Request};
 
 /// Where `kiln mcp` finds Kiln, and who it speaks for.

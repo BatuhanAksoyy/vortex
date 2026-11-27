@@ -30,6 +30,8 @@ const SAVE_DELAY: Duration = Duration::from_millis(500);
 const DEFAULT_SHARE: f32 = 0.35;
 /// Narrower, neither the chat nor a panel can be used.
 pub(super) const MIN_WIDTH: f32 = 280.;
+const SETTINGS_WIDTH_REMS: f32 = 34.;
+const MIN_SETTINGS_WIDTH: f32 = 360.;
 
 impl Workspace {
     pub(super) fn show_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
@@ -159,7 +161,28 @@ impl Workspace {
     }
 
     /// The side panel while it is open, the chats and the browser.
+    /// The work, and the settings page beside it while it is open, so
+    /// each change shows on the panels and editor as it is made.
     pub(super) fn render_main(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
+        let work = self.render_work(window, cx);
+        let Some(settings) = self.render_settings_page() else {
+            return work;
+        };
+        let settings = resizable_panel()
+            .size(window.rem_size() * SETTINGS_WIDTH_REMS)
+            .size_range(px(MIN_SETTINGS_WIDTH)..Pixels::MAX)
+            .child(settings);
+        let work = resizable_panel().child(work);
+        // Beside the activity bar, whose gear opens it.
+        if Self::side_on_right(cx) {
+            h_resizable("work-and-settings").child(work).child(settings)
+        } else {
+            h_resizable("settings-and-work").child(settings).child(work)
+        }
+        .into_any_element()
+    }
+
+    fn render_work(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
         if let Some(start) = self.render_start_page() {
             return start;
         }
@@ -171,37 +194,55 @@ impl Workspace {
             return side.into_any_element();
         }
         let chats = self.render_chats(window, cx);
+        let right = Self::side_on_right(cx);
         let this = cx.entity().downgrade();
         let resized = move |state: &Entity<ResizableState>, _: &mut Window, cx: &mut App| {
-            let width = state.read(cx).sizes().first().copied().map(f32::from);
+            let sizes = state.read(cx).sizes();
+            let width = if right { sizes.get(1) } else { sizes.first() };
+            let width = width.copied().map(f32::from);
             let _ = this.update(cx, |this, cx| {
                 this.side_panel.page_width = width;
                 this.save_side_panel(cx);
             });
         };
         // The browser keeps its own least width beside the chat's.
-        let panes = 1. + f32::from(u8::from(self.side_panel.browser_open));
-        h_resizable("side-and-chats")
-            .child(
-                resizable_panel()
-                    .size(self.side_width(window))
-                    .fixed()
-                    .size_range(px(MIN_WIDTH)..Pixels::MAX)
-                    .child(side),
-            )
-            .child(
-                resizable_panel()
-                    .size_range(px(MIN_WIDTH * panes)..Pixels::MAX)
-                    .child(chats),
-            )
+        let panes = 1. + f32::from(u8::from(self.browser_beside(cx)));
+        let side = resizable_panel()
+            .size(self.side_width(window, cx))
+            .fixed()
+            .size_range(px(MIN_WIDTH)..Pixels::MAX)
+            .child(side);
+        let chats = resizable_panel()
+            .size_range(px(MIN_WIDTH * panes)..Pixels::MAX)
+            .child(chats);
+        let (first, second) = if right { (chats, side) } else { (side, chats) };
+        // Named by side, so moving it starts its sizes afresh.
+        let id = if right {
+            "chats-and-side"
+        } else {
+            "side-and-chats"
+        };
+        h_resizable(id)
+            .child(first)
+            .child(second)
             .on_resize(resized)
             .into_any_element()
     }
 
+    /// The browser is open beside the chats, rather than under them.
+    fn browser_beside(&self, cx: &App) -> bool {
+        let place = crate::config::settings(cx).layout.browser;
+        self.side_panel.browser_open && place != kiln_settings::BrowserPlace::Bottom
+    }
+
+    pub(super) fn side_on_right(cx: &App) -> bool {
+        crate::config::settings(cx).layout.side_panel == kiln_settings::Side::Right
+    }
+
     /// Kept from a wider window, a panel may leave the chat no room, so both
     /// are held to what this one has.
-    pub(super) fn side_width(&self, window: &Window) -> Pixels {
-        let panes = 1. + f32::from(u8::from(self.side_panel.browser_open));
+    pub(super) fn side_width(&self, window: &Window, cx: &App) -> Pixels {
+        let panes = 1. + f32::from(u8::from(self.browser_beside(cx)));
         let width = self.side_panel.page_width;
         share(width, px(MIN_WIDTH * panes + MAX_BAR), window)
     }
@@ -217,11 +258,18 @@ impl Workspace {
             Page::Git => shown.git_page().clone().into_any_element(),
             Page::Search => shown.search_page().clone().into_any_element(),
         };
+        let right = Self::side_on_right(cx);
         v_flex()
             .id("side-panel")
             .test_support()
             .size_full()
-            .border_r_1()
+            .map(|panel| {
+                if right {
+                    panel.border_l_1()
+                } else {
+                    panel.border_r_1()
+                }
+            })
             .border_color(cx.theme().border)
             .child(self.render_side_header(shown, cx))
             .child(div().flex_1().min_h_0().child(page))

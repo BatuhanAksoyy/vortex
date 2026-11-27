@@ -1,9 +1,12 @@
 //! The editor's tabs, each an open file.
 
+mod auto_save;
 mod changes;
 mod closing;
 mod document;
 mod minimap;
+mod moving;
+mod options;
 mod preview;
 
 use std::path::{Path, PathBuf};
@@ -27,7 +30,8 @@ use gpui_kit::{
 use kiln_chat::scale::ScaledButton as _;
 
 use crate::file_icon;
-use document::{Contents, Document, file_title, read_opened};
+pub use document::Document;
+use document::{Contents, file_title, read_opened};
 
 /// A file was written.
 pub struct Saved;
@@ -71,10 +75,6 @@ impl EditorPane {
 
     fn documents(&self) -> impl Iterator<Item = &Entity<Document>> {
         self.tabs.iter().map(|tab| &tab.document)
-    }
-
-    pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_at(path, None, window, cx);
     }
 
     /// Opens `path` with the cursor at the start of `line`, from 0.
