@@ -8,12 +8,12 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Anchor, Context, SharedString, WeakEntity,
     component::{
-        Icon,
+        ActiveTheme as _, Icon,
         button::{Button, ButtonVariants as _},
         h_flex,
         menu::{DropdownMenu as _, PopupMenuItem},
     },
-    div, px,
+    div, img, px,
 };
 use vortex_chat::scale::{ScaledButton as _, ScaledIcon as _};
 
@@ -58,6 +58,16 @@ impl Workspace {
                 h_flex()
                     .gap_1()
                     .min_w_0()
+                    .child(
+                        // Its light ink on a dark theme, its dark ink on a light one.
+                        img(if cx.theme().is_dark() {
+                            "brand/mark-dark.svg"
+                        } else {
+                            "brand/mark-light.svg"
+                        })
+                        .flex_none()
+                        .size_4(),
+                    )
                     .child(div().min_w_0().truncate().child(name))
                     .child(Icon::new(gpui_kit::assets::IconName::ChevronDown).in_row()),
             )

@@ -52,12 +52,28 @@ gpui_kit::assets::icon_assets!(
     ]
 );
 
+/// Vortex's mark, for the title bar: the simple one, as its cuts do not
+/// hold at that size.
+const BRAND: [(&str, &[u8]); 2] = [
+    (
+        "brand/mark-dark.svg",
+        include_bytes!("../../../assets/brand/mark-dark-simple.svg"),
+    ),
+    (
+        "brand/mark-light.svg",
+        include_bytes!("../../../assets/brand/mark-light-simple.svg"),
+    ),
+];
+
 pub struct Assets;
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
         if let Some(svg) = vortex_file_icons::load(path) {
             return Ok(Some(Cow::Borrowed(svg.as_bytes())));
+        }
+        if let Some((_, bytes)) = BRAND.iter().find(|(name, _)| *name == path) {
+            return Ok(Some(Cow::Borrowed(bytes)));
         }
         if let Some(bytes) = ChatIcons.load(path)? {
             return Ok(Some(bytes));
@@ -81,6 +97,8 @@ mod tests {
     #[test]
     fn every_kind_of_icon_loads() {
         for path in [
+            "brand/mark-dark.svg",
+            "brand/mark-light.svg",
             "icons/pencil.svg",
             "icons/columns-2.svg",
             "icons/puzzle.svg",

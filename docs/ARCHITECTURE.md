@@ -1,6 +1,6 @@
 # Vortex — Mimari Tasarım
 
-> Vortex geçici bir çalışma adıdır. Bu belge Vortex'i geliştirecek yapay zeka ajanları ve insanlar için ana referanstır.
+> Vortex MIT lisanslı açık kaynak bir projedir. Bu belge Vortex'i geliştirecek yapay zeka ajanları ve insanlar için ana referanstır.
 > Kod, tanımlayıcılar ve arayüz metinleri İngilizcedir.
 
 ## 0. Doğrulanmış teknik zemin
@@ -459,6 +459,7 @@ allow-expect-in-tests = true
 
 - **Sürüm:** workspace sürümü (`Cargo.toml`, `workspace.package.version`) Vortex'in sürümüdür; depo adresi `workspace.package.repository`'dedir ve `vortex-update` ikisini derlemeye gömer.
 - **Güncelleme denetimi** (`vortex-update`, `vortex_workspace::updates`): `update.check` açıkken açılıştan 10 saniye sonra ve 6 saatte bir GitHub'ın `releases/latest` API'sine `curl` ile sorulur; taslak ve ön sürümler sayılmaz. Daha yeni sürüm varsa durum çubuğunda "Update to x.y.z" çıkar. Basınca bu makinenin arşivi (`Vortex-<sürüm>-macos-<arm64|x86_64>.zip`) çalışan uygulamanın yanındaki geçici klasöre indirilir, `ditto` ile açılır ve `Vortex.app` yerine konur; eski uygulama yeni yerine oturana kadar tutulur, olmazsa geri konur. Sonra "Restart to Update" yeni sürümü `open -n` ile başlatır ve bu süreç kapanır. Uygulama paketinden çalışmayan (`cargo run`) ya da bu makine için arşivi olmayan sürümde düğme sürümün sayfasını açar. "Check for Updates…" (dişli menüsü, komut paleti) sonucu soran pencerede bildirir. Denetim uygulama başınadır; testler `watch_updates`'i çağırmadığı için GitHub'a hiç sorulmaz.
+- **Marka:** logo ve ikonlar `assets/brand/` altındadır (kullanımları oradaki README'de). Uygulama paketinin ikonu `assets/macos/Vortex.icns`'tir ve `app-icon-dark/`'tan `iconutil` ile üretilir; `bundle-macos.sh` onu pakete koyar. Başlık çubuğundaki proje seçicinin başında işaretin sade sürümü durur: koyu temada `mark-dark`, açık temada `mark-light` (`brand/…` varlıkları, `vortex_chat::Assets`).
 - **Giriş kabuğunun ortamı:** Finder ya da Dock'tan açılan uygulama sistemin çıplak `PATH`'iyle başlar ve CLI'ları, git'i, Node'u bulamaz. Uygulama paketinden açılan Vortex kendini aynı süreçte kullanıcının giriş kabuğu (`$SHELL -l -i -c 'exec …'`) üzerinden bir kez yeniden başlatır (`VORTEX_LOGIN_SHELL`), terminaldeki ortamla çalışır.
 
 ## 20. Veri konumları
