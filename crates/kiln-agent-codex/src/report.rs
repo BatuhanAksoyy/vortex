@@ -1,6 +1,7 @@
 //! What the app-server reports about the account, its limits, the models
 //! and the tokens a thread used, in `kiln-agent`'s terms.
 
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use kiln_agent::{
@@ -85,6 +86,16 @@ pub fn spent(usage: &ThreadTokenUsage) -> SpentTokens {
         written: total.cache_write_input_tokens.map_or(0, count),
         output: count(total.output_tokens),
     }
+}
+
+/// Each listed model's default effort, by its id and by the model it
+/// means, as a thread names either.
+pub fn default_efforts(listed: &[protocol::Model]) -> HashMap<String, Effort> {
+    listed
+        .iter()
+        .filter_map(|model| Some((model, effort(&model.default_reasoning_effort)?)))
+        .flat_map(|(model, effort)| [(model.id.clone(), effort), (model.model.clone(), effort)])
+        .collect()
 }
 
 /// `None` for an effort Kiln has no name for, such as `ultra`.

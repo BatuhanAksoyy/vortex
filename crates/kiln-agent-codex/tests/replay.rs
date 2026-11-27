@@ -7,7 +7,9 @@ mod common;
 
 #[cfg(test)]
 mod replay {
-    use kiln_agent::{AgentEvent, Decision, PermissionRequest, SessionCommand, TurnOutcome};
+    use kiln_agent::{
+        AgentEvent, Decision, Effort, PermissionRequest, SessionCommand, TurnOutcome,
+    };
     use kiln_agent_codex::{Start, Translator, protocol};
     use serde_json::Value;
 
@@ -140,6 +142,18 @@ mod replay {
         assert_eq!(account.email, "person.example");
         assert_eq!(account.plan, "ChatGPT Free");
         assert_eq!(info.models[0].id, "gpt-6-luna", "the default model first");
+    }
+
+    #[test]
+    fn a_thread_without_an_effort_takes_its_models_default() {
+        // Codex reports a null effort when the user's configuration sets
+        // none; the effort menu then needs the model's default.
+        let events = translate("controls");
+        assert!(
+            events.contains(&AgentEvent::EffortChanged(Some(Effort::Medium))),
+            "{events:?}"
+        );
+        assert!(!events.contains(&AgentEvent::EffortChanged(None)));
     }
 
     /// The models the server listed in `name`'s capture.

@@ -93,6 +93,9 @@ pub struct Translator {
     /// The messages and thoughts whose words came as deltas.
     pub(crate) streamed: HashSet<String>,
     models: Option<Vec<ModelOption>>,
+    /// Each model's default effort, for a thread Codex starts with none:
+    /// without one in the user's configuration, it reports a null effort.
+    default_efforts: HashMap<String, Effort>,
     account: Option<Account>,
     /// Whether the account was read, so `account` being `None` means none.
     account_read: bool,
@@ -250,7 +253,11 @@ impl Translator {
             cli_version: Some(started.thread.cli_version),
         });
         let effort = (self.start.effort)
-            .or_else(|| started.reasoning_effort.as_deref().and_then(report::effort));
+            .or_else(|| started.reasoning_effort.as_deref().and_then(report::effort))
+            .or_else(|| {
+                let model = self.start.model.as_ref()?;
+                self.default_efforts.get(model).copied()
+            });
         self.start.effort = effort;
         step.events.push(AgentEvent::EffortChanged(effort));
         for message in std::mem::take(&mut self.queued) {
@@ -265,12 +272,18 @@ impl Translator {
     /// Ready once both the models and the account are known.
     fn models_listed(&mut self, result: Value) -> Step {
         let listed = decode::<ModelListResponse>(result);
-        let models = listed.map_or_default(|listed| report::models(&listed.data));
-        if self.ready_sent {
-            return Step::event(AgentEvent::ModelsChanged(models));
+        if let Some(listed) = &listed {
+            self.default_efforts = report::default_efforts(&listed.data);
         }
-        self.models = Some(models);
-        self.ready()
+        let models = listed.map_or_default(|listed| report::models(&listed.data));
+        let mut step = if self.ready_sent {
+            Step::event(AgentEvent::ModelsChanged(models))
+        } else {
+            self.models = Some(models);
+            self.ready()
+        };
+        step.events.extend(self.default_effort());
+        step
     }
 
     fn ready(&mut self) -> Step {
@@ -287,6 +300,20 @@ impl Translator {
             account: self.account.clone(),
             commands: Vec::new(),
         }))
+    }
+}
+
+impl Translator {
+    /// The started thread's model's default effort, once the models are
+    /// listed after the thread started with none.
+    fn default_effort(&mut self) -> Option<AgentEvent> {
+        if self.start.effort.is_some() || self.thread.is_none() {
+            return None;
+        }
+        let model = self.start.model.as_ref()?;
+        let effort = *self.default_efforts.get(model)?;
+        self.start.effort = Some(effort);
+        Some(AgentEvent::EffortChanged(Some(effort)))
     }
 }
 
