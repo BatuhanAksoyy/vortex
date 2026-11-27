@@ -4,18 +4,18 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
-use vortex_agent::{Cli, Method, fetch, parse_version};
+use vortex_agent::{Cli, Method, Program, fetch, parse_version};
 
 const PACKAGE: &str = "@openai/codex";
 const REGISTRY: &str = "https://registry.npmjs.org";
 
 pub struct CodexCli {
-    program: PathBuf,
+    program: Program,
 }
 
 impl CodexCli {
     #[must_use]
-    pub fn new(program: impl Into<PathBuf>) -> Self {
+    pub fn new(program: impl Into<Program>) -> Self {
         Self {
             program: program.into(),
         }
@@ -27,8 +27,8 @@ impl Cli for CodexCli {
         "Codex"
     }
 
-    fn program(&self) -> &Path {
-        &self.program
+    fn program(&self) -> PathBuf {
+        self.program.path()
     }
 
     // Codex has no installer of its own that Vortex can tell apart.

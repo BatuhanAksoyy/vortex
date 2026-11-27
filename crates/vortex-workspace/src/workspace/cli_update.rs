@@ -16,16 +16,13 @@ pub(super) struct ShownVersion {
 }
 
 impl Workspace {
-    /// The version of the active chat's harness, else the first one's.
+    /// The version of the active chat's harness. None shows without a
+    /// chat: until one picks its harness, which CLI is there is no news.
     pub(super) fn shown_cli_version(&self, cx: &App) -> Option<Entity<CliVersion>> {
-        let active =
-            (self.active_chat.as_ref()).map(|panel| panel.read(cx).chat().read(cx).agent_name());
-        let own = self
-            .cli_versions
-            .iter()
-            .find(|shown| Some(shown.agent) == active);
-        own.or(self.cli_versions.first())
-            .map(|shown| shown.view.clone())
+        let active = self.active_chat.as_ref()?;
+        let agent = active.read(cx).chat().read(cx).agent_name();
+        let own = self.cli_versions.iter().find(|shown| shown.agent == agent);
+        own.map(|shown| shown.view.clone())
     }
 
     /// The chats on harness `agent` whose process runs a version other

@@ -124,6 +124,8 @@ pub fn reload(project_root: Option<&Path>, cx: &mut App) -> Vec<String> {
         load_project(&root, cx);
     }
     crate::workspace::apply_chat_look(cx);
+    let agents = settings(cx).agents.clone();
+    crate::programs::apply(&agents, cx);
     diagnostics.extend(apply_appearance(cx));
     diagnostics.extend(reload_keymap(cx));
     diagnostics

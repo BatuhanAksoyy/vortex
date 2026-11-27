@@ -25,7 +25,8 @@ const ERROR_LINES: usize = 6;
 pub trait Cli: Send + Sync {
     /// As the user knows it, e.g. `Claude Code`.
     fn title(&self) -> &'static str;
-    fn program(&self) -> &Path;
+    /// The program to run, found anew each time.
+    fn program(&self) -> PathBuf;
     /// Whether the resolved program, by its path's parts, is the CLI's own
     /// native install.
     fn is_native(&self, parts: &[&str]) -> bool;
@@ -88,7 +89,7 @@ impl Install {
     pub fn find(cli: Arc<dyn Cli>) -> anyhow::Result<Self> {
         let program = cli.program();
         let path =
-            locate(program).with_context(|| format!("{} is not on PATH", program.display()))?;
+            locate(&program).with_context(|| format!("{} is not on PATH", program.display()))?;
         let output = command(&path)
             .arg("--version")
             .output()

@@ -10,6 +10,7 @@ mod projects {
 
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext};
+    use vortex_chat::Brand;
 
     use super::common::{Stored, chats, click, labels, no_accounts, open_in, pick, spawned};
 
@@ -78,8 +79,11 @@ mod projects {
         assert!(has(cx, window, "start-page"));
         assert!(!has(cx, window, "activity-bar"), "nothing to show there");
         assert_eq!(spawned(&backend), 0);
+        let brand = |cx: &mut TestAppContext| cx.read(|cx| cx.try_global().copied());
+        assert_eq!(brand(cx), Some(Brand::Vortex), "no harness's yet");
         browse(cx, window, &one);
         assert!(!has(cx, window, "start-page"));
+        assert_eq!(brand(cx), Some(Brand::Claude));
         assert_eq!(chats(cx, window).len(), 1);
         assert_eq!(folder_of_last(&backend), Some(one));
     }

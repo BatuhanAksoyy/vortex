@@ -30,6 +30,8 @@ pub struct CliVersion {
     update: Update,
     open: bool,
     _checks: Task<()>,
+    /// Checks again when the settings choose another program.
+    _programs: gpui_kit::Subscription,
     updating: Option<Task<()>>,
     /// How many open chats run a version other than the one given.
     behind: Option<CountBehind>,
@@ -92,6 +94,7 @@ impl CliVersion {
             update: Update::Idle,
             open: false,
             _checks: cx.spawn(async |this, cx| check_hourly(this, cx).await),
+            _programs: cx.observe_global::<crate::programs::Programs>(Self::check_again),
             updating: None,
             behind: None,
         }

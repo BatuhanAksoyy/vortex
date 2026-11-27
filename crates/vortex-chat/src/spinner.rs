@@ -29,9 +29,12 @@ const VERBS: &[&str] = &[
 /// The brand color of the harness the user works with, set by the window
 /// that shows it: Vortex follows Claude's orange, or for Codex the theme's
 /// own text color, white in a dark theme, as Codex's monochrome look.
+/// Before a chat picks its harness, Vortex is in its own graphite, as its
+/// mark, and no harness's color.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Brand {
     #[default]
+    Vortex,
     Claude,
     Codex,
 }
@@ -60,16 +63,12 @@ impl Brand {
     pub fn own_color(self, cx: &App) -> Hsla {
         match self {
             Self::Claude => rgb(0xd9_77_57).into(),
-            Self::Codex => cx.theme().foreground,
+            Self::Codex | Self::Vortex => cx.theme().foreground,
         }
     }
 
     fn chosen(self, cx: &App) -> Option<u32> {
-        let look = crate::look::ChatLook::current(cx);
-        match self {
-            Self::Claude => look.claude_color,
-            Self::Codex => look.codex_color,
-        }
+        crate::look::ChatLook::current(cx).color(self)
     }
 
     /// What is drawn on the brand color.
@@ -85,7 +84,7 @@ impl Brand {
         }
         match self {
             Self::Claude => white(),
-            Self::Codex => cx.theme().background,
+            Self::Codex | Self::Vortex => cx.theme().background,
         }
     }
 
@@ -94,6 +93,7 @@ impl Brand {
         match self {
             Self::Claude => "Claude Code",
             Self::Codex => "Codex",
+            Self::Vortex => "Vortex",
         }
     }
 

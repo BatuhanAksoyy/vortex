@@ -64,10 +64,10 @@ pub fn apply(settings: &Settings, zoom: f32, defaults: &DefaultFonts, cx: &mut A
     diagnostics
 }
 
-/// Puts Codex's blue over the theme's brand color while the user works with
-/// Codex; Claude's is the theme's own.
+/// Puts Codex's monochrome look, which Vortex's own graphite shares, over
+/// the theme's brand color; Claude's is the theme's own.
 fn apply_brand(cx: &mut App) {
-    if cx.try_global::<Brand>().copied().unwrap_or_default() != Brand::Codex {
+    if cx.try_global::<Brand>().copied().unwrap_or_default() == Brand::Claude {
         return;
     }
     // Codex's look is monochrome: the accent is the theme's own text color,

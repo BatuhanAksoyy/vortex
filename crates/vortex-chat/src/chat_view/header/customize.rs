@@ -272,10 +272,7 @@ impl ChatView {
     }
 
     fn color_choice(look: &ChatLook, brand: Brand, cx: &Context<Self>) -> AnyElement {
-        let current = match brand {
-            Brand::Claude => look.claude_color,
-            Brand::Codex => look.codex_color,
-        };
+        let current = look.color(brand);
         let own = std::iter::once((None, "Its own"));
         let offered = own.chain(COLORS.iter().map(|(color, name)| (Some(*color), *name)));
         let swatches = offered.map(|(color, name)| {
@@ -300,11 +297,7 @@ impl ChatView {
                     gpui_kit::component::tooltip::Tooltip::new(name).build(window, cx)
                 })
                 .on_click(cx.listener(move |_, _, _, cx| {
-                    let mut look = ChatLook::current(cx).clone();
-                    match brand {
-                        Brand::Claude => look.claude_color = color,
-                        Brand::Codex => look.codex_color = color,
-                    }
+                    let look = ChatLook::current(cx).colored(brand, color);
                     Self::change_look(look, cx);
                 }))
         });

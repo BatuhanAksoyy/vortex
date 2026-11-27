@@ -16,6 +16,7 @@ mod files_page;
 mod git_page;
 mod name_prompt;
 mod pickers;
+mod programs;
 mod project;
 mod project_picker;
 mod pushing;
@@ -46,5 +47,6 @@ pub fn init(cx: &mut App) {
     // Before the configuration, which keeps the bindings it finds.
     browser::bind_keys(cx);
     config::init(cx);
+    programs::init(cx);
     commands::register(cx);
 }

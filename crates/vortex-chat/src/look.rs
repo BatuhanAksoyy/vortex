@@ -242,6 +242,29 @@ impl ChatLook {
         look
     }
 
+    /// The color the user gave `brand`, if any.
+    #[must_use]
+    pub const fn color(&self, brand: crate::Brand) -> Option<u32> {
+        match brand {
+            crate::Brand::Claude => self.claude_color,
+            crate::Brand::Codex => self.codex_color,
+            crate::Brand::Vortex => None,
+        }
+    }
+
+    /// With `color` for `brand`; Vortex's own takes none, as a chat is
+    /// always on a harness.
+    #[must_use]
+    pub fn colored(&self, brand: crate::Brand, color: Option<u32>) -> Self {
+        let mut look = self.clone();
+        match brand {
+            crate::Brand::Claude => look.claude_color = color,
+            crate::Brand::Codex => look.codex_color = color,
+            crate::Brand::Vortex => {}
+        }
+        look
+    }
+
     /// Where `item` sits and its place there.
     #[must_use]
     pub fn place(&self, item: Item) -> Option<(Spot, usize)> {

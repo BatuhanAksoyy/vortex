@@ -78,6 +78,12 @@
     // The activity bar's pages, top first; dragging one on the bar moves it.
     "activity_order": ["files", "search", "changes"]
   },
+  "agents": {
+    // The claude and codex programs to run, as paths ("~/" for the home
+    // folder). Empty looks on PATH, then where their installers put them.
+    "claude_path": "",
+    "codex_path": ""
+  },
   "update": {
     // Look for a newer Vortex on GitHub at start and every few hours.
     "check": true

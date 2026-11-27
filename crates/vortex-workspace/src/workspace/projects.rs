@@ -92,12 +92,16 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Colors Vortex after the active chat's harness.
+    /// Colors Vortex after the active chat's harness, and in its own
+    /// neutral colors without one.
     pub(super) fn sync_brand(&self, cx: &mut Context<Self>) {
-        if let Some(panel) = &self.active_chat {
-            let agent = panel.read(cx).chat().read(cx).agent_name();
-            crate::config::set_brand(vortex_chat::Brand::of(agent), cx);
-        }
+        let brand = self
+            .active_chat
+            .as_ref()
+            .map_or(vortex_chat::Brand::Vortex, |panel| {
+                vortex_chat::Brand::of(panel.read(cx).chat().read(cx).agent_name())
+            });
+        crate::config::set_brand(brand, cx);
     }
 
     /// Starts working in `folder`: the active chat moves there when nothing
@@ -181,6 +185,7 @@ impl Workspace {
             });
         ProjectPicker::focus(&page, window, cx);
         self.start_page = Some((page, subscription));
+        self.sync_brand(cx);
         // With no project, only the user's own settings apply.
         self.load_project(window, cx);
         cx.notify();

@@ -16,7 +16,7 @@ const BREWS: [&str; 2] = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
 /// Whether `cli`'s program is on `PATH`.
 #[must_use]
 pub fn is_installed(cli: &dyn Cli) -> bool {
-    on_path(cli.program())
+    on_path(&cli.program())
 }
 
 /// Whether `program` is on `PATH`, or is a file when given as a path.

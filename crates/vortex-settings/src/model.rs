@@ -12,6 +12,7 @@ pub struct Settings {
     pub git: GitSettings,
     pub layout: LayoutSettings,
     pub update: UpdateSettings,
+    pub agents: AgentSettings,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -196,6 +197,13 @@ pub enum ActivityPage {
     Files,
     Search,
     Changes,
+}
+
+/// Where each harness's CLI is; empty looks for it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct AgentSettings {
+    pub claude_path: String,
+    pub codex_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

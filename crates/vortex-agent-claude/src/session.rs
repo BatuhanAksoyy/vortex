@@ -45,7 +45,7 @@ pub(crate) use vortex_agent::PARENT_SESSION_VARS;
 const STDERR_TAIL_BYTES: usize = 4096;
 
 pub struct ClaudeBackend {
-    program: PathBuf,
+    program: vortex_agent::Program,
     /// Where the CLI stores conversations; `None` when there is no home
     /// directory to find it in.
     config: Option<PathBuf>,
@@ -55,7 +55,7 @@ pub struct ClaudeBackend {
 }
 
 impl ClaudeBackend {
-    pub fn new(program: impl Into<PathBuf>) -> Self {
+    pub fn new(program: impl Into<vortex_agent::Program>) -> Self {
         Self {
             program: program.into(),
             config: history::config_dir(),
@@ -93,7 +93,7 @@ impl AgentBackend for ClaudeBackend {
     }
 
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
-        let mut command = Command::new(&self.program);
+        let mut command = Command::new(self.program.path());
         command.args(ARGS);
         // Lets the user switch to bypassing permissions later; it does not
         // turn it on. The CLI refuses the switch without it.
@@ -119,7 +119,7 @@ impl AgentBackend for ClaudeBackend {
             .clone()
             .map(|id| (self.project_dirs(&spec.cwd), id));
         let editor = CliEditor {
-            program: self.program.clone(),
+            program: self.program.path(),
             cwd: spec.cwd.clone(),
             env: spec.env.clone(),
         };
@@ -135,7 +135,7 @@ impl AgentBackend for ClaudeBackend {
         }
         let child = command
             .spawn()
-            .with_context(|| format!("cannot start {}", self.program.display()))?;
+            .with_context(|| format!("cannot start {}", self.program.path().display()))?;
         let pid = child.id();
         self.children.borrow_mut().insert(pid);
         let (event_tx, events) = async_channel::unbounded();
@@ -176,15 +176,15 @@ impl AgentBackend for ClaudeBackend {
     }
 
     fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn> {
-        sign_in::start(&self.program, env)
+        sign_in::start(&self.program.path(), env)
     }
 
     fn ask_once(&self, ask: OneShot) -> Pending<String> {
-        Box::pin(crate::one_shot::ask(self.program.clone(), ask))
+        Box::pin(crate::one_shot::ask(self.program.path(), ask))
     }
 
     fn ask_usage(&self, env: Vec<(String, String)>) -> Pending<vortex_agent::Usage> {
-        Box::pin(crate::usage_ask::ask(self.program.clone(), env))
+        Box::pin(crate::usage_ask::ask(self.program.path(), env))
     }
 }
 

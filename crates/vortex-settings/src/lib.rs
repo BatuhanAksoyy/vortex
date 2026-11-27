@@ -15,10 +15,10 @@ pub use load::{
     DEFAULT_SETTINGS, Diagnostic, LoadedSettings, SettingsSources, load, read_layer, with_session,
 };
 pub use model::{
-    ActivityPage, AutoSave, BrowserPlace, ChatSettings, ChatToolbar, CommitSettings, CommitTrigger,
-    EditorSettings, FilesSettings, GitSettings, GutterSettings, HarnessColors, LayoutSettings,
-    MinimapSettings, PushPolicy, PushSettings, ScrollBeyond, Settings, Side, ThemeMode,
-    ThemeSettings, TypingSettings, UiSettings, UpdateSettings, UsageMeter, Whitespace,
+    ActivityPage, AgentSettings, AutoSave, BrowserPlace, ChatSettings, ChatToolbar, CommitSettings,
+    CommitTrigger, EditorSettings, FilesSettings, GitSettings, GutterSettings, HarnessColors,
+    LayoutSettings, MinimapSettings, PushPolicy, PushSettings, ScrollBeyond, Settings, Side,
+    ThemeMode, ThemeSettings, TypingSettings, UiSettings, UpdateSettings, UsageMeter, Whitespace,
     WriterSettings, parse_color,
 };
 pub use paths::{

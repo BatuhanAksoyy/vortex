@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Context as _;
 use async_process::{Child, ChildStdin, Stdio};
@@ -18,11 +18,11 @@ use crate::{
 const STDERR_TAIL_BYTES: usize = 4096;
 
 pub struct CodexBackend {
-    program: PathBuf,
+    program: vortex_agent::Program,
 }
 
 impl CodexBackend {
-    pub fn new(program: impl Into<PathBuf>) -> Self {
+    pub fn new(program: impl Into<vortex_agent::Program>) -> Self {
         Self {
             program: program.into(),
         }
@@ -35,11 +35,11 @@ impl AgentBackend for CodexBackend {
     }
 
     fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
-        let mut command = client::command(&self.program, spec.env);
+        let mut command = client::command(&self.program.path(), spec.env);
         command.current_dir(&spec.cwd).stderr(Stdio::piped());
         let child = command
             .spawn()
-            .with_context(|| format!("cannot start {}", self.program.display()))?;
+            .with_context(|| format!("cannot start {}", self.program.path().display()))?;
         let start = Start {
             cwd: spec.cwd.to_string_lossy().into_owned(),
             model: spec.model,
@@ -61,16 +61,16 @@ impl AgentBackend for CodexBackend {
     }
 
     fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn> {
-        Ok(sign_in::start(&self.program, env))
+        Ok(sign_in::start(&self.program.path(), env))
     }
 
     fn past_sessions(&self, cwd: &Path) -> Pending<Vec<PastSession>> {
-        let (program, cwd) = (self.program.clone(), cwd.to_path_buf());
+        let (program, cwd) = (self.program.path(), cwd.to_path_buf());
         Box::pin(async move { history::list(&program, &cwd).await })
     }
 
     fn past_messages(&self, _cwd: &Path, session_id: &str) -> Pending<Vec<PastMessage>> {
-        let (program, session_id) = (self.program.clone(), session_id.to_owned());
+        let (program, session_id) = (self.program.path(), session_id.to_owned());
         Box::pin(async move { history::read(&program, &session_id).await })
     }
 
@@ -84,7 +84,7 @@ impl AgentBackend for CodexBackend {
     }
 
     fn ask_once(&self, ask: OneShot) -> Pending<String> {
-        Box::pin(one_shot::ask(self.program.clone(), ask))
+        Box::pin(one_shot::ask(self.program.path(), ask))
     }
 }
 

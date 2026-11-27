@@ -13,11 +13,9 @@ use vortex_agent_claude::{ClaudeBackend, ClaudeCli};
 use vortex_agent_codex::{CodexBackend, CodexCli};
 use vortex_chat::Backends;
 
-use crate::{cli_version::CliVersion, commands::ActiveWorkspace, workspace::Workspace};
-
-/// The program each window's chats run.
-const PROGRAM: &str = "claude";
-const CODEX_PROGRAM: &str = "codex";
+use crate::{
+    cli_version::CliVersion, commands::ActiveWorkspace, programs::Programs, workspace::Workspace,
+};
 
 /// What every window shares.
 struct Windows {
@@ -70,13 +68,17 @@ fn open(folder: Option<PathBuf>, first: bool, cx: &mut App) -> bool {
         window_decorations: Some(gpui_kit::WindowDecorations::Client),
         ..TitleBar::window_options()
     };
+    let programs = crate::programs::programs(cx);
     let opened = gpui_kit::open_window(options, cx, move |window, cx| {
-        let backend: Rc<dyn vortex_agent::AgentBackend> = Rc::new(ClaudeBackend::new(PROGRAM));
-        let codex: Rc<dyn vortex_agent::AgentBackend> = Rc::new(CodexBackend::new(CODEX_PROGRAM));
-        let backends = Backends::new(backend.clone(), vec![codex]);
-        let claude_cli = Arc::new(ClaudeCli::new(PROGRAM));
+        let Programs { claude, codex } = programs;
+        let backend: Rc<dyn vortex_agent::AgentBackend> =
+            Rc::new(ClaudeBackend::new(claude.clone()));
+        let codex_backend: Rc<dyn vortex_agent::AgentBackend> =
+            Rc::new(CodexBackend::new(codex.clone()));
+        let backends = Backends::new(backend.clone(), vec![codex_backend]);
+        let claude_cli = Arc::new(ClaudeCli::new(claude));
         let claude_version = cx.new(|cx| CliVersion::new(claude_cli, cx));
-        let codex_cli = Arc::new(CodexCli::new(CODEX_PROGRAM));
+        let codex_cli = Arc::new(CodexCli::new(codex));
         let codex_version = cx.new(|cx| CliVersion::new(codex_cli, cx));
         cx.new(|cx| {
             let workspace = Workspace::new(folder, backend, accounts, window, cx)

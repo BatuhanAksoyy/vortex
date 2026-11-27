@@ -66,7 +66,8 @@ impl Workspace {
                             "brand/mark-light.svg"
                         })
                         .flex_none()
-                        .size_4(),
+                        // The drawing fills three quarters of its box.
+                        .size(px(22.)),
                     )
                     .child(div().min_w_0().truncate().child(name))
                     .child(Icon::new(gpui_kit::assets::IconName::ChevronDown).in_row()),

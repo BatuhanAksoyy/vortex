@@ -2,22 +2,22 @@
 //! does: an install that is no Homebrew cask follows the release channel
 //! and is updated by `claude update`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Context as _;
-use vortex_agent::{Cli, Method, fetch, parse_version};
+use vortex_agent::{Cli, Method, Program, fetch, parse_version};
 
 const RELEASES: &str = "https://downloads.claude.ai/claude-code-releases";
 /// The native installer, as Claude Code's own setup page gives it.
 const INSTALL_SCRIPT: &str = "curl -fsSL https://claude.ai/install.sh | bash";
 
 pub struct ClaudeCli {
-    program: PathBuf,
+    program: Program,
 }
 
 impl ClaudeCli {
     #[must_use]
-    pub fn new(program: impl Into<PathBuf>) -> Self {
+    pub fn new(program: impl Into<Program>) -> Self {
         Self {
             program: program.into(),
         }
@@ -29,8 +29,8 @@ impl Cli for ClaudeCli {
         "Claude Code"
     }
 
-    fn program(&self) -> &Path {
-        &self.program
+    fn program(&self) -> PathBuf {
+        self.program.path()
     }
 
     fn is_native(&self, parts: &[&str]) -> bool {
@@ -46,7 +46,7 @@ impl Cli for ClaudeCli {
 
     fn updater(&self, method: &Method) -> Option<(PathBuf, Vec<String>)> {
         matches!(method, Method::Native | Method::Npm)
-            .then(|| (self.program.clone(), vec!["update".to_owned()]))
+            .then(|| (self.program.path(), vec!["update".to_owned()]))
     }
 
     fn cask(&self) -> &'static str {
@@ -82,7 +82,8 @@ mod tests {
 
     #[test]
     fn the_native_install_lives_under_its_versions() {
-        let cli = ClaudeCli::new("claude");
+        // A path that is nowhere, so it stays as given on any machine.
+        let cli = ClaudeCli::new("/nowhere/claude");
         let native = [
             "Users", "someone", ".local", "share", "claude", "versions", "2.1.311",
         ];
@@ -90,7 +91,7 @@ mod tests {
         assert!(!cli.is_native(&["usr", "bin", "claude"]));
         assert_eq!(
             cli.updater(&Method::Npm),
-            Some(("claude".into(), vec!["update".to_owned()]))
+            Some(("/nowhere/claude".into(), vec!["update".to_owned()]))
         );
         assert_eq!(cli.updater(&Method::Unknown), None);
     }

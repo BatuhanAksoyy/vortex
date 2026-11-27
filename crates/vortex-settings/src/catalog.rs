@@ -301,6 +301,22 @@ pub const CATALOG: &[Entry] = &[
         Text,
     ),
     entry(
+        Chat,
+        "agents.claude_path",
+        "Claude Code program",
+        "The claude program to run, as a path. Empty looks on PATH and where \
+         its installers put it.",
+        Text,
+    ),
+    entry(
+        Chat,
+        "agents.codex_path",
+        "Codex program",
+        "The codex program to run, as a path. Empty looks on PATH and where \
+         its installers put it.",
+        Text,
+    ),
+    entry(
         Git,
         "git.commit.enabled",
         "Commit a chat's work",
