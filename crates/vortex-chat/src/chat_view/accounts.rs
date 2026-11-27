@@ -80,6 +80,7 @@ impl ChatView {
         if open && !self.accounts_panel.open {
             self.accounts_panel.error = None;
             self.accounts_panel.notice = None;
+            self.ask_others_usage(cx);
         }
         self.accounts_panel.open = open;
         cx.notify();
@@ -117,7 +118,8 @@ impl ChatView {
         }
         let first = first_added(self.accounts.read(cx), self.backend.name());
         if let Some(id) = first {
-            self.switch_account(&id, window, cx);
+            let agent = self.backend.name();
+            self.pick_account(agent, Some(id), window, cx);
         }
     }
 

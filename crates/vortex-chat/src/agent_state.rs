@@ -12,6 +12,8 @@ use vortex_agent::{
 
 use crate::{prompt_cache::PromptCache, spent::Spent};
 
+mod share;
+
 /// Modes Shift+Tab goes through. The menu adds `BypassPermissions`, which
 /// must be confirmed; `DontAsk` is shown when the agent reports it but never
 /// offered.
@@ -43,6 +45,7 @@ pub struct AgentState {
     account: Option<Account>,
     usage: Usage,
     usage_updated_at: Option<SystemTime>,
+    share: share::SessionShare,
     /// Usage last known for the accounts the chat moved away from, by
     /// account id; `None` is the usual sign-in.
     left_accounts: HashMap<Option<String>, (Usage, Option<SystemTime>)>,
@@ -72,6 +75,7 @@ impl AgentState {
                     limited: usage.limited,
                 };
                 self.usage_updated_at = Some(SystemTime::now());
+                self.share.reported(usage.session);
             }
             AgentEvent::Started { model, .. } | AgentEvent::ModelChanged(model) => {
                 self.model = Some(model.clone());
@@ -94,6 +98,10 @@ impl AgentState {
         match event {
             AgentEvent::CommandsChanged(commands) => self.commands.clone_from(commands),
             AgentEvent::ModelsChanged(models) => self.models.clone_from(models),
+            AgentEvent::TurnEnded(_) => {
+                self.share.turn_ended();
+                return false;
+            }
             _ => return false,
         }
         true
@@ -102,7 +110,10 @@ impl AgentState {
     /// A request that started now, or one the resumed conversation stored.
     fn record_cache(&mut self, event: &AgentEvent) {
         match event {
-            AgentEvent::PromptTokens(tokens) => self.cache.record(*tokens, SystemTime::now()),
+            AgentEvent::PromptTokens(tokens) => {
+                self.share.request_started();
+                self.cache.record(*tokens, SystemTime::now());
+            }
             AgentEvent::PastPromptTokens { tokens, at } => self.cache.record(*tokens, *at),
             _ => {}
         }
@@ -187,6 +198,11 @@ impl AgentState {
         self.spent = Spent::default();
     }
 
+    /// About how much of the plan's session window this chat used.
+    pub fn session_share(&self) -> Option<u8> {
+        self.share.here()
+    }
+
     /// What the conversation spent so far, once anything is known of it.
     pub fn spent(&self) -> Option<SpentTokens> {
         self.spent.so_far()
@@ -197,6 +213,7 @@ impl AgentState {
     /// conversation and the choices stay.
     pub fn change_account(&mut self, from: Option<String>, to: Option<&str>) {
         self.account = None;
+        self.share.forget();
         let left = (
             std::mem::take(&mut self.usage),
             self.usage_updated_at.take(),

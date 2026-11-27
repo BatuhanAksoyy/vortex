@@ -78,6 +78,12 @@ mod projects {
         let window = open_in(cx, backend.clone(), None, no_accounts(), None);
         assert!(has(cx, window, "start-page"));
         assert!(!has(cx, window, "activity-bar"), "nothing to show there");
+        assert!(
+            has(cx, window, "start-settings"),
+            "settings need no project"
+        );
+        assert!(has(cx, window, "start-agent-claude"), "which CLIs run");
+        assert!(has(cx, window, "start-agent-codex"));
         assert_eq!(spawned(&backend), 0);
         let brand = |cx: &mut TestAppContext| cx.read(|cx| cx.try_global().copied());
         assert_eq!(brand(cx), Some(Brand::Vortex), "no harness's yet");

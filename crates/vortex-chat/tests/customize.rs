@@ -73,7 +73,7 @@ mod customize {
             assert!(window.try_find("chat-new").is_none());
         });
         harness.with_window(cx, |window, cx| {
-            window.drag_to("chat-hidden-new_chat", "chat-spot-top", cx);
+            window.drag_to("chat-look-chip-new_chat", "chat-spot-top", cx);
         });
         assert!(current(cx).top.contains(&ChatItem::NewChat), "shown again");
 
@@ -84,6 +84,29 @@ mod customize {
         harness.with_window(cx, |window, _| {
             assert!(window.try_find("chat-look-bar").is_none());
         });
+    }
+
+    #[gpui_kit::test]
+    fn the_list_moves_items_between_its_rows(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.with_window(cx, |window, cx| window.click("chat-customize", cx));
+        harness.with_window(cx, |window, cx| {
+            window.drag_to("chat-look-chip-account", "chat-look-row-hidden", cx);
+        });
+        assert_eq!(current(cx).hidden(), [ChatItem::Account]);
+        harness.with_window(cx, |window, cx| {
+            window.drag_to("chat-look-chip-account", "chat-look-chip-context", cx);
+        });
+        let look = current(cx);
+        let context = look
+            .bottom_end
+            .iter()
+            .position(|item| *item == ChatItem::Context);
+        let account = look
+            .bottom_end
+            .iter()
+            .position(|item| *item == ChatItem::Account);
+        assert_eq!(account.map(|at| at + 1), context, "put before it");
     }
 
     #[gpui_kit::test]

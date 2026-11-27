@@ -30,8 +30,6 @@ const SAVE_DELAY: Duration = Duration::from_millis(500);
 const DEFAULT_SHARE: f32 = 0.35;
 /// Narrower, neither the chat nor a panel can be used.
 pub(super) const MIN_WIDTH: f32 = 280.;
-const SETTINGS_WIDTH_REMS: f32 = 34.;
-const MIN_SETTINGS_WIDTH: f32 = 360.;
 
 impl Workspace {
     pub(super) fn show_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
@@ -161,29 +159,8 @@ impl Workspace {
     }
 
     /// The side panel while it is open, the chats and the browser.
-    /// The work, and the settings page beside it while it is open, so
-    /// each change shows on the panels and editor as it is made.
-    pub(super) fn render_main(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
-        let work = self.render_work(window, cx);
-        let Some(settings) = self.render_settings_page() else {
-            return work;
-        };
-        let settings = resizable_panel()
-            .size(window.rem_size() * SETTINGS_WIDTH_REMS)
-            .size_range(px(MIN_SETTINGS_WIDTH)..Pixels::MAX)
-            .child(settings);
-        let work = resizable_panel().child(work);
-        // Beside the activity bar, whose gear opens it.
-        if Self::side_on_right(cx) {
-            h_resizable("work-and-settings").child(work).child(settings)
-        } else {
-            h_resizable("settings-and-work").child(settings).child(work)
-        }
-        .into_any_element()
-    }
-
-    fn render_work(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
-        if let Some(start) = self.render_start_page() {
+    pub(super) fn render_work(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
+        if let Some(start) = self.render_start_page(cx) {
             return start;
         }
         let Some(project) = self.project(cx).filter(|_| self.side_open()) else {

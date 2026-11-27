@@ -50,8 +50,8 @@ mod accounts {
         let harness = ready(cx);
         assert_eq!(last_env(&harness), Vec::new());
         assert!(
-            shown(&harness, cx, "dev@example.com · Pro"),
-            "the header names it"
+            shown(&harness, cx, "dev@example.com") && !shown(&harness, cx, "dev@example.com · Pro"),
+            "the header names it, without its plan"
         );
         click(&harness, cx, "chat-account");
         assert!(harness.with_window(cx, |window, _| {
@@ -106,7 +106,7 @@ mod accounts {
             "ready for the next message"
         );
         assert!(shown(&harness, cx, "Switched to second@example.com"));
-        assert!(shown(&harness, cx, "second@example.com · Max"));
+        assert!(shown(&harness, cx, "second@example.com"));
     }
 
     #[gpui_kit::test]
@@ -177,6 +177,24 @@ mod accounts {
     }
 
     #[gpui_kit::test]
+    fn an_account_picked_after_a_cut_turn_waits_to_be_told_to_go_on(cx: &mut TestAppContext) {
+        let harness = ready(cx);
+        click(&harness, cx, "chat-account");
+        add(&harness, cx, "first@example.com");
+        let second = add(&harness, cx, "second@example.com");
+        click(&harness, cx, "chat-account");
+        harness.type_and_send(cx, "write the parser");
+        harness.emit(cx, limited());
+        let failed = TurnOutcome::Failed("usage limit reached".into());
+        harness.emit(cx, AgentEvent::TurnEnded(failed));
+        click(&harness, cx, "chat-account");
+        click(&harness, cx, format!("chat-account-{second}"));
+        assert!(store_of(&last_env(&harness)).ends_with(&second));
+        assert_eq!(sent(&harness.commands()), Vec::<String>::new());
+        assert_eq!(harness.status(cx), Status::Idle);
+    }
+
+    #[gpui_kit::test]
     fn a_limit_between_turns_sends_nothing_on_its_own(cx: &mut TestAppContext) {
         let harness = ready(cx);
         click(&harness, cx, "chat-account");
@@ -216,7 +234,7 @@ mod accounts {
         let rows = harness.with_window(cx, |window, _| {
             window.find_all_by_label("second@example.com").len()
         });
-        assert_eq!(rows, 1);
+        assert_eq!(rows, 2, "the header's and one row");
     }
 
     #[gpui_kit::test]

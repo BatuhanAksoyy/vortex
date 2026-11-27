@@ -37,10 +37,31 @@ pub(super) fn item(
         Kind::Theme => SettingItem::new(entry.title, choice(entry, themes(entry, cx), handle)),
     };
     let item = item.keywords([entry.key]);
-    match described(entry, page) {
+    let description = match (described(entry, page), running(entry, cx)) {
+        (Some(described), Some(running)) => Some(format!("{described} {running}").into()),
+        (described, running) => described.or(running.map(SharedString::from)),
+    };
+    match description {
         Some(description) => item.description(description),
         None => item,
     }
+}
+
+/// For a CLI's program, which one runs now, so a path found on its own
+/// shows though the field is empty.
+fn running(entry: &Entry, cx: &App) -> Option<String> {
+    let programs = crate::programs::programs(cx);
+    let program = match entry.key {
+        "agents.claude_path" => programs.claude,
+        "agents.codex_path" => programs.codex,
+        _ => return None,
+    };
+    let path = program.path();
+    Some(if path.is_absolute() {
+        format!("Runs {}.", path.display())
+    } else {
+        "Not found: install it or choose its path.".to_owned()
+    })
 }
 
 /// What the entry does, and where its value comes from when not from the

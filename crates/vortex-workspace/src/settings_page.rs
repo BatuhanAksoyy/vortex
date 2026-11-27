@@ -4,6 +4,7 @@
 //! `.vortex/settings.json`, keeping their comments.
 
 mod fields;
+mod preview;
 #[cfg(test)]
 mod tests;
 
@@ -157,7 +158,11 @@ impl SettingsPage {
                     .iter()
                     .filter(|entry| entry.section == *section)
                     .map(|entry| fields::item(entry, self, &page, cx));
-                let mut group = SettingGroup::new().items(items);
+                let mut group = SettingGroup::new();
+                if let Some(id) = preview_of(*section) {
+                    group = group.item(preview::item(id));
+                }
+                let mut group = group.items(items);
                 if *section == Section::Git {
                     group = group.item(fields::commit_settings_link(&page));
                 }
@@ -166,6 +171,15 @@ impl SettingsPage {
                     .group(group)
             })
             .collect()
+    }
+}
+
+/// The sections whose changes the sample shows, with its id there.
+fn preview_of(section: Section) -> Option<&'static str> {
+    match section {
+        Section::Appearance => Some("settings-preview-appearance"),
+        Section::Editor => Some("settings-preview-editor"),
+        _ => None,
     }
 }
 

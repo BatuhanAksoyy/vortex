@@ -18,9 +18,11 @@ impl ChatView {
         self.agent.tools = Some(server);
     }
 
-    /// What the agent is told of commit messages, from its next process on.
-    pub fn set_commit_directives(&mut self, directives: Vec<String>) {
+    /// Whether Vortex commits for the agent, and what the agent is told of
+    /// commit messages, from its next process on.
+    pub fn set_commit_rules(&mut self, commits: bool, directives: Vec<String>) {
         if let Some(tools) = &mut self.agent.tools {
+            tools.commits = commits;
             tools.commit_directives = directives;
         }
     }

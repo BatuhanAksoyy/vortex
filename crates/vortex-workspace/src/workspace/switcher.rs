@@ -23,6 +23,8 @@ use crate::{chat_panel::ChatPanel, project::folder_name};
 const MENU_WIDTH: f32 = 280.;
 /// Recent folders past this many are left to the projects page.
 const RECENT_SHOWN: usize = 8;
+/// Sessions and folders past this many make the menu scroll.
+const SCROLLED_PAST: usize = 14;
 
 /// A session as the menu lists it.
 struct Shown {
@@ -73,7 +75,14 @@ impl Workspace {
                     .child(Icon::new(gpui_kit::assets::IconName::ChevronDown).in_row()),
             )
             .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
-                let menu = menu.min_w(px(MENU_WIDTH)).max_h(px(480.)).scrollable(true);
+                let menu = menu.min_w(px(MENU_WIDTH));
+                // Scrolled only when it cannot fit: a menu that fits, near
+                // the limit, would otherwise scroll by a few pixels.
+                let menu = if sessions.len() + recent.len() > SCROLLED_PAST {
+                    menu.max_h(px(560.)).scrollable(true)
+                } else {
+                    menu
+                };
                 let menu = sessions.iter().fold(menu.label("Sessions"), |menu, shown| {
                     menu.item(session_item(shown, &view))
                 });

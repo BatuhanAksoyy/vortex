@@ -241,11 +241,23 @@ mod composer {
             written: 4_998,
             output: 300,
         };
+        // Two requests that each sent the whole prompt again.
+        for written in [4_998, 0] {
+            let prompt = PromptTokens {
+                cached: 5_000,
+                written,
+                uncached: 1,
+                kept_for: None,
+            };
+            harness.emit(cx, AgentEvent::PromptTokens(prompt));
+        }
         harness.emit(cx, AgentEvent::SpentTokens(spent));
         harness.with_window(cx, |window, cx| window.click("chat-tokens", cx));
         harness.with_window(cx, |window, _| {
             let panel = window.find("chat-tokens-panel");
             assert_eq!(panel.label(), Some("15.3k tokens spent"));
+            let requests = "2 requests, each sending about 7.5k of prompt";
+            assert!(window.find_by_label(requests).visible());
         });
         harness.emit(cx, AgentEvent::ConversationReset);
         assert!(!harness.with_window(cx, |window, _| window.try_find("chat-tokens").is_some()));

@@ -1,5 +1,5 @@
 //! The window's frame around the pages: the activity bar on its side of
-//! the panels and chats, and the status bar.
+//! the panels and chats, the settings dialog over them, and the status bar.
 
 use std::path::Path;
 
@@ -13,7 +13,8 @@ use super::Workspace;
 use crate::config;
 
 impl Workspace {
-    /// The activity bar on its side of the panels and chats.
+    /// The activity bar on its side of the panels and chats, and the
+    /// settings dialog over them while it is open.
     pub(super) fn render_body(
         &self,
         window: &mut Window,
@@ -25,7 +26,7 @@ impl Workspace {
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(self.render_main(window, cx));
+            .child(self.render_work(window, cx));
         let (before, after) = if right { (None, bar) } else { (bar, None) };
         h_flex()
             .flex_1()
@@ -33,6 +34,7 @@ impl Workspace {
             .children(before)
             .child(main)
             .children(after)
+            .children(self.render_settings_dialog(window, cx))
     }
 
     pub(super) fn render_status_bar(
@@ -48,6 +50,5 @@ impl Workspace {
             .when_some(self.shown_cli_version(cx), |bar, version| {
                 bar.right(version)
             })
-            .when_some(Self::render_update(cx), StatusBar::right)
     }
 }

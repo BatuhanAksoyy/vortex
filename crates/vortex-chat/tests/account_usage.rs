@@ -51,6 +51,44 @@ mod account_usage {
     }
 
     #[gpui_kit::test]
+    fn the_panel_shows_another_account_s_usage_before_moving_to_it(cx: &mut TestAppContext) {
+        let harness = ready(cx);
+        click(&harness, cx, "chat-account");
+        add(&harness, cx, "first@example.com");
+        let second = add(&harness, cx, "second@example.com");
+        harness.emit(cx, AgentEvent::Ready(SessionInfo::default()));
+        let asked = harness.script.borrow().usage_asks.len();
+        let lane = format!("chat-account-usage-{second}");
+        let before = lane.clone();
+        let label = harness.with_window(cx, move |window, _| {
+            window.find(before).label().map(str::to_owned)
+        });
+        assert_eq!(label.as_deref(), Some("No usage reported yet"));
+        harness.script.borrow_mut().usage = Some(Usage {
+            session: Some(UsageWindow {
+                percent: 64,
+                resets_at: None,
+            }),
+            ..Usage::default()
+        });
+        // Closed and opened again.
+        click(&harness, cx, "chat-account");
+        click(&harness, cx, "chat-account");
+        assert_eq!(
+            harness.script.borrow().usage_asks.len(),
+            asked + 1,
+            "the other account, asked apart"
+        );
+        harness.with_window(cx, move |window, _| {
+            let lane = window.within(lane);
+            assert!(
+                lane.find_by_label("Session 64% used").visible(),
+                "under its name"
+            );
+        });
+    }
+
+    #[gpui_kit::test]
     fn a_refused_ask_says_so_and_is_not_repeated(cx: &mut TestAppContext) {
         let harness = ready(cx);
         click(&harness, cx, "chat-account");

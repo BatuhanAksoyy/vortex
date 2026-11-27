@@ -19,6 +19,10 @@ use vortex_chat::{AgentProcesses, ProcessesDialog, ProcessesDialogEvent};
 /// time; reading the whole process table costs a few milliseconds.
 const REFRESH: Duration = Duration::from_secs(2);
 
+/// While Vortex is in the background no one reads the figures, so they are
+/// read less often.
+const REFRESH_AWAY: Duration = Duration::from_secs(10);
+
 impl Workspace {
     pub(super) fn open_processes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let page = cx.new(|cx| ProcessesDialog::all(window, cx));
@@ -67,14 +71,19 @@ impl Workspace {
             let mut monitor = Monitor::new();
             while let Some(current) = monitor {
                 monitor = tick(&this, current, cx).await;
-                cx.background_executor().timer(REFRESH).await;
+                let wait = cx.update(next_read);
+                cx.background_executor().timer(wait).await;
             }
         })
     }
 
-    fn show_processes(&self, agents: Vec<AgentProcesses>, cx: &mut Context<Self>) {
+    fn show_processes(
+        &self,
+        (agents, own): (Vec<AgentProcesses>, Option<vortex_services::ProcessInfo>),
+        cx: &mut Context<Self>,
+    ) {
         self.processes
-            .update(cx, |processes, cx| processes.show(agents, cx));
+            .update(cx, |processes, cx| processes.show(agents, own, cx));
     }
 }
 
@@ -88,17 +97,29 @@ async fn tick(
     let roots = this.update(cx, |this, cx| this.agent_roots(cx)).ok()?;
     let (monitor, agents) = cx
         .background_spawn(async move {
-            // With no agent running there is nothing to read the table for.
-            if !roots.is_empty() {
+            // With no agent running there is nothing to read the table for,
+            // only Vortex itself.
+            if roots.is_empty() {
+                monitor.refresh_own();
+            } else {
                 monitor.refresh();
             }
+            let own = monitor.own();
             let agents = read(&monitor, roots);
-            (monitor, agents)
+            (monitor, (agents, own))
         })
         .await;
     this.update(cx, |this, cx| this.show_processes(agents, cx))
         .ok()?;
     Some(monitor)
+}
+
+fn next_read(cx: &mut App) -> Duration {
+    if cx.active_window().is_some() {
+        REFRESH
+    } else {
+        REFRESH_AWAY
+    }
 }
 
 /// The trees under each running agent, leaving out one that has ended.

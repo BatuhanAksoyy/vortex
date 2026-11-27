@@ -3,21 +3,27 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Anchor, AnyElement, Context, Focusable as _, Pixels, WeakEntity, Window,
+    Anchor, AnyElement, Context, Focusable as _, MouseButton, Pixels, TestSupportExt as _,
+    WeakEntity, Window, anchored,
     assets::IconName as Lucide,
     component::{
-        Icon, Sizable as _, Size, WindowExt as _,
+        ActiveTheme as _, Icon, Sizable as _, Size, TITLE_BAR_HEIGHT, WindowExt as _,
         button::{Button, ButtonVariants as _},
         menu::{DropdownMenu as _, PopupMenuItem},
         notification::Notification,
     },
-    px,
+    deferred, div, point, px,
 };
 use serde_json::Value;
 use vortex_settings::{Scope, ThemeMode};
 
 use super::Workspace;
 use crate::settings_page::{SettingsPage, SettingsPageEvent};
+
+/// Wide enough for a setting's text beside its control.
+const DIALOG_WIDTH: f32 = 920.;
+const DIALOG_MARGIN: f32 = 24.;
+const DIM: f32 = 0.5;
 
 impl Workspace {
     /// Shows the settings page, or closes it when it is shown.
@@ -51,7 +57,9 @@ impl Workspace {
                 this.close_settings_page(window, cx);
                 this.open_user_settings(window, cx);
             }
+            // Its sheet opens in the window's own layer, under this dialog.
             SettingsPageEvent::OpenCommitSettings => {
+                this.close_settings_page(window, cx);
                 this.commit_settings(Scope::Global, window, cx);
             }
         });
@@ -75,7 +83,7 @@ impl Workspace {
     }
 
     /// The settings or the shortcuts page, whichever is open.
-    pub(super) fn render_settings_page(&self) -> Option<AnyElement> {
+    fn render_settings_page(&self) -> Option<AnyElement> {
         if let Some((page, _)) = &self.shortcuts_page {
             return Some(page.clone().into_any_element());
         }
@@ -83,8 +91,96 @@ impl Workspace {
         Some(page.clone().into_any_element())
     }
 
-    /// The gear, sized like the activity bar's buttons.
+    /// The open settings or shortcuts page as a dialog over the window
+    /// under the title bar, which stays clear for the window's own buttons.
+    /// A click beside it closes it, as Escape does.
+    pub(super) fn render_settings_dialog(
+        &self,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> Option<AnyElement> {
+        let page = self.render_settings_page()?;
+        let theme = cx.theme();
+        let size = window.viewport_size();
+        let height = size.height - TITLE_BAR_HEIGHT;
+        let dialog = div()
+            .id("settings-dialog")
+            .test_support()
+            .occlude()
+            .w((size.width - px(DIALOG_MARGIN * 2.)).min(px(DIALOG_WIDTH)))
+            .h(height - px(DIALOG_MARGIN * 2.))
+            .overflow_hidden()
+            .rounded(theme.radius_lg)
+            .border_1()
+            .border_color(theme.border)
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(page);
+        let overlay = div()
+            .id("settings-overlay")
+            .test_support()
+            .occlude()
+            .w(size.width)
+            .h(height)
+            .flex()
+            .items_center()
+            .justify_center()
+            // Darker than the theme's overlay, made for sheets beside the
+            // work: here the work is not what is used, the dialog is.
+            .bg(gpui_kit::black().opacity(DIM))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.close_shortcuts_page(window, cx);
+                    this.close_settings_page(window, cx);
+                }),
+            )
+            .child(dialog);
+        Some(
+            deferred(
+                anchored()
+                    .position(point(px(0.), TITLE_BAR_HEIGHT))
+                    .child(overlay),
+            )
+            .with_priority(1)
+            .into_any_element(),
+        )
+    }
+
+    /// The gear, sized like the activity bar's buttons, with a dot while an
+    /// update waits and the updates' panel beside it toward the panels.
     pub(super) fn render_gear(
+        button: Pixels,
+        icon: Pixels,
+        right: bool,
+        cx: &Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let dot = Self::update_waiting(cx).then(|| {
+            div()
+                .id("activity-settings-dot")
+                .test_support()
+                .absolute()
+                .top(button * 0.18)
+                .right(button * 0.18)
+                .size(px(7.))
+                .rounded_full()
+                .bg(cx.theme().primary)
+        });
+        div()
+            .relative()
+            .child(Self::render_gear_button(button, icon, cx))
+            .children(dot)
+            .children(Self::render_update_panel(
+                if right {
+                    Anchor::BottomRight
+                } else {
+                    Anchor::BottomLeft
+                },
+                cx,
+            ))
+    }
+
+    fn render_gear_button(
         button: Pixels,
         icon: Pixels,
         cx: &Context<Self>,
@@ -97,7 +193,7 @@ impl Workspace {
             .p_0()
             .child(Icon::new(Lucide::Settings).with_size(Size::Size(icon)))
             .tooltip("Manage")
-            .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+            .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, cx| {
                 let menu = menu.min_w(px(220.));
                 let menu = menu
                     .item(item("Settings", &view, Workspace::open_settings_page))
@@ -118,11 +214,8 @@ impl Workspace {
                 .fold(menu, |menu, (shown, value, label)| {
                     menu.item(theme_item(label, value, shown == mode, &view))
                 });
-                menu.separator().item(item(
-                    "Check for Updates…",
-                    &view,
-                    Workspace::check_for_updates,
-                ))
+                menu.separator()
+                    .item(Workspace::update_menu_item(&view, cx))
             })
     }
 

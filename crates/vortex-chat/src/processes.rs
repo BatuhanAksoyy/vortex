@@ -43,6 +43,8 @@ impl AgentProcesses {
 #[derive(Default)]
 pub struct Processes {
     agents: Option<Vec<AgentProcesses>>,
+    /// Vortex's own process, apart from the agents it runs.
+    own: Option<ProcessInfo>,
 }
 
 struct SharedProcesses(Entity<Processes>);
@@ -65,10 +67,43 @@ impl Processes {
             .map(|shared| shared.0.clone())
     }
 
-    pub fn show(&mut self, agents: Vec<AgentProcesses>, cx: &mut Context<Self>) {
+    pub fn show(
+        &mut self,
+        agents: Vec<AgentProcesses>,
+        own: Option<ProcessInfo>,
+        cx: &mut Context<Self>,
+    ) {
+        let unchanged = (self.agents.as_ref()).is_some_and(|shown| looks_alike(shown, &agents))
+            && own_usage(self.own.as_ref()) == own_usage(own.as_ref());
         self.agents = Some(agents);
-        cx.notify();
+        self.own = own;
+        // A repaint redraws the whole window, long chats too, every couple
+        // of seconds while nothing runs: only a reading that shows differs.
+        if !unchanged {
+            cx.notify();
+        }
     }
+}
+
+/// What Vortex's own process uses, as shown.
+fn own_usage(own: Option<&ProcessInfo>) -> Option<String> {
+    own.map(|own| format!("{} CPU · {}", cpu(own.cpu), memory(own.memory)))
+}
+
+/// Whether `new` would show as `shown` does, numbers as they are rounded.
+fn looks_alike(shown: &[AgentProcesses], new: &[AgentProcesses]) -> bool {
+    shown.len() == new.len()
+        && shown.iter().zip(new).all(|(shown, new)| {
+            shown.title == new.title
+                && shown.processes.len() == new.processes.len()
+                && (shown.processes.iter().zip(&new.processes)).all(|(shown, new)| {
+                    shown.pid == new.pid
+                        && shown.command == new.command
+                        && shown.status == new.status
+                        && cpu(shown.cpu) == cpu(new.cpu)
+                        && memory(shown.memory) == memory(new.memory)
+                })
+        })
 }
 
 /// Whose processes a meter or page shows.
@@ -145,10 +180,12 @@ impl Render for ProcessMeter {
         let (cpu_total, memory_total) = rows::totals(&rows);
         let usage = format!("{} CPU · {}", cpu(cpu_total), memory(memory_total));
         let (id, label, tooltip) = if all {
+            let own = own_usage(self.processes.read(cx).own.as_ref())
+                .map_or_else(String::new, |own| format!("Vortex · {own}  ·  "));
             (
                 "all-processes",
-                format!("Agents · {usage}"),
-                "Every agent's processes",
+                format!("{own}Agents · {usage}"),
+                "Vortex itself, and every agent's processes",
             )
         } else {
             ("chat-processes", usage, "This chat's processes")

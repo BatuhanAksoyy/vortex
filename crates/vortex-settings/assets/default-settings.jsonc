@@ -92,9 +92,11 @@
     "commit": {
       // Regular expressions; matching lines are taken out of every commit
       // message, whoever wrote it.
-      // Vortex commits a chat's work for it: a strip over the chat counts the
+      // Vortex commits a chat's work for it: the agent commits with Vortex's
+      // commit tool, held to these rules and reviewed as set, its own
+      // `git commit` and `git push` refused; a strip over the chat counts the
       // files it changed and commits them with a button, and "trigger" may
-      // be "task_done". The agent's own commit tool works either way.
+      // be "task_done". Off, the agent uses git itself.
       "enabled": false,
       "strip": [
         "(?i)^co-authored-by:.*\\b(claude|codex|openai|anthropic)\\b",

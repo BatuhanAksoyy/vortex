@@ -19,6 +19,8 @@ use gpui_kit::{
     div, px,
 };
 
+mod row_usage;
+
 use super::ChatView;
 use crate::{
     backends::title,
@@ -37,6 +39,8 @@ struct Row {
     agent: &'static str,
     name: String,
     detail: String,
+    /// The plan usage it last reported.
+    usage: Option<row_usage::RowUsage>,
 }
 
 /// One harness's accounts.
@@ -57,6 +61,8 @@ struct Shown {
     signing_in: bool,
     error: Option<String>,
     notice: Option<String>,
+    /// Other harnesses whose CLI is missing.
+    missing: Vec<&'static str>,
 }
 
 impl ChatView {
@@ -81,29 +87,22 @@ impl ChatView {
             .content(move |_, _, cx| panel(&shown, &view, cx))
     }
 
-    /// The account in use and its plan, e.g. "dev@example.com · Pro".
-    /// An added account is named as its sign-in reported it: every account
-    /// shares one Claude Code profile, whose account details describe
-    /// whichever account signed in last.
+    /// The account in use, e.g. "dev@example.com"; its plan shows in the
+    /// panel. An added account is named as its sign-in reported it: every
+    /// account shares one Claude Code profile, whose account details
+    /// describe whichever account signed in last.
     fn current_account_label(&self, cx: &App) -> String {
-        let both = |email: &str, plan: &str| (email.to_owned(), plan.to_owned());
-        let (email, plan) = match &self.account {
-            Some(id) => self.accounts.read(cx).find(id).map_or_else(
-                || (id.clone(), String::new()),
-                |account| both(&account.email, &account.plan),
-            ),
-            None => self
-                .agent
-                .account()
-                .map_or_else(Default::default, |account| {
-                    both(&account.email, &account.plan)
-                }),
+        let email = match &self.account {
+            Some(id) => (self.accounts.read(cx).find(id))
+                .map_or_else(|| id.clone(), |account| account.email.clone()),
+            None => {
+                (self.agent.account()).map_or_else(String::new, |account| account.email.clone())
+            }
         };
-        let plan = short_plan(&plan);
-        match (email.is_empty(), plan.is_empty()) {
-            (true, _) => "Account".to_owned(),
-            (false, true) => email,
-            (false, false) => format!("{email} · {plan}"),
+        if email.is_empty() {
+            "Account".to_owned()
+        } else {
+            email
         }
     }
 
@@ -130,7 +129,7 @@ impl ChatView {
                 .small()
                 .label(label)
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.pick_account(agent, id.clone(), window, cx);
+                    this.continue_with(agent, id.clone(), window, cx);
                 })),
         )
     }
@@ -146,6 +145,19 @@ impl ChatView {
                     agent,
                     name: account.email.clone(),
                     detail: short_plan(&account.plan).to_owned(),
+                    usage: if self.account.as_deref() == Some(account.id.as_str()) {
+                        Some(row_usage::RowUsage {
+                            usage: self.agent.usage(),
+                            reported_at: self.agent.usage_updated_at(),
+                        })
+                    } else {
+                        accounts
+                            .usage(&account.id)
+                            .map(|known| row_usage::RowUsage {
+                                usage: known.usage,
+                                reported_at: Some(known.reported_at),
+                            })
+                    },
                 })
                 .collect(),
         });
@@ -158,6 +170,7 @@ impl ChatView {
             signing_in: panel.signing_in.is_some(),
             error: panel.error.clone(),
             notice: panel.notice.clone(),
+            missing: self.missing_agents(cx),
         }
     }
 }
@@ -187,6 +200,9 @@ fn panel(shown: &Shown, view: &WeakEntity<ChatView>, cx: &App) -> impl IntoEleme
                 .groups
                 .iter()
                 .map(|group| render_group(group, shown, view, cx)),
+        )
+        .children(
+            (shown.missing.iter()).map(|agent| super::install_card::missing_row(agent, view, cx)),
         )
         .child(div().my_1().h_px().bg(theme.border))
         .children(
@@ -219,6 +235,7 @@ fn render_group(
         agent: group.agent,
         name: format!("Usual {} sign-in", title(group.agent)),
         detail: String::new(),
+        usage: None,
     });
     v_flex()
         .gap_1()
@@ -265,14 +282,22 @@ fn account_row(
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .child(div().truncate().child(row.name.clone()))
                 .child(
-                    div()
-                        .truncate()
-                        .text_caption()
-                        .text_color(theme.muted_foreground)
-                        .child(row.detail.clone()),
-                ),
+                    h_flex()
+                        .gap_2()
+                        .child(div().flex_1().min_w_0().truncate().child(row.name.clone()))
+                        .child(
+                            div()
+                                .flex_none()
+                                .text_caption()
+                                .text_color(theme.muted_foreground)
+                                .child(row.detail.clone()),
+                        ),
+                )
+                // The usual sign-in's usage is the chat's own once in use.
+                .when(row.account.is_some(), |this| {
+                    this.child(row_usage::render(&row.id, row.usage.as_ref(), cx))
+                }),
         )
         .when(!current && !busy, |this| {
             this.cursor_pointer()

@@ -7,15 +7,18 @@ use vortex_agent::ToolServer;
 /// The thread's configuration for `server`. Its tools run without Codex
 /// asking: Vortex asks the user itself about what matters, such as which
 /// sites the browser may open. The user's own servers keep their rules.
+/// The commit tool is left out unless Vortex commits for the agent.
 pub fn config(server: &ToolServer) -> Value {
     let env: Map<String, Value> = (server.env.iter())
         .map(|(name, value)| (name.clone(), value.clone().into()))
         .collect();
+    let disabled: &[&str] = if server.commits { &[] } else { &["commit"] };
     json!({"mcp_servers": {&server.name: {
         "command": server.command,
         "args": server.args,
         "env": env,
         "default_tools_approval_mode": "approve",
+        "disabled_tools": disabled,
     }}})
 }
 
@@ -39,6 +42,7 @@ mod tests {
             command: "/Applications/Vortex".into(),
             args: vec!["mcp".into()],
             env: vec![("VORTEX_BRIDGE_TOKEN".into(), "abc".into())],
+            commits: true,
             commit_directives: vec!["Write in English.".into()],
         }
     }
@@ -51,6 +55,18 @@ mod tests {
         assert_eq!(vortex["args"], json!(["mcp"]));
         assert_eq!(vortex["env"]["VORTEX_BRIDGE_TOKEN"], "abc");
         assert_eq!(vortex["default_tools_approval_mode"], "approve");
+        assert_eq!(vortex["disabled_tools"], json!([]));
+        let own_git = ToolServer {
+            commits: false,
+            ..server()
+        };
+        let vortex = &super::config(&own_git)["mcp_servers"]["vortex"];
+        assert_eq!(vortex["disabled_tools"], json!(["commit"]));
+        assert!(
+            !instructions(Some(&own_git), None)
+                .unwrap()
+                .contains("git commit")
+        );
     }
 
     #[test]

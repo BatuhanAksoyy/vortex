@@ -37,6 +37,7 @@ use crate::{
 
 mod actions;
 mod activity_bar;
+mod agent_check;
 mod agent_tools;
 mod body;
 mod browsers;

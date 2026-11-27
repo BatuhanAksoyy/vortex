@@ -12,8 +12,8 @@ mod usage {
     use gpui_kit::TestAppContext;
     use gpui_kit::test::{TestQueryExt, TestWindowExt};
     use vortex_agent::{
-        Account, AgentEvent, Limited, PermissionMode, SessionCommand, SessionInfo, Usage,
-        UsageWindow,
+        Account, AgentEvent, Limited, PermissionMode, PromptTokens, SessionCommand, SessionInfo,
+        TurnOutcome, Usage, UsageWindow,
     };
     use vortex_chat::Status;
 
@@ -110,7 +110,7 @@ mod usage {
         assert!(harness.commands().contains(&SessionCommand::RefreshUsage));
         harness.emit(cx, usage(42, None));
         harness.with_window(cx, |window, _| {
-            assert!(window.find_by_label("dev@example.com · Pro").visible());
+            assert!(window.find_by_label("dev@example.com").visible());
             assert!(window.find_by_label("Session 42%").visible());
         });
         harness.commands();
@@ -119,6 +119,26 @@ mod usage {
         harness.with_window(cx, |window, _| {
             assert!(window.find("chat-usage-panel").visible());
             assert!(window.find("chat-usage-updated").visible());
+        });
+    }
+
+    #[gpui_kit::test]
+    fn the_panel_tells_this_chat_s_part_of_the_session_from_the_rest(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.emit(cx, usage(30, None));
+        harness.type_and_send(cx, "write the parser");
+        harness.emit(cx, AgentEvent::PromptTokens(PromptTokens::default()));
+        harness.emit(cx, usage(36, None));
+        harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
+        harness.emit(cx, usage(40, None));
+        // Another chat's work, after this one's turn.
+        harness.emit(cx, usage(45, None));
+        harness.with_window(cx, |window, cx| window.click("chat-usage", cx));
+        harness.with_window(cx, |window, _| {
+            let split = "About 10% in this chat, 35% elsewhere";
+            assert!(window.find_by_label(split).visible());
+            assert!(window.find("chat-usage-this-chat").visible());
         });
     }
 

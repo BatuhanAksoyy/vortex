@@ -44,6 +44,13 @@ pub struct SpentTokens {
 }
 
 impl SpentTokens {
+    /// What was not read back from the cache: new input, what was written
+    /// to the cache and what the models wrote.
+    #[must_use]
+    pub fn fresh(self) -> u64 {
+        self.input + self.written + self.output
+    }
+
     #[must_use]
     pub fn total(self) -> u64 {
         self.input + self.cached + self.written + self.output

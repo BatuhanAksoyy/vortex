@@ -182,6 +182,30 @@ mod agents {
     }
 
     #[gpui_kit::test]
+    fn the_accounts_panel_offers_a_way_to_a_missing_harness(cx: &mut TestAppContext) {
+        let (harness, _codex) = offering_codex(cx);
+        cx.update(|cx| {
+            vortex_chat::AgentSetup::set("codex", Some(vortex_chat::Setup::Missing), cx);
+        });
+        let asked = Rc::new(RefCell::new(Vec::new()));
+        let seen = asked.clone();
+        let _watch = cx.update(|cx| {
+            cx.subscribe(
+                &harness.view,
+                move |_, event: &vortex_chat::ChatEvent, _| {
+                    if let vortex_chat::ChatEvent::ChooseAgentPath(agent) = event {
+                        seen.borrow_mut().push(*agent);
+                    }
+                },
+            )
+        });
+        click(&harness, cx, "chat-account");
+        assert!(shown(&harness, cx, "chat-account-missing-codex"));
+        click(&harness, cx, "chat-account-choose-codex");
+        assert_eq!(*asked.borrow(), ["codex"]);
+    }
+
+    #[gpui_kit::test]
     fn a_missing_agent_offers_to_install_it_and_starts_once_it_is_there(cx: &mut TestAppContext) {
         let (harness, codex) = offering_codex(cx);
         codex.borrow_mut().missing = true;

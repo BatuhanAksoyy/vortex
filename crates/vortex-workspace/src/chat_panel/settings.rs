@@ -49,10 +49,10 @@ impl ChatPanel {
     pub fn settings_changed(&mut self, cx: &mut Context<Self>) {
         let settings = self.settings(cx);
         let sleep_after = settings.chat.sleep_after();
-        let directives = settings.git.commit.instructions;
+        let commit = settings.git.commit;
         self.chat.update(cx, |chat, cx| {
             chat.set_sleep_after(sleep_after, cx);
-            chat.set_commit_directives(directives);
+            chat.set_commit_rules(commit.enabled, commit.instructions);
         });
         cx.notify();
     }

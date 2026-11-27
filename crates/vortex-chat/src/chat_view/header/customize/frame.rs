@@ -142,19 +142,3 @@ pub(super) fn caption(spot: Spot, cx: &Context<ChatView>) -> impl IntoElement + 
         .text_color(cx.theme().primary)
         .child(spot.label())
 }
-
-pub(super) fn hidden_chip(item: Item, cx: &Context<ChatView>) -> AnyElement {
-    div()
-        .id(SharedString::from(format!("chat-hidden-{}", item.name())))
-        .test_support()
-        .px_2()
-        .py_0p5()
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().background)
-        .cursor_pointer()
-        .child(item.label())
-        .on_drag(DraggedItem(item), |dragged, _, _, cx| cx.new(|_| *dragged))
-        .into_any_element()
-}

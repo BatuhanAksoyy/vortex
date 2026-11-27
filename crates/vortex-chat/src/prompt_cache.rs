@@ -13,6 +13,7 @@ pub struct PromptCache {
     /// from the cache do not say, so the last one that wrote does.
     kept_for: Option<Duration>,
     total: PromptTokens,
+    requests: u64,
 }
 
 impl PromptCache {
@@ -22,6 +23,7 @@ impl PromptCache {
         self.total.cached += tokens.cached;
         self.total.written += tokens.written;
         self.total.uncached += tokens.uncached;
+        self.requests += 1;
         self.last = Some((tokens, at));
     }
 
@@ -38,6 +40,18 @@ impl PromptCache {
     pub fn warm_until(&self) -> Option<SystemTime> {
         let (_, at) = self.last?;
         Some(at + self.kept_for?)
+    }
+
+    /// How many requests the conversation's own turns made, subagents' not
+    /// counted.
+    pub fn requests(&self) -> u64 {
+        self.requests
+    }
+
+    /// The prompt an average request sent, once one was made.
+    pub fn average_prompt(&self) -> Option<u64> {
+        let total = self.total.cached + self.total.written + self.total.uncached;
+        (self.requests > 0).then(|| total / self.requests)
     }
 
     /// Whole percent of every prompt token so far read from the cache.

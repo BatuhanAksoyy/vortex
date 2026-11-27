@@ -46,6 +46,9 @@ pub enum ChatEvent {
     OpenFile(PathBuf),
     /// The user asked to install the CLI of harness `agent`, missing here.
     InstallAgent(&'static str),
+    /// The user wants to say where the CLI of harness `agent` is, as it is
+    /// not where Vortex looks.
+    ChooseAgentPath(&'static str),
     /// Customize mode changed how every chat is laid out.
     LookChanged(crate::look::ChatLook),
 }

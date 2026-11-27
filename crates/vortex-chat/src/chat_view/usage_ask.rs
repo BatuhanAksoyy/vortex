@@ -23,6 +23,9 @@ pub(super) struct UsageAsks {
     /// A process started to ask for an added account's usage. The next ask
     /// replaces it, which ends one that never answered.
     apart: Option<Task<()>>,
+    /// The asks for the other added accounts' usage, for the accounts
+    /// panel; opening it again replaces them.
+    others: Vec<Task<()>>,
 }
 
 impl UsageAsks {
@@ -30,6 +33,7 @@ impl UsageAsks {
         Self {
             _poll: cx.spawn(poll),
             apart: None,
+            others: Vec::new(),
         }
     }
 }
@@ -76,6 +80,65 @@ impl ChatView {
         }));
     }
 
+    /// Asks for the usage of every added Claude Code account the chat does
+    /// not run with, in a process of its own each, as the accounts panel
+    /// shows it. As fresh as the poll needs, since the endpoint refuses an
+    /// account asked too often; Codex reports an account's usage only in
+    /// its sessions, so its accounts show what they last reported.
+    pub(super) fn ask_others_usage(&mut self, cx: &mut Context<Self>) {
+        let claude = if self.backend.name() == "claude" {
+            self.backend.clone()
+        } else {
+            match self
+                .backends
+                .as_ref()
+                .map(|backends| backends.get("claude"))
+            {
+                Some(backend) if backend.name() == "claude" => backend,
+                _ => return,
+            }
+        };
+        let now = SystemTime::now();
+        let ids: Vec<String> = (self.accounts.read(cx).added_for("claude"))
+            .map(|account| account.id.clone())
+            .filter(|id| self.account.as_ref() != Some(id))
+            .collect();
+        let asks = ids.into_iter().filter_map(|id| {
+            let ask = (self.accounts).update(cx, |accounts, _| {
+                accounts.ask_usage(&id, now, POLLED_FRESH_FOR)
+            });
+            let UsageAsk::Apart(env) = ask else {
+                return None;
+            };
+            Some(ask_other(claude.ask_usage(env), id, cx))
+        });
+        self.usage_asks.others = asks.collect();
+    }
+
+    fn keep_other_usage(
+        &self,
+        id: &str,
+        usage: anyhow::Result<vortex_agent::Usage>,
+        cx: &mut Context<Self>,
+    ) {
+        let usage = match usage {
+            Ok(usage) => usage,
+            Err(error) => return self.usage_refused(Some(id), &error, cx),
+        };
+        let known = vortex_accounts::KnownUsage {
+            usage,
+            reported_at: SystemTime::now(),
+        };
+        let kept = self.accounts.update(cx, |accounts, cx| {
+            cx.notify();
+            accounts.set_usage(id, known)
+        });
+        if let Err(error) = kept {
+            log::warn!("cannot keep the account's usage: {error:#}");
+        }
+        cx.notify();
+    }
+
     fn usage_refused(&self, account: Option<&str>, error: &anyhow::Error, cx: &mut Context<Self>) {
         log::warn!("cannot read the account's usage: {error:#}");
         if let Some(id) = account {
@@ -101,6 +164,18 @@ impl ChatView {
         self.start_timers(&event, cx);
         cx.notify();
     }
+}
+
+/// Waits for account `id`'s usage and keeps it.
+fn ask_other(
+    asked: vortex_agent::Pending<vortex_agent::Usage>,
+    id: String,
+    cx: &mut Context<ChatView>,
+) -> Task<()> {
+    cx.spawn(async move |this, cx| {
+        let usage = asked.await;
+        let _ = this.update(cx, |this, cx| this.keep_other_usage(&id, usage, cx));
+    })
 }
 
 /// Keeps the header's usage current while the chat sits idle.

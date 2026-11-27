@@ -320,7 +320,9 @@ pub const CATALOG: &[Entry] = &[
         Git,
         "git.commit.enabled",
         "Commit a chat's work",
-        "A strip over the chat counts the files it changed and commits them.",
+        "Vortex commits for the agent: its commit tool, held to the commit rules and \
+         reviewed as set, and a strip over the chat that commits the files it changed. Off, \
+         the agent uses git itself.",
         Toggle,
     ),
     entry(

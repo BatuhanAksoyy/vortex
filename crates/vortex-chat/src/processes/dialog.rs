@@ -159,12 +159,16 @@ impl ProcessesDialog {
         } else {
             "processes"
         };
-        let summary = format!(
+        let mut summary = format!(
             "{} {count} · {} CPU · {}",
             rows.len(),
             cpu(cpu_total),
             memory(memory_total)
         );
+        let own = super::own_usage(self.processes.read(cx).own.as_ref());
+        if let (Scope::All, Some(own)) = (&self.scope, own) {
+            summary = format!("{summary}  ·  Vortex itself {own}");
+        }
         h_flex()
             .gap_3()
             .px_3()

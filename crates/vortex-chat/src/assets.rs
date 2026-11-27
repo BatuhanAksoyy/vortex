@@ -14,6 +14,7 @@ gpui_kit::assets::icon_assets!(
         BookOpen,
         Cable,
         Camera,
+        Circle,
         CircleArrowUp,
         Columns2,
         CopyMinus,
@@ -30,6 +31,7 @@ gpui_kit::assets::icon_assets!(
         GitCommitHorizontal,
         Globe,
         Image,
+        Keyboard,
         Lock,
         Maximize,
         MessageSquare,
@@ -122,5 +124,61 @@ mod tests {
         ] {
             assert!(Assets.load(path).unwrap().is_some(), "{path}");
         }
+    }
+
+    /// The icon `name`, as `Lucide::GitBranch` names it, is the file
+    /// `icons/git-branch.svg`.
+    fn icon_path(name: &str) -> String {
+        let mut path = String::from("icons/");
+        for (at, letter) in name.char_indices() {
+            if at > 0 && (letter.is_ascii_uppercase() || letter.is_ascii_digit()) {
+                path.push('-');
+            }
+            path.push(letter.to_ascii_lowercase());
+        }
+        path + ".svg"
+    }
+
+    /// The icons `text` names as `Lucide::…`.
+    fn named_icons(text: &str) -> impl Iterator<Item = String> + '_ {
+        text.split("Lucide::").skip(1).filter_map(|rest| {
+            let name: String = rest
+                .chars()
+                .take_while(char::is_ascii_alphanumeric)
+                .collect();
+            // This test's own search names no icon.
+            (!name.is_empty()).then_some(name)
+        })
+    }
+
+    fn sources(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                sources(&path, found);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                found.push(path);
+            }
+        }
+    }
+
+    /// An icon missing from both sets draws nothing, and only shows as a
+    /// "not found" error in the log.
+    #[test]
+    fn every_icon_the_code_names_is_bundled() {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut files = Vec::new();
+        sources(&crates, &mut files);
+        let missing: Vec<String> = files
+            .iter()
+            .flat_map(|file| {
+                let text = std::fs::read_to_string(file).unwrap();
+                named_icons(&text)
+                    .filter(|name| !matches!(Assets.load(&icon_path(name)), Ok(Some(_))))
+                    .map(|name| format!("{name} in {}", file.display()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(missing.is_empty(), "not bundled: {missing:?}");
     }
 }

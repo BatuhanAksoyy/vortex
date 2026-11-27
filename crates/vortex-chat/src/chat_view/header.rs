@@ -21,9 +21,12 @@ mod customize;
 
 use super::{ChatView, StripPanel};
 use crate::{
+    agent_state::tokens,
     clock,
     look::{ChatLook, Spot, UsageShown},
     scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
+    tool_format,
+    transcript::Entry,
 };
 
 const USAGE_PANEL_WIDTH: f32 = 260.;
@@ -80,6 +83,7 @@ impl ChatView {
             UsageTimes {
                 updated: self.agent.usage_updated_at(),
                 refused_until: self.usage_refused_until(cx),
+                this_chat: self.this_chat(),
             },
             self.is_open(StripPanel::Usage),
             cx.entity().downgrade(),
@@ -90,6 +94,29 @@ impl ChatView {
 }
 
 impl ChatView {
+    /// What this chat did with the plan, for the usage panel.
+    fn this_chat(&self) -> ThisChat {
+        let mut files = std::collections::HashSet::new();
+        for row in 0..self.transcript.len() {
+            let Some((_, Entry::Tool { call, result })) = self.transcript.entry(row) else {
+                continue;
+            };
+            let done = result.as_ref().is_some_and(|result| !result.is_error);
+            let path = call.input["file_path"]
+                .as_str()
+                .or(call.input["path"].as_str());
+            if done && tool_format::edit_diff(&call.name, &call.input).is_some() {
+                files.extend(path);
+            }
+        }
+        ThisChat {
+            share: self.agent.session_share(),
+            turns: self.transcript.turns(),
+            tokens: self.agent.spent(),
+            files: files.len(),
+        }
+    }
+
     /// The folder the agent works in, which opens the projects page.
     fn project_button(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
         let name = self.cwd.file_name().unwrap_or(self.cwd.as_os_str());
@@ -115,6 +142,17 @@ impl ChatView {
 struct UsageTimes {
     updated: Option<SystemTime>,
     refused_until: Option<SystemTime>,
+    this_chat: ThisChat,
+}
+
+/// What this chat did: about how much of the session window it used, and
+/// what for.
+#[derive(Clone, Copy)]
+struct ThisChat {
+    share: Option<u8>,
+    turns: usize,
+    tokens: Option<vortex_agent::SpentTokens>,
+    files: usize,
 }
 
 fn usage_meter(
@@ -180,7 +218,7 @@ fn meter_label(usage: &Usage, shown: UsageShown) -> Option<(String, u8)> {
 }
 
 /// What the long window is called: weekly, or monthly for a 30-day one.
-fn long_name(usage: &Usage) -> &'static str {
+pub(super) fn long_name(usage: &Usage) -> &'static str {
     match usage.long_window_days {
         Some(28..=31) => "Monthly",
         Some(_) => "Long",
@@ -206,13 +244,14 @@ fn usage_panel(usage: Usage, times: UsageTimes, cx: &gpui_kit::App) -> impl Into
         .children(
             usage
                 .session
-                .map(|w| usage_row("Current session", w, now, cx)),
+                .map(|w| usage_row("Current session", w, times.this_chat.share, now, cx)),
         )
         .children(
             usage
                 .weekly
-                .map(|w| usage_row(long_name(&usage), w, now, cx)),
+                .map(|w| usage_row(long_name(&usage), w, None, now, cx)),
         )
+        .child(this_chat(times.this_chat, cx))
         .when(usage.session.is_none() && usage.weekly.is_none(), |this| {
             this.child(
                 div()
@@ -241,9 +280,12 @@ fn usage_panel(usage: Usage, times: UsageTimes, cx: &gpui_kit::App) -> impl Into
         }))
 }
 
+/// A window's bar; `here`, this chat's part of it, shows at its end in the
+/// accent color, after what the account used elsewhere.
 fn usage_row(
     name: &'static str,
     window: UsageWindow,
+    here: Option<u8>,
     now: SystemTime,
     cx: &gpui_kit::App,
 ) -> impl IntoElement + use<> {
@@ -252,6 +294,10 @@ fn usage_row(
     let resets = window
         .resets_at
         .map(|at| format!("Resets {}", clock::reset_label(at, now)));
+    let here = here.map(|here| here.min(window.percent));
+    let elsewhere = window.percent - here.unwrap_or(0);
+    let part = |percent: u8| relative(f32::from(percent.min(100)) / 100.);
+    let split = here.map(|here| format!("About {here}% in this chat, {elsewhere}% elsewhere"));
     v_flex()
         .gap_1()
         .text_sm()
@@ -263,19 +309,26 @@ fn usage_row(
             ),
         )
         .child(
-            div()
+            h_flex()
                 .h(px(6.))
                 .w_full()
+                .overflow_hidden()
                 .rounded_full()
                 .bg(theme.muted)
-                .child(
-                    div()
-                        .h_full()
-                        .rounded_full()
-                        .bg(color)
-                        .w(relative(f32::from(window.percent) / 100.)),
+                .child(div().flex_none().h_full().bg(color).w(part(elsewhere)))
+                .children(
+                    here.map(|here| div().flex_none().h_full().bg(theme.primary).w(part(here))),
                 ),
         )
+        .children(split.map(|text| {
+            div()
+                .id("chat-usage-split")
+                .test_support()
+                .aria_label(gpui_kit::SharedString::from(text.clone()))
+                .text_caption()
+                .text_color(theme.muted_foreground)
+                .child(text)
+        }))
         .children(resets.map(|text| {
             div()
                 .text_caption()
@@ -284,7 +337,37 @@ fn usage_row(
         }))
 }
 
-fn level_color(percent: u8, cx: &gpui_kit::App) -> Hsla {
+/// The chat's turns, tokens and changed files, which are what used its
+/// part of the plan.
+fn this_chat(this_chat: ThisChat, cx: &gpui_kit::App) -> impl IntoElement + use<> {
+    let plural = |count: usize, one: &str| {
+        if count == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{count} {one}s")
+        }
+    };
+    let mut parts = vec![plural(this_chat.turns, "message")];
+    parts.extend(this_chat.tokens.map(|spent| {
+        let (fresh, cached) = (tokens(spent.fresh()), tokens(spent.cached));
+        format!("{fresh} new tokens, {cached} read from cache")
+    }));
+    parts.push(format!("{} changed", plural(this_chat.files, "file")));
+    v_flex()
+        .id("chat-usage-this-chat")
+        .test_support()
+        .gap_0p5()
+        .text_sm()
+        .child("This chat")
+        .child(
+            div()
+                .text_caption()
+                .text_color(cx.theme().muted_foreground)
+                .child(parts.join(" · ")),
+        )
+}
+
+pub(super) fn level_color(percent: u8, cx: &gpui_kit::App) -> Hsla {
     match percent {
         0..80 => cx.theme().muted_foreground,
         80..100 => cx.theme().warning,

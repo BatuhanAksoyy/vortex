@@ -1,12 +1,14 @@
 //! What a chat shows in place of its transcript while its harness's CLI is
-//! missing: which one, and a button that installs it.
+//! missing: which one, and buttons that install it or say where it is. The
+//! accounts panel offers the same for another harness's missing CLI.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Context, TestSupportExt as _, Window,
+    AnyElement, App, Context, TestSupportExt as _, WeakEntity, Window,
     component::{
         ActiveTheme as _, Disableable as _, Sizable as _,
         button::{Button, ButtonVariants as _},
+        h_flex,
         spinner::Spinner,
         v_flex,
     },
@@ -56,6 +58,13 @@ impl ChatView {
             })
             .disabled(installing)
             .on_click(cx.listener(move |_, _, _, cx| cx.emit(ChatEvent::InstallAgent(agent))));
+        let choose = Button::new("chat-choose-agent-path")
+            .ghost()
+            .small()
+            .label("Choose Path…")
+            .on_click(cx.listener(move |_, _, _, cx| {
+                cx.emit(ChatEvent::ChooseAgentPath(agent));
+            }));
         let card = v_flex()
             .id("chat-install")
             .test_support()
@@ -70,10 +79,13 @@ impl ChatView {
                     .child(format!("{name} is not installed")),
             )
             .child(note(
-                format!("Vortex runs {name} for this chat. Install it, then send your message."),
+                format!(
+                    "Vortex runs {name} for this chat. Install it, or choose where it is if it \
+                     is installed somewhere Vortex does not look."
+                ),
                 cx,
             ))
-            .child(button)
+            .child(h_flex().gap_2().child(button).child(choose))
             .when(installing, |card| card.child(Spinner::new().small()))
             .children(match setup {
                 Setup::Failed(why) => Some(note(why, cx)),
@@ -83,6 +95,55 @@ impl ChatView {
             .into_any_element();
         Some(card)
     }
+}
+
+/// In the accounts panel, another harness whose CLI is missing, with the
+/// same two ways out as the install card, as it cannot sign in without it.
+pub(super) fn missing_row(
+    agent: &'static str,
+    view: &WeakEntity<ChatView>,
+    cx: &App,
+) -> impl IntoElement + use<> {
+    let installing = AgentSetup::of(agent, cx) == Some(Setup::Installing);
+    let emit = |event: ChatEvent| {
+        let view = view.clone();
+        move |_: &gpui_kit::ClickEvent, _: &mut Window, cx: &mut App| {
+            let _ = view.update(cx, |_, cx| cx.emit(event.clone()));
+        }
+    };
+    v_flex()
+        .id(format!("chat-account-missing-{agent}"))
+        .test_support()
+        .gap_1()
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("{} is not installed.", title(agent))),
+        )
+        .child(
+            h_flex()
+                .gap_1()
+                .child(
+                    Button::new(format!("chat-account-install-{agent}"))
+                        .ghost()
+                        .xsmall()
+                        .label(if installing {
+                            "Installing…"
+                        } else {
+                            "Install"
+                        })
+                        .disabled(installing)
+                        .on_click(emit(ChatEvent::InstallAgent(agent))),
+                )
+                .child(
+                    Button::new(format!("chat-account-choose-{agent}"))
+                        .ghost()
+                        .xsmall()
+                        .label("Choose Path…")
+                        .on_click(emit(ChatEvent::ChooseAgentPath(agent))),
+                ),
+        )
 }
 
 fn note(text: String, cx: &App) -> impl IntoElement {

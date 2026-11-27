@@ -19,8 +19,9 @@ use gpui_kit::{
 };
 
 mod frame;
+mod rows;
 
-use frame::{DraggedItem, caption, editable, hidden_chip};
+use frame::{DraggedItem, caption, editable};
 
 use crate::chat_view::{ChatEvent, ChatView};
 use crate::{
@@ -202,7 +203,6 @@ impl ChatView {
         }
         let theme = cx.theme();
         let brand = Brand::of(self.backend.name());
-        let hidden = look.hidden().into_iter().map(|item| hidden_chip(item, cx));
         let bar = v_flex()
             .id("chat-look-bar")
             .test_support()
@@ -217,8 +217,9 @@ impl ChatView {
                 h_flex()
                     .gap_2()
                     .child(div().flex_1().min_w_0().child(
-                        "Drag an item onto another to put it before it, or onto a \
-                             bar's free end. The ⋯ button moves or hides it without a drag.",
+                        "Drag an item onto another to put it before it, or onto a row's \
+                         free end: in the list below, or on the bars themselves. The ⋯ \
+                         button moves or hides one without a drag.",
                     ))
                     .child(
                         Button::new("chat-look-reset")
@@ -234,14 +235,7 @@ impl ChatView {
                             })),
                     ),
             )
-            .child(labelled(
-                "Hidden",
-                h_flex()
-                    .flex_wrap()
-                    .gap_1()
-                    .children(hidden)
-                    .into_any_element(),
-            ))
+            .child(rows::rows(&look, cx))
             .child(labelled("Usage", Self::usage_choice(&look, cx)))
             .child(labelled(
                 brand.title(),
@@ -308,6 +302,6 @@ impl ChatView {
 fn labelled(label: &'static str, element: AnyElement) -> impl IntoElement {
     h_flex()
         .gap_3()
-        .child(div().w(px(88.)).flex_none().child(label))
+        .child(div().w(px(120.)).flex_none().child(label))
         .child(element)
 }

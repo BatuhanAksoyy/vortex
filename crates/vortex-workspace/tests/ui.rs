@@ -308,14 +308,12 @@ mod workspace {
         assert!(has(cx, window, "activity-settings"));
         press(cx, window, &primary(","));
         assert!(has(cx, window, "settings-page"));
+        assert!(has(cx, window, "settings-preview-appearance"), "a sample");
+        assert!(has(cx, window, "chat"), "the work stays under it");
+        let [page, chat, _] = bounds(cx, window, ["settings-dialog", "chat", "activity-bar"]);
         assert!(
-            has(cx, window, "chat"),
-            "beside the work, which shows each change"
-        );
-        let [bar, page, chat] = bounds(cx, window, ["activity-bar", "settings-page", "chat"]);
-        assert!(
-            bar.left() < page.left() && page.right() <= chat.left(),
-            "by the gear"
+            page.left() < chat.right() && chat.left() < page.right(),
+            "over the work: {page:?} {chat:?}"
         );
         press(cx, window, "escape");
         assert!(!has(cx, window, "settings-page"));

@@ -2,13 +2,14 @@
 //! Each row's text is selectable on its own and takes part in the window's
 //! selection, so a drag across rows copies them without their numbers.
 //! Long lines wrap: the box is as wide as the chat and does not scroll
-//! sideways.
+//! sideways. A copy button in its corner, shown while the pointer is over
+//! it, copies every line, those left out of view too.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Pixels, TestSupportExt,
     base::SelectableText,
-    component::{ActiveTheme, h_flex, v_flex},
+    component::{ActiveTheme, clipboard::Clipboard, h_flex, v_flex},
     div, px,
 };
 use vortex_agent::Hunk;
@@ -24,6 +25,7 @@ const MAX_HEIGHT: f32 = 168.;
 const GUTTER_WIDTH: f32 = 36.;
 /// About one digit of the monospace font at its usual size.
 const DIGIT_WIDTH: f32 = 8.5;
+const COPY_GROUP: &str = "tool-output";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineKind {
@@ -135,6 +137,18 @@ pub fn render(entry: EntryId, lines: &[CodeLine], numbered: bool, cx: &App) -> A
                         .child(row_text(entry, index, shown_text(line, marker, signed))),
                 )
         });
+    let rows = v_flex().py_1().children(rows).children(left_out(lines, cx));
+    div()
+        .relative()
+        .group(COPY_GROUP)
+        .child(scrolled(entry, rows, cx))
+        .child(copy_button(entry, lines))
+        .into_any_element()
+}
+
+/// The box itself, which scrolls once its rows pass `MAX_HEIGHT`.
+fn scrolled(entry: EntryId, rows: gpui_kit::Div, cx: &App) -> impl IntoElement + use<> {
+    let theme = cx.theme();
     div()
         .id(("tool-output", entry))
         .test_support()
@@ -146,8 +160,23 @@ pub fn render(entry: EntryId, lines: &[CodeLine], numbered: bool, cx: &App) -> A
         .bg(theme.secondary)
         .text_sm()
         .font_family(theme.mono_font_family.clone())
-        .child(v_flex().py_1().children(rows).children(left_out(lines, cx)))
-        .into_any_element()
+        .child(rows)
+}
+
+/// Every line's text, at the box's top right while the pointer is over it.
+fn copy_button(entry: EntryId, lines: &[CodeLine]) -> impl IntoElement + use<> {
+    let all: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
+    div()
+        .absolute()
+        .top_1()
+        .right_1()
+        .opacity(0.)
+        .group_hover(COPY_GROUP, |style| style.opacity(1.))
+        .child(
+            Clipboard::new(("tool-output-copy", entry))
+                .tooltip("Copy")
+                .value(all.join("\n")),
+        )
 }
 
 /// A row's text, placed in reading order: the window copies a selection

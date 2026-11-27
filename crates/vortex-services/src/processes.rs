@@ -56,6 +56,20 @@ impl Monitor {
             .refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
     }
 
+    /// Reads Vortex's own process again, for when the whole table is not.
+    pub fn refresh_own(&mut self) {
+        let kind = ProcessRefreshKind::nothing().with_memory().with_cpu();
+        let own = [Pid::from_u32(std::process::id())];
+        self.system
+            .refresh_processes_specifics(ProcessesToUpdate::Some(&own), true, kind);
+    }
+
+    /// Vortex's own process, as last refreshed.
+    #[must_use]
+    pub fn own(&self) -> Option<ProcessInfo> {
+        self.info(std::process::id(), 0)
+    }
+
     /// Process `root` and every process under it, each after its parent and
     /// children in the order they started; empty if `root` is gone.
     #[must_use]
@@ -163,6 +177,15 @@ mod tests {
             [(10, 0), (11, 1), (13, 2), (12, 1)]
         );
         assert_eq!(descendants(99, &parents), [(99, 0)]);
+    }
+
+    #[test]
+    fn vortex_s_own_process_is_read_alone() {
+        let mut monitor = Monitor::new().unwrap();
+        monitor.refresh_own();
+        let own = monitor.own().unwrap();
+        assert_eq!(own.pid, std::process::id());
+        assert!(own.memory > 0);
     }
 
     #[test]

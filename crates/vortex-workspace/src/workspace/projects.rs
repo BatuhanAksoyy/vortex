@@ -192,7 +192,7 @@ impl Workspace {
     }
 
     /// The folders to choose from, in place of the chats while none is open.
-    pub(super) fn render_start_page(&self) -> Option<AnyElement> {
+    pub(super) fn render_start_page(&self, cx: &Context<Self>) -> Option<AnyElement> {
         let (page, _) = self.start_page.as_ref()?;
         self.active_chat.is_none().then(|| {
             v_flex()
@@ -203,6 +203,7 @@ impl Workspace {
                 .items_center()
                 .justify_center()
                 .child(page.clone())
+                .child(Self::render_agent_check(cx))
                 .into_any_element()
         })
     }

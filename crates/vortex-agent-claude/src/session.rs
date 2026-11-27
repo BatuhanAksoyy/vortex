@@ -41,6 +41,9 @@ pub(crate) const ARGS: &[&str] = &[
 
 pub(crate) use vortex_agent::PARENT_SESSION_VARS;
 
+/// Claude Code's switch for loading MCP tools' schemas only when asked for.
+const TOOL_SEARCH: &str = "ENABLE_TOOL_SEARCH";
+
 /// Keeps a few kilobytes of stderr for the exit message.
 const STDERR_TAIL_BYTES: usize = 4096;
 
@@ -81,7 +84,7 @@ impl ClaudeBackend {
 /// Vortex's tools and what another harness handed over, as arguments.
 fn extra_args(spec: &SessionSpec) -> Vec<String> {
     match (&spec.tools, &spec.handoff) {
-        (Some(server), handoff) => tool_server::args(server, handoff.as_deref()).into(),
+        (Some(server), handoff) => tool_server::args(server, handoff.as_deref()),
         (None, Some(handoff)) => vec!["--append-system-prompt".to_owned(), handoff.clone()],
         (None, None) => Vec::new(),
     }
@@ -132,6 +135,12 @@ impl AgentBackend for ClaudeBackend {
             .kill_on_drop(true);
         for var in PARENT_SESSION_VARS {
             command.env_remove(var);
+        }
+        // Vortex's tools then cost their names until the model looks one
+        // up, not their whole schemas in every turn; the user's own choice
+        // in the environment stands.
+        if std::env::var_os(TOOL_SEARCH).is_none() {
+            command.env(TOOL_SEARCH, "true");
         }
         let child = command
             .spawn()

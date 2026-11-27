@@ -133,6 +133,8 @@ impl Workspace {
         cx: &Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         let layout = &config::settings(cx).layout;
+        // Without a project the pages have nothing to show; the start page
+        // offers the gear's settings and updates itself.
         if self.side_panel.hidden || !layout.activity_bar || self.project(cx).is_none() {
             return None;
         }
@@ -178,6 +180,7 @@ impl Workspace {
             .child(div().flex().justify_center().child(Self::render_gear(
                 width * BUTTON_SHARE,
                 width * ICON_SHARE,
+                right,
                 cx,
             )))
             .child(Self::render_bar_edge(right, cx));

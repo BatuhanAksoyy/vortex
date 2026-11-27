@@ -39,7 +39,7 @@ pub fn click(harness: &Harness, cx: &mut TestAppContext, id: impl Into<String>) 
 pub fn shown(harness: &Harness, cx: &mut TestAppContext, label: &str) -> bool {
     let label = label.to_owned();
     harness.with_window(cx, move |window, _| {
-        window.try_find_by_label(&label).is_some()
+        !window.find_all_by_label(&label).is_empty()
     })
 }
 

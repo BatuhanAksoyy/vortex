@@ -71,6 +71,16 @@ impl ChatView {
         std::iter::once(own).chain(others).collect()
     }
 
+    /// The other harnesses whose CLI is missing, which are not offered.
+    pub(super) fn missing_agents(&self, cx: &gpui_kit::App) -> Vec<&'static str> {
+        let own = self.backend.name();
+        let others = self.backends.iter().flat_map(Backends::iter);
+        others
+            .map(|backend| backend.name())
+            .filter(|name| *name != own && AgentSetup::is_missing(name, cx))
+            .collect()
+    }
+
     /// What the empty chat calls the agent: Claude, not Claude Code.
     pub(crate) fn agent_short_name(&self) -> &'static str {
         match self.backend.name() {

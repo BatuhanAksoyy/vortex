@@ -1,6 +1,7 @@
 //! Ctrl+F (Cmd+F on macOS) finds text in the conversation: messages, the
 //! agent's text and tool calls, tool output when asked, and goes through
-//! the matches with Enter and Shift+Enter.
+//! the matches with Enter and Shift+Enter. Once the last message the user
+//! sent scrolls out of view, it stays pinned over the transcript.
 
 // Inside a `cfg(test)` module so helpers may `expect`, like unit tests.
 #[cfg(test)]
@@ -147,5 +148,52 @@ mod find {
         assert!(!sent);
         assert_eq!(harness.status(cx), Status::Idle);
         assert!(labelled(&harness, cx, "2 of 2"));
+    }
+}
+
+#[cfg(test)]
+mod pinned {
+    use gpui_kit::TestAppContext;
+    use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
+    use serde_json::json;
+    use vortex_agent::{AgentEvent, ToolCall, TurnOutcome};
+
+    use super::common::Harness;
+
+    fn pinned(harness: &Harness, cx: &mut TestAppContext) -> bool {
+        harness.with_window(cx, |window, _| {
+            window.try_find("chat-pinned-prompt").is_some()
+        })
+    }
+
+    #[gpui_kit::test]
+    fn the_last_message_stays_pinned_once_it_scrolls_away(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.type_and_send(cx, "Fix the build\nand the tests");
+        for call in 0..80 {
+            harness.emit(
+                cx,
+                AgentEvent::ToolCall(ToolCall {
+                    id: format!("tool-{call}"),
+                    parent: None,
+                    name: "Bash".into(),
+                    input: json!({ "command": format!("echo {call}") }),
+                }),
+            );
+        }
+        harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
+        // The transcript follows its end, which leaves the message above.
+        harness.with_window(cx, gpui_kit::test::TestWindowExt::render_frame);
+        assert!(pinned(&harness, cx), "the message is out of view");
+        assert!(harness.with_window(cx, |window, _| {
+            !window
+                .find_all_by_label("Your last message: Fix the build")
+                .is_empty()
+        }));
+        harness.with_window(cx, |window, cx| {
+            window.click("chat-pinned-prompt", cx);
+            window.render_frame(cx);
+        });
+        assert!(!pinned(&harness, cx), "back at the message");
     }
 }

@@ -44,7 +44,7 @@ impl Workspace {
         cx.notify();
     }
 
-    fn close_shortcuts_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn close_shortcuts_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.shortcuts_page.take().is_some() {
             self.focus_handle.focus(window, cx);
             cx.notify();

@@ -4,7 +4,8 @@ use serde_json::{Map, Value, json};
 use vortex_agent::ToolServer;
 
 /// The CLI's settings while Vortex commits: no line crediting Claude, and its
-/// own `git commit` and `git push` refused.
+/// own `git commit` and `git push` refused. A deny rule holds in every
+/// permission mode, bypass too, so it is given only then.
 fn settings() -> Value {
     json!({
         "attribution": {"commit": "", "pr": ""},
@@ -19,7 +20,7 @@ fn settings() -> Value {
 /// about what matters, such as which sites the browser may open.
 /// The CLI's arguments for `server`; `handoff` goes after its instructions,
 /// as the CLI takes one appended prompt.
-pub(crate) fn args(server: &ToolServer, handoff: Option<&str>) -> [String; 8] {
+pub(crate) fn args(server: &ToolServer, handoff: Option<&str>) -> Vec<String> {
     let env: Map<String, Value> = server
         .env
         .iter()
@@ -31,7 +32,7 @@ pub(crate) fn args(server: &ToolServer, handoff: Option<&str>) -> [String; 8] {
         "args": server.args,
         "env": env,
     }}});
-    [
+    let mut args = vec![
         "--mcp-config".to_owned(),
         config.to_string(),
         "--allowedTools".to_owned(),
@@ -41,9 +42,16 @@ pub(crate) fn args(server: &ToolServer, handoff: Option<&str>) -> [String; 8] {
             || server.instructions(),
             |handoff| format!("{}\n\n{handoff}", server.instructions()),
         ),
-        "--settings".to_owned(),
-        settings().to_string(),
-    ]
+    ];
+    if server.commits {
+        args.extend(["--settings".to_owned(), settings().to_string()]);
+    } else {
+        args.extend([
+            "--disallowedTools".to_owned(),
+            format!("mcp__{}__commit", server.name),
+        ]);
+    }
+    args
 }
 
 #[cfg(test)]
@@ -57,6 +65,7 @@ mod tests {
             command: "/Applications/Vortex".into(),
             args: vec!["mcp".into()],
             env: vec![("VORTEX_BRIDGE_TOKEN".into(), "abc".into())],
+            commits: true,
             commit_directives: vec!["Write in English.".into()],
         };
         let [
@@ -68,7 +77,7 @@ mod tests {
             told,
             flag_settings,
             settings,
-        ] = args(&server, None);
+        ] = <[String; 8]>::try_from(args(&server, None)).unwrap();
         assert_eq!(
             (prompt.as_str(), flag_settings.as_str()),
             ("--append-system-prompt", "--settings")
@@ -87,5 +96,20 @@ mod tests {
         assert_eq!(vortex["command"], "/Applications/Vortex");
         assert_eq!(vortex["env"]["VORTEX_BRIDGE_TOKEN"], "abc");
         assert_eq!(allowed, "mcp__vortex");
+
+        let own_git = ToolServer {
+            commits: false,
+            ..server
+        };
+        let args = args(&own_git, None);
+        assert!(
+            !args.contains(&"--settings".to_owned()),
+            "git is not refused"
+        );
+        assert_eq!(
+            args[args.len() - 2..],
+            ["--disallowedTools", "mcp__vortex__commit"]
+        );
+        assert!(!args[5].contains("git commit"), "{}", args[5]);
     }
 }

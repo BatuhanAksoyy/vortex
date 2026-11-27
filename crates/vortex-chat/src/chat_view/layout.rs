@@ -1,14 +1,17 @@
 //! The chat panel's layout, after the Claude Code VS Code panel: a title
 //! bar (in `header`), the transcript timeline, and the composer (in
-//! `composer`) or the permission prompt in its place.
+//! `composer`) or the permission prompt in its place. Once the last message
+//! the user sent scrolls out of view, it stays pinned over the transcript.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Context, ExternalPaths, StyleRefinement, TestSupportExt, Window, canvas,
+    AnyElement, Context, ExternalPaths, SharedString, StyleRefinement, TestSupportExt, Window,
+    canvas,
     component::{
         ActiveTheme,
         input::Search,
         message_scroller::{MessageScroller, MessageScrollerState},
+        tooltip::Tooltip,
         v_flex,
     },
     div, px,
@@ -18,7 +21,7 @@ use super::ChatView;
 use crate::{
     entry_view::{self, EntryContext},
     spinner,
-    transcript::Status,
+    transcript::{Entry, Status},
 };
 
 impl ChatView {
@@ -63,7 +66,58 @@ impl ChatView {
             .min_h_0()
             .child(self.width_watch())
             .child(list)
+            .children(self.render_pinned_prompt(cx))
             .into_any_element()
+    }
+
+    /// The last message the user sent, while it is above the transcript's
+    /// view; a click scrolls back to it. Read each frame, as scrolling
+    /// redraws the window anyway.
+    fn render_pinned_prompt(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let row = (0..self.transcript.len())
+            .rev()
+            .find(|row| matches!(self.transcript.entry(*row), Some((_, Entry::User(_)))))?;
+        let Some((_, Entry::User(message))) = self.transcript.entry(row) else {
+            return None;
+        };
+        if self.scroller.read(cx).logical_scroll_top().item_ix <= row {
+            return None;
+        }
+        let line = message
+            .text
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())?;
+        let theme = cx.theme();
+        let scroller = self.scroller.clone();
+        let hover = theme.list_hover;
+        let pinned = div()
+            .id("chat-pinned-prompt")
+            .test_support()
+            .aria_label(SharedString::from(format!("Your last message: {line}")))
+            .absolute()
+            .top_0()
+            .left_0()
+            .right_0()
+            .mx_4()
+            .mt_1()
+            .px_3()
+            .py_1p5()
+            .rounded(theme.radius)
+            .border_1()
+            .border_color(theme.border)
+            .bg(theme.secondary)
+            .shadow_sm()
+            .cursor_pointer()
+            .hover(move |style| style.bg(hover))
+            .text_sm()
+            .truncate()
+            .child(line.to_owned())
+            .tooltip(|window, cx| Tooltip::new("Scroll to this message").build(window, cx))
+            .on_click(move |_, _, cx| {
+                scroller.update(cx, |scroller, cx| scroller.scroll_to_item(row, cx));
+            });
+        Some(pinned.into_any_element())
     }
 
     /// Remeasures every row when the transcript's width changes, and counts

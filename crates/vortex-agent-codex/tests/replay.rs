@@ -282,6 +282,7 @@ mod replay {
             command: "/Applications/Vortex".into(),
             args: vec!["mcp".into()],
             env: vec![("VORTEX_BRIDGE_TOKEN".into(), "abc".into())],
+            commits: true,
             commit_directives: Vec::new(),
         };
         let mut translator = Translator::new(Start {

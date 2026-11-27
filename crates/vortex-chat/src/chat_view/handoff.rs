@@ -71,9 +71,24 @@ impl ChatView {
     }
 
     /// Moves the chat to account `id` of harness `agent`, or to that
-    /// harness's usual sign-in for `None`: on its own harness the
-    /// conversation resumes, on another one it is handed off.
+    /// harness's usual sign-in for `None`, and nothing more: a turn the
+    /// usage limit cut off waits for the limit notice's button.
     pub(super) fn pick_account(
+        &mut self,
+        agent: &str,
+        id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let cut = std::mem::take(&mut self.cut_by_limit);
+        self.continue_with(agent, id, window, cx);
+        self.cut_by_limit |= cut;
+    }
+
+    /// Moves the chat as [`Self::pick_account`] does and takes up a turn
+    /// the usage limit cut off: on its own harness the conversation
+    /// resumes, on another one it is handed off.
+    pub(super) fn continue_with(
         &mut self,
         agent: &str,
         id: Option<String>,

@@ -1,6 +1,7 @@
 //! The context meter in the composer strip and the panel it opens: how full
-//! the context window is and what fills it, as the agent breaks it down.
-//! `/context` opens the same panel.
+//! the context window is and what fills it, as the agent breaks it down,
+//! each part in its own color on the bar and beside its row. `/context`
+//! opens the same panel.
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -63,13 +64,16 @@ fn context_panel(
             .iter()
             .filter(move |category| category.kind == kind)
     };
-    let fill = relative(f32::from(u8::try_from(percent.min(100)).unwrap_or(100)) / 100.);
+    let palette = palette(cx);
+    let used: Vec<(&ContextCategory, Hsla)> = of_kind(ContextKind::Used)
+        .zip(palette.iter().copied().cycle())
+        .collect();
     let reserved: Vec<_> = of_kind(ContextKind::Buffer)
         .chain(of_kind(ContextKind::Free))
-        .map(|category| category_row(category, true, cx))
+        .map(|category| category_row(category, None, cx))
         .collect();
     let deferred: Vec<_> = of_kind(ContextKind::Deferred)
-        .map(|category| category_row(category, true, cx))
+        .map(|category| category_row(category, None, cx))
         .collect();
     v_flex()
         .id("chat-context-panel")
@@ -84,15 +88,11 @@ fn context_panel(
                 tokens(usage.max_tokens)
             )),
         ))
-        .child(
-            div()
-                .h(px(6.))
-                .w_full()
-                .rounded_full()
-                .bg(theme.muted)
-                .child(div().h_full().rounded_full().bg(color).w(fill)),
+        .child(bar(&used, usage, percent, cx))
+        .children(
+            used.iter()
+                .map(|(category, color)| category_row(category, Some(*color), cx)),
         )
-        .children(of_kind(ContextKind::Used).map(|category| category_row(category, false, cx)))
         .when(!reserved.is_empty(), |this| {
             this.child(div().h_px().bg(theme.border)).children(reserved)
         })
@@ -108,16 +108,82 @@ fn context_panel(
         })
 }
 
-fn category_row(
-    category: &ContextCategory,
-    muted: bool,
+/// The window's fill, a segment per part in that part's color. Without a
+/// breakdown it fills as one, in the meter's color.
+fn bar(
+    used: &[(&ContextCategory, Hsla)],
+    usage: &ContextUsage,
+    percent: u64,
     cx: &gpui_kit::App,
 ) -> impl IntoElement + use<> {
+    // In thousandths, which the bar draws as finely as it can.
+    let share = |tokens: u64| {
+        let thousandths = tokens.saturating_mul(1000) / usage.max_tokens.max(1);
+        relative(f32::from(u16::try_from(thousandths.min(1000)).unwrap_or(1000)) / 1000.)
+    };
+    let segments: Vec<(gpui_kit::DefiniteLength, Hsla)> = if used.is_empty() {
+        let fill = relative(f32::from(u8::try_from(percent.min(100)).unwrap_or(100)) / 100.);
+        vec![(fill, level_color(percent, cx))]
+    } else {
+        (used.iter())
+            .map(|(category, color)| (share(category.tokens), *color))
+            .collect()
+    };
     h_flex()
-        .justify_between()
-        .when(muted, |this| this.text_color(cx.theme().muted_foreground))
-        .child(category.name.clone())
+        .h(px(6.))
+        .w_full()
+        .gap(px(1.))
+        .overflow_hidden()
+        .rounded_full()
+        .bg(cx.theme().muted)
+        .children(
+            (segments.into_iter())
+                .map(|(width, color)| div().flex_none().h_full().w(width).bg(color)),
+        )
+}
+
+/// A part's name and size, after a dot in its color on the bar; `None`
+/// for parts the bar leaves out, which are muted.
+fn category_row(
+    category: &ContextCategory,
+    color: Option<Hsla>,
+    cx: &gpui_kit::App,
+) -> impl IntoElement + use<> {
+    let muted = cx.theme().muted_foreground;
+    h_flex()
+        .gap_2()
+        .when(color.is_none(), |this| this.text_color(muted))
+        .child(
+            div()
+                .flex_none()
+                .size(px(8.))
+                .rounded_full()
+                .bg(color.unwrap_or(cx.theme().muted)),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .child(category.name.clone()),
+        )
         .child(tokens(category.tokens))
+}
+
+/// Hues far apart, from the theme's base colors, so neighbours on the bar
+/// are told apart; its chart colors are shades of one hue in some themes.
+fn palette(cx: &gpui_kit::App) -> [Hsla; 8] {
+    let theme = cx.theme();
+    [
+        theme.blue,
+        theme.green,
+        theme.yellow,
+        theme.magenta,
+        theme.cyan,
+        theme.red,
+        theme.blue_light,
+        theme.yellow_light,
+    ]
 }
 
 fn level_color(percent: u64, cx: &gpui_kit::App) -> Hsla {
