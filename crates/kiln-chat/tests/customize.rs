@@ -52,7 +52,22 @@ mod customize {
         assert!(look.bottom_start.contains(&ChatItem::Agents));
         assert_eq!(looks.borrow().last(), Some(&look), "handed on to keep");
 
-        harness.with_window(cx, |window, cx| window.click("chat-item-hide-new_chat", cx));
+        // Without a drag, from the item's menu.
+        harness.with_window(cx, |window, cx| window.click("chat-item-menu-account", cx));
+        harness.with_window(cx, |window, cx| {
+            let at = window
+                .find_by_label("Move to Composer, right")
+                .bounds()
+                .center();
+            window.drag(at, at, cx);
+        });
+        assert_eq!(current(cx).bottom_end.last(), Some(&ChatItem::Account));
+
+        harness.with_window(cx, |window, cx| window.click("chat-item-menu-new_chat", cx));
+        harness.with_window(cx, |window, cx| {
+            let at = window.find_by_label("Hide").bounds().center();
+            window.drag(at, at, cx);
+        });
         assert_eq!(current(cx).hidden(), [ChatItem::NewChat]);
         harness.with_window(cx, |window, _| {
             assert!(window.try_find("chat-new").is_none());

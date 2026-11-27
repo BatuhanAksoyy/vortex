@@ -5,7 +5,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Context, SharedString, TestSupportExt, Window,
+    AnyElement, Context, SharedString, TestSupportExt,
     assets::IconName as Lucide,
     base::Selectable as _,
     component::{
@@ -17,6 +17,10 @@ use gpui_kit::{
     },
     div, px, rgb,
 };
+
+mod frame;
+
+use frame::{DraggedItem, caption, editable, hidden_chip};
 
 use crate::chat_view::{ChatEvent, ChatView};
 use crate::{
@@ -36,22 +40,6 @@ const COLORS: [(u32, &str); 8] = [
     (0x8e_4e_c6, "Violet"),
     (0xd6_40_9f, "Pink"),
 ];
-
-/// An item being dragged to another place.
-#[derive(Clone, Copy)]
-struct DraggedItem(Item);
-
-impl Render for DraggedItem {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_2()
-            .py_0p5()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().secondary)
-            .text_sm()
-            .child(self.0.label())
-    }
-}
 
 impl ChatView {
     /// The items of `spot`; in customize mode each can be dragged, and the
@@ -74,6 +62,7 @@ impl ChatView {
                 })
             })
             .collect();
+        let empty = items.is_empty();
         let row = h_flex()
             .id(SharedString::from(format!("chat-spot-{}", spot.name())))
             .test_support()
@@ -83,21 +72,38 @@ impl ChatView {
             .when(spot == Spot::BottomStart, |row| {
                 row.flex_1().min_w_0().flex_wrap()
             })
+            .when(look.editing, |row| row.child(caption(spot, cx)))
             .children(items);
         if !look.editing {
             return row.into_any_element();
         }
-        row.min_w(px(48.))
-            .min_h(px(24.))
-            .p_0p5()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().muted)
-            .drag_over::<DraggedItem>(|row, _, _, cx| row.bg(cx.theme().drop_target))
-            .on_drop(cx.listener(move |_, dragged: &DraggedItem, _, cx| {
-                let look = ChatLook::current(cx).moved(dragged.0, spot, None);
-                Self::change_look(look, cx);
-            }))
-            .into_any_element()
+        let theme = cx.theme();
+        // Outlined, so it is plain which bar an item goes to.
+        row.when(empty, |row| {
+            row.child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child("Drop here"),
+            )
+        })
+        .min_w(px(48.))
+        .min_h(px(28.))
+        .p_0p5()
+        .rounded(theme.radius)
+        .border_1()
+        .border_dashed()
+        .border_color(theme.primary.opacity(0.6))
+        .bg(theme.primary.opacity(0.04))
+        .drag_over::<DraggedItem>(|row, _, _, cx| {
+            row.border_color(cx.theme().primary)
+                .bg(cx.theme().primary.opacity(0.12))
+        })
+        .on_drop(cx.listener(move |_, dragged: &DraggedItem, _, cx| {
+            let look = ChatLook::current(cx).moved(dragged.0, spot, None);
+            Self::change_look(look, cx);
+        }))
+        .into_any_element()
     }
 
     fn item_element(&self, item: Item, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -210,11 +216,10 @@ impl ChatView {
             .child(
                 h_flex()
                     .gap_2()
-                    .child(
-                        div()
-                            .flex_1()
-                            .child("Drag the buttons and meters between the bars; × hides one."),
-                    )
+                    .child(div().flex_1().min_w_0().child(
+                        "Drag an item onto another to put it before it, or onto a \
+                             bar's free end. The ⋯ button moves or hides it without a drag.",
+                    ))
                     .child(
                         Button::new("chat-look-reset")
                             .ghost()
@@ -305,70 +310,6 @@ impl ChatView {
         });
         h_flex().gap_1p5().children(swatches).into_any_element()
     }
-}
-
-/// `item` in customize mode: dragged by its whole face, which takes the
-/// clicks its button would, with a button that hides it.
-fn editable(item: Item, spot: Spot, element: AnyElement, cx: &Context<ChatView>) -> AnyElement {
-    let name = item.name();
-    div()
-        .id(SharedString::from(format!("chat-item-{name}")))
-        .relative()
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().background)
-        .child(element)
-        .child(
-            div()
-                .id(SharedString::from(format!("chat-item-drag-{name}")))
-                .test_support()
-                .absolute()
-                .inset_0()
-                .occlude()
-                .cursor_pointer()
-                .on_drag(DraggedItem(item), |dragged, _, _, cx| cx.new(|_| *dragged))
-                // Here, not on the item: the cover hides what is behind it
-                // from the pointer, drops too.
-                .drag_over::<DraggedItem>(|this, _, _, cx| {
-                    this.bg(cx.theme().drop_target.opacity(0.5))
-                })
-                .on_drop(cx.listener(move |_, dragged: &DraggedItem, _, cx| {
-                    cx.stop_propagation();
-                    let look = ChatLook::current(cx).moved(dragged.0, spot, Some(item));
-                    ChatView::change_look(look, cx);
-                })),
-        )
-        .child(
-            div().absolute().top(px(-6.)).right(px(-6.)).child(
-                Button::new(SharedString::from(format!("chat-item-hide-{name}")))
-                    .xsmall()
-                    .icon(IconName::Close)
-                    .tooltip(format!("Hide {}", item.label()))
-                    .on_click(cx.listener(move |_, _, _, cx| {
-                        cx.stop_propagation();
-                        let look = ChatLook::current(cx).without(item);
-                        ChatView::change_look(look, cx);
-                    })),
-            ),
-        )
-        .into_any_element()
-}
-
-fn hidden_chip(item: Item, cx: &Context<ChatView>) -> AnyElement {
-    div()
-        .id(SharedString::from(format!("chat-hidden-{}", item.name())))
-        .test_support()
-        .px_2()
-        .py_0p5()
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().background)
-        .cursor_pointer()
-        .child(item.label())
-        .on_drag(DraggedItem(item), |dragged, _, _, cx| cx.new(|_| *dragged))
-        .into_any_element()
 }
 
 fn labelled(label: &'static str, element: AnyElement) -> impl IntoElement {

@@ -98,6 +98,16 @@ pub enum Spot {
 impl Spot {
     pub const ALL: [Self; 3] = [Self::Top, Self::BottomStart, Self::BottomEnd];
 
+    /// What customize mode calls it.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Top => "Title bar",
+            Self::BottomStart => "Composer, left",
+            Self::BottomEnd => "Composer, right",
+        }
+    }
+
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -232,6 +242,30 @@ impl ChatLook {
         look
     }
 
+    /// Where `item` sits and its place there.
+    #[must_use]
+    pub fn place(&self, item: Item) -> Option<(Spot, usize)> {
+        Spot::ALL.into_iter().find_map(|spot| {
+            let at = self.items(spot).iter().position(|it| *it == item)?;
+            Some((spot, at))
+        })
+    }
+
+    /// `item` one place earlier, or later with `later`, in its spot.
+    #[must_use]
+    pub fn shifted(&self, item: Item, later: bool) -> Self {
+        let mut look = self.clone();
+        let Some((spot, at)) = self.place(item) else {
+            return look;
+        };
+        let items = look.items_mut(spot);
+        let to = if later { at + 1 } else { at.wrapping_sub(1) };
+        if to < items.len() {
+            items.swap(at, to);
+        }
+        look
+    }
+
     /// `item` hidden.
     #[must_use]
     pub fn without(&self, item: Item) -> Self {
@@ -266,6 +300,15 @@ mod tests {
         assert_eq!(back.top.last(), Some(&Item::Usage));
         assert_eq!(look.hidden(), []);
         assert_eq!(look.without(Item::Tokens).hidden(), [Item::Tokens]);
+        let shifted = look.shifted(Item::Account, false);
+        assert_eq!(shifted.top[..2], [Item::Account, Item::Processes]);
+        assert_eq!(
+            shifted.shifted(Item::Account, false),
+            shifted,
+            "already first"
+        );
+        assert_eq!(look.shifted(Item::NewChat, true), look, "already last");
+        assert_eq!(look.place(Item::Mode), Some((Spot::BottomStart, 3)));
     }
 
     #[test]
