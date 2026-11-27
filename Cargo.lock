@@ -8314,7 +8314,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vortex"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "env_logger",
  "gpui-kit",
@@ -8328,7 +8328,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-accounts"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "directories",
@@ -8341,7 +8341,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-agent"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -8352,7 +8352,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-agent-claude"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -8369,7 +8369,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-agent-codex"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -8385,7 +8385,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-bridge"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -8398,7 +8398,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-browser"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -8413,7 +8413,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-chat"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -8431,7 +8431,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-devices"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "async-channel",
  "base64 0.22.1",
@@ -8444,7 +8444,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-file-icons"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -8452,7 +8452,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-git"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "regex",
@@ -8462,7 +8462,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-keymap"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "jsonc-parser",
@@ -8472,7 +8472,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-project"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "ignore",
@@ -8483,14 +8483,14 @@ dependencies = [
 
 [[package]]
 name = "vortex-services"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "sysinfo 0.40.4",
 ]
 
 [[package]]
 name = "vortex-settings"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "directories",
@@ -8505,7 +8505,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-update"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -8515,7 +8515,7 @@ dependencies = [
 
 [[package]]
 name = "vortex-workspace"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -9780,7 +9780,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "ignore",

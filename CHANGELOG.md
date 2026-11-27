@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.1.0 — 2026-11-27
+
+### Fixed
+
+- With commits off (the default), Vortex no longer stops the agent from
+  running `git commit` and `git push`, even in Bypass and Auto mode, and no
+  review opens: the agent uses git itself. With commits on, it works as
+  before.
+- The Keyboard Shortcuts icon on the start page shows.
+
+### Added
+
+- The usage panel splits the current session's bar into this chat's part and
+  what was used elsewhere, and says what the chat did: messages, new and
+  cached tokens, and changed files.
+- The accounts panel shows each account's session and weekly usage before
+  you move to it, with when it resets and when it was reported.
+- The tokens panel says how many requests the conversation made and how much
+  prompt each sent, with new tokens apart from those read from the cache.
+- Vortex's own CPU and memory show beside the agents' in the status bar and
+  on the processes page.
+- A copy button on every tool output and diff.
+- Settings has a preview of the chat for Appearance and Editor.
+- Choose a CLI's path from the start page or the accounts panel when it is
+  not found; more Node version managers are searched (nvm, fnm, volta, pnpm,
+  yarn, asdf, mise) and MacPorts.
+- Scrolled past your last message, it stays pinned at the top; a click goes
+  back to it.
+
+### Changed
+
+- Settings opens as a dialog over the dimmed window, and closes before the
+  commit settings open.
+- With no project open, the start page offers Settings, Keyboard Shortcuts,
+  updates and each CLI's state, and the activity bar is hidden.
+- Updates are announced at the gear, once per version.
+- The account button shows the email only; the plan is in the panel.
+- After a usage limit, picking another account waits for you to go on.
+- Context categories use distinct hues.
+- The customize mode lists its items by bar.
+- Claude Code loads MCP tool schemas only when they are used.
+- Processes are read less often while Vortex is in the background.
+
 ## 1.0.1 — 2026-11-27
 
 ### Fixed
