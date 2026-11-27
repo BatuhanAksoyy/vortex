@@ -179,6 +179,7 @@ impl Transcript {
             | AgentEvent::ThinkingDelta { .. }
             | AgentEvent::ThinkingTokens(_)
             | AgentEvent::ThinkingTime { .. }
+            | AgentEvent::ThoughtTokens { .. }
             | AgentEvent::ToolCall(_)
             | AgentEvent::ToolResult { .. }
             | AgentEvent::Subagent(_) => {
@@ -220,6 +221,9 @@ impl Transcript {
                 message_id,
                 duration,
             } => self.time_thinking(&message_id, duration),
+            AgentEvent::ThoughtTokens { message_id, tokens } => {
+                self.thought_counted(&message_id, tokens)
+            }
             AgentEvent::ThinkingDelta { block, text } => self.append_text(block, text, true),
             AgentEvent::ToolCall(call) => self.push_tool(call),
             AgentEvent::ToolResult {

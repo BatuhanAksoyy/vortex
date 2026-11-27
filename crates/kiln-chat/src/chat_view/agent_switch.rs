@@ -11,6 +11,7 @@ use gpui_kit::{
 
 use super::{ChatEvent, ChatView};
 use crate::{
+    agent_setup::AgentSetup,
     agent_state::AgentState,
     backends::{Backends, title},
 };
@@ -31,10 +32,12 @@ impl ChatView {
     /// with that harness, on its first added account. Only while the chat
     /// shows no conversation, which the other harness could not continue.
     pub fn use_agent(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if self.conversation.is_some() || self.transcript.len() > 0 {
+        if !self.is_blank() {
             return;
         }
         if self.switch_backend(name, cx) {
+            // The empty conversation the other harness started stays its own.
+            self.conversation = None;
             self.ensure_session(window, cx);
             cx.emit(ChatEvent::AccountChanged);
             cx.notify();
@@ -52,19 +55,19 @@ impl ChatView {
         }
         self.backend = backend;
         self.session = None;
-        self.agent = AgentState::default();
+        self.agent = fresh_agent(self.backend.name(), cx);
         self.account = super::first_added(self.accounts.read(cx), self.backend.name());
         self.recall_usage(cx);
         true
     }
 
     /// The chat's harness and then the others it may hand over to.
-    pub(super) fn offered_agents(&self) -> Vec<&'static str> {
+    pub(super) fn offered_agents(&self, cx: &gpui_kit::App) -> Vec<&'static str> {
         let own = self.backend.name();
         let others = self.backends.iter().flat_map(Backends::iter);
         let others = others
             .map(|backend| backend.name())
-            .filter(|name| *name != own);
+            .filter(|name| *name != own && !AgentSetup::is_missing(name, cx));
         std::iter::once(own).chain(others).collect()
     }
 
@@ -83,7 +86,13 @@ impl ChatView {
             .as_ref()
             .filter(|backends| backends.several())?;
         let current = self.backend.name();
-        let names: Vec<&'static str> = backends.iter().map(|backend| backend.name()).collect();
+        let names: Vec<&'static str> = (backends.iter())
+            .map(|backend| backend.name())
+            .filter(|name| *name == current || !AgentSetup::is_missing(name, cx))
+            .collect();
+        if names.len() < 2 {
+            return None;
+        }
         let buttons = names.iter().map(|name| {
             Button::new(gpui_kit::SharedString::from(format!("chat-agent-{name}")))
                 .label(title(name).to_owned())
@@ -99,4 +108,14 @@ impl ChatView {
             }));
         Some(picker.into_any_element())
     }
+}
+
+/// A new process's state on harness `agent`, with the model last picked
+/// there.
+pub(super) fn fresh_agent(agent: &str, cx: &gpui_kit::App) -> AgentState {
+    let mut state = AgentState::default();
+    if let Some(model) = crate::LastModels::of(agent, cx) {
+        state.choose_model(&model);
+    }
+    state
 }

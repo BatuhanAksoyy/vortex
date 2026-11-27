@@ -9,6 +9,7 @@ mod approval;
 mod client;
 mod commands;
 mod history;
+mod install;
 mod items;
 mod notifications;
 mod one_shot;
@@ -19,7 +20,9 @@ mod rpc;
 mod session;
 mod sign_in;
 mod subagents;
+mod thoughts;
 mod translate;
 
+pub use install::CodexCli;
 pub use session::CodexBackend;
 pub use translate::{Start, Step, Translator};

@@ -120,7 +120,7 @@ impl ChatView {
             let label = format!("Continue with {}", account.email);
             (self.backend.name(), Some(account.id.clone()), label)
         } else {
-            let agent = *self.offered_agents().get(1)?;
+            let agent = *self.offered_agents(cx).get(1)?;
             let id = super::first_added(accounts, agent);
             (agent, id, format!("Continue in {}", title(agent)))
         };
@@ -137,7 +137,7 @@ impl ChatView {
 
     fn shown_accounts(&self, cx: &App) -> Shown {
         let accounts = self.accounts.read(cx);
-        let groups = self.offered_agents().into_iter().map(|agent| Group {
+        let groups = self.offered_agents(cx).into_iter().map(|agent| Group {
             agent,
             rows: (accounts.added_for(agent))
                 .map(|account| Row {

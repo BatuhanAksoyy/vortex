@@ -21,6 +21,7 @@ mod history;
 mod hook_form;
 mod hooks;
 mod hooks_panel;
+mod install_card;
 mod layout;
 mod menu_keys;
 mod native;
@@ -34,8 +35,7 @@ mod slash_menu;
 mod sleep;
 mod tokens_panel;
 mod turn_keys;
-
-use hooks::HooksPanel;
+mod usage_ask;
 
 use std::{cell::Cell, collections::HashSet, path::PathBuf, rc::Rc};
 
@@ -140,7 +140,7 @@ pub struct ChatView {
     skill_menu: SkillMenu,
     /// Reads the skills again until a saved state shows up.
     skill_check: Option<Task<()>>,
-    hooks: HooksPanel,
+    hooks: hooks::HooksPanel,
     /// A picture shown at full size over the chat.
     viewer: picture_viewer::PictureViewer,
     /// Pictures and files to send with the next message.
@@ -155,7 +155,7 @@ pub struct ChatView {
     cut_by_limit: bool,
     /// Redraws the cache button when the prompt cache expires.
     cache_timer: Option<Task<()>>,
-    _usage_poll: Task<()>,
+    usage_asks: usage_ask::UsageAsks,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -173,6 +173,7 @@ impl ChatView {
         let activation = cx.observe_window_activation(window, Self::watch_for_recap);
         let (process_meter, meter_opened) = Self::new_meter(window, cx);
         let account = accounts::first_added(accounts.read(cx), backend.name());
+        let agent = agent_switch::fresh_agent(backend.name(), cx);
         let mut view = Self {
             backend,
             backends: None,
@@ -188,7 +189,7 @@ impl ChatView {
             processes_page: None,
             conversation: None,
             history_load: None,
-            agent: AgentState::default(),
+            agent,
             scroller: cx.new(|cx| MessageScrollerState::new(1, cx)),
             transcript_width: Rc::default(),
             composer,
@@ -205,7 +206,7 @@ impl ChatView {
             prompt: None,
             skill_menu: SkillMenu::default(),
             skill_check: None,
-            hooks: HooksPanel::new(window, cx),
+            hooks: hooks::HooksPanel::new(window, cx),
             agents: None,
             attachments: Vec::new(),
             viewer: picture_viewer::PictureViewer::new(cx),
@@ -214,7 +215,7 @@ impl ChatView {
             limit_timer: None,
             cut_by_limit: false,
             cache_timer: None,
-            _usage_poll: cx.spawn(Self::poll_usage),
+            usage_asks: usage_ask::UsageAsks::new(cx),
             _subscriptions: [subscription, accounts_changed, activation]
                 .into_iter()
                 .chain(meter_opened)

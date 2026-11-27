@@ -37,7 +37,7 @@ impl ChatPanel {
             project: Some(self.project.read(cx).root().to_path_buf()),
             chat: Some(this.downgrade()),
             own: self.session_settings().clone(),
-            agents: chat.agent_names(),
+            agents: chat.agent_names(cx),
             models,
         }
     }

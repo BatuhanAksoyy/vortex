@@ -24,6 +24,9 @@ use crate::{
 impl ChatView {
     fn render_transcript(&self, cx: &Context<Self>) -> AnyElement {
         if self.transcript.len() == 0 {
+            if let Some(card) = self.render_install_card(cx) {
+                return card;
+            }
             return v_flex()
                 .id("chat-empty")
                 .test_support()

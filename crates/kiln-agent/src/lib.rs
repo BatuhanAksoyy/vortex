@@ -3,22 +3,28 @@
 //! never sees protocol details.
 
 mod effort;
+mod features;
 mod hooks;
+mod install;
 mod message;
 mod one_shot;
 mod past;
 mod permission;
+mod setup;
 mod skills;
 mod subagent;
 mod tools;
 mod usage;
 
 pub use effort::{Effort, PromptTokens, SpentTokens};
+pub use features::Features;
 pub use hooks::{Hook, HookEdit, HookEvent, HookScope, Hooks, StoredHook};
+pub use install::{Cli, Install, Method, fetch, is_newer, parse_version};
 pub use message::{Message, Picture};
 pub use one_shot::OneShot;
 pub use past::{PastMessage, PastSession};
 pub use permission::{Decision, PermissionRequest, Question, QuestionOption, Remember, RuleScope};
+pub use setup::{install, install_command, is_installed, on_path};
 pub use skills::{Skill, SkillLock, SkillState};
 pub use subagent::{SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage};
 pub use tools::ToolServer;
@@ -105,21 +111,13 @@ pub trait AgentBackend {
         drop(ask);
         Box::pin(async { anyhow::bail!("this agent cannot be asked for a single answer") })
     }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Features {
-    /// Skills and hooks the chat lists and changes.
-    pub skills_and_hooks: bool,
-    /// A prompt cache that expires, which the chat counts down.
-    pub prompt_cache: bool,
-}
-
-impl Features {
-    pub const ALL: Self = Self {
-        skills_and_hooks: true,
-        prompt_cache: true,
-    };
+    /// The plan usage of the account `env` signs in with, from a process
+    /// started for it alone rather than from a session.
+    fn ask_usage(&self, env: Vec<(String, String)>) -> Pending<Usage> {
+        drop(env);
+        Box::pin(async { anyhow::bail!("this agent cannot be asked for usage on its own") })
+    }
 }
 
 /// Work a backend hands out to be polled, typically on a background executor.
@@ -273,6 +271,13 @@ pub enum AgentEvent {
     /// About how many more tokens the model thought, for the thinking under
     /// way. The words of a thought are a summary; its tokens are not.
     ThinkingTokens(u64),
+    /// How many tokens the thought in the message `message_id` took, as the
+    /// agent counted once it was done; for an agent that gives no estimate
+    /// as it thinks.
+    ThoughtTokens {
+        message_id: String,
+        tokens: u64,
+    },
     /// How long the model thought in the message `message_id`.
     ThinkingTime {
         message_id: String,

@@ -33,11 +33,10 @@ fn main() {
 /// account; adding one then starts a new list.
 fn load_accounts() -> Accounts {
     let dir = kiln_accounts::data_dir().unwrap_or_else(|| std::env::temp_dir().join("kiln"));
-    let accounts = Accounts::load(dir.clone()).unwrap_or_else(|error| {
+    Accounts::load(dir.clone()).unwrap_or_else(|error| {
         log::error!("{error:#}");
         Accounts::empty(dir)
-    });
-    accounts.reading_cli_usage()
+    })
 }
 
 /// The folder given as the first argument; without one, Kiln opens what it

@@ -44,6 +44,8 @@ pub enum ChatEvent {
     PickProject,
     /// A file a tool worked on was clicked, to be shown in the editor.
     OpenFile(PathBuf),
+    /// The user asked to install the CLI of harness `agent`, missing here.
+    InstallAgent(&'static str),
 }
 
 impl EventEmitter<ChatEvent> for ChatView {}
@@ -57,6 +59,10 @@ pub(super) struct Conversation {
     /// The name the conversations page lists it under, which the CLI keeps
     /// up to date, so the chat shows the same name.
     pub title: Option<String>,
+    /// Opened from the agent's store, so something was said in it. Codex
+    /// starts a conversation before the first message; one with nothing
+    /// said yet leaves the chat blank.
+    pub stored: bool,
 }
 
 impl ChatView {
@@ -74,10 +80,11 @@ impl ChatView {
     }
 
     /// Whether nothing was said here yet, so the chat can still move to
-    /// another folder.
+    /// another folder or harness.
     #[must_use]
     pub fn is_blank(&self) -> bool {
-        self.conversation.is_none() && self.transcript.len() == 0
+        let stored = self.conversation.as_ref().is_some_and(|it| it.stored);
+        !stored && self.transcript.len() == 0
     }
 
     /// Works in `folder` from now on, with a new conversation.
@@ -158,6 +165,7 @@ impl ChatView {
             id: id.to_owned(),
             fork: open_elsewhere,
             title: None,
+            stored: true,
         });
         self.transcript = Transcript::default();
         self.toggled.clear();

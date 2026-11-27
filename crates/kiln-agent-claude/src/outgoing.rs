@@ -48,6 +48,14 @@ pub fn get_usage(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "get_usage" }))
 }
 
+/// Only the plan's rate limits, without the scan of local transcripts.
+pub fn get_plan_usage(request_id: &str) -> Value {
+    control_request(
+        request_id,
+        &json!({ "subtype": "get_usage", "skip_behaviors": true }),
+    )
+}
+
 pub fn list_models(request_id: &str) -> Value {
     control_request(request_id, &json!({ "subtype": "list_models" }))
 }

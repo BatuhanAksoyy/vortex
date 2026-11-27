@@ -2,15 +2,15 @@
 //! open, each further one ("New Window") starts on the folders to choose
 //! from, recent ones first. Kiln quits when its last window closes.
 
-use std::{path::PathBuf, rc::Rc};
+use std::{path::PathBuf, rc::Rc, sync::Arc};
 
 use gpui_kit::{
     App, AppContext as _, Bounds, Context, Entity, Global, WindowBounds, WindowOptions,
     component::TitleBar, px, size,
 };
 use kiln_accounts::Accounts;
-use kiln_agent_claude::ClaudeBackend;
-use kiln_agent_codex::CodexBackend;
+use kiln_agent_claude::{ClaudeBackend, ClaudeCli};
+use kiln_agent_codex::{CodexBackend, CodexCli};
 use kiln_chat::Backends;
 
 use crate::{cli_version::CliVersion, commands::ActiveWorkspace, workspace::Workspace};
@@ -42,6 +42,9 @@ pub fn open_first(
     data_dir: Option<PathBuf>,
     cx: &mut App,
 ) {
+    if let Some(dir) = &data_dir {
+        cx.set_global(kiln_chat::LastModels::load(dir.join("models.json")));
+    }
     cx.set_global(Windows { accounts, data_dir });
     if !open(folder, true, cx) {
         cx.quit();
@@ -71,11 +74,15 @@ fn open(folder: Option<PathBuf>, first: bool, cx: &mut App) -> bool {
         let backend: Rc<dyn kiln_agent::AgentBackend> = Rc::new(ClaudeBackend::new(PROGRAM));
         let codex: Rc<dyn kiln_agent::AgentBackend> = Rc::new(CodexBackend::new(CODEX_PROGRAM));
         let backends = Backends::new(backend.clone(), vec![codex]);
-        let version = cx.new(|cx| CliVersion::new(PROGRAM.into(), cx));
+        let claude_cli = Arc::new(ClaudeCli::new(PROGRAM));
+        let claude_version = cx.new(|cx| CliVersion::new(claude_cli, cx));
+        let codex_cli = Arc::new(CodexCli::new(CODEX_PROGRAM));
+        let codex_version = cx.new(|cx| CliVersion::new(codex_cli, cx));
         cx.new(|cx| {
             let workspace = Workspace::new(folder, backend, accounts, window, cx)
                 .offering(backends)
-                .showing_cli_version(version, window, cx);
+                .showing_cli_version("claude", claude_version, window, cx)
+                .showing_cli_version("codex", codex_version, window, cx);
             let Some(dir) = data_dir else {
                 return workspace;
             };

@@ -23,6 +23,7 @@ pub fn usage(snapshot: &RateLimitSnapshot) -> Usage {
         let slot = if short {
             &mut usage.session
         } else {
+            usage.long_window_days = long_window_days(window);
             &mut usage.weekly
         };
         *slot = Some(usage_window(window));
@@ -39,6 +40,12 @@ pub fn usage(snapshot: &RateLimitSnapshot) -> Usage {
         });
     }
     usage
+}
+
+/// The span of a long window in days, unless it is a week.
+fn long_window_days(window: &RateLimitWindow) -> Option<u16> {
+    let days = window.window_duration_mins? / (24 * 60);
+    (days != 7).then(|| u16::try_from(days).ok()).flatten()
 }
 
 fn usage_window(window: &RateLimitWindow) -> UsageWindow {

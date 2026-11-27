@@ -68,6 +68,7 @@ impl AgentState {
                 self.usage = Usage {
                     session: usage.session.or(self.usage.session),
                     weekly: usage.weekly.or(self.usage.weekly),
+                    long_window_days: usage.long_window_days.or(self.usage.long_window_days),
                     limited: usage.limited,
                 };
                 self.usage_updated_at = Some(SystemTime::now());

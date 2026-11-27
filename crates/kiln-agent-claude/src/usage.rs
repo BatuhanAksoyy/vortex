@@ -73,6 +73,7 @@ pub fn from_reply(response: &Value) -> Option<Usage> {
         session: limits.five_hour.as_ref().map(window),
         weekly: limits.seven_day.as_ref().map(window),
         limited: latest(locked),
+        ..Usage::default()
     })
 }
 
@@ -93,6 +94,7 @@ pub fn from_event(info: &Value) -> Option<Usage> {
         session: event.unified_windows.five_hour.as_ref().map(window),
         weekly: event.unified_windows.seven_day.as_ref().map(window),
         limited,
+        ..Usage::default()
     })
 }
 

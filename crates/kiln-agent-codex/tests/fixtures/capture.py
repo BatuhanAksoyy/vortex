@@ -4,7 +4,7 @@ directions as JSONL, one `{"dir": "in"|"out", "msg": ...}` per line.
 
 usage: capture.py <case> <out.jsonl>
   case: controls | turn | command | deny | edit | interrupt | resume | history
-        | picture | subagent | login
+        | picture | thinking | subagent | login
 
 "controls" sends no prompt, so it spends no usage: it lists the models and
 reads the account and its rate limits, then starts a thread.
@@ -20,6 +20,8 @@ record holds the first thread's id.
 "history" runs a tiny turn, then lists the stored threads and reads that one
 with its turns, as a reopened chat does.
 "picture" sends a red square as a local image beside the text.
+"thinking" asks a puzzle at high effort with summaries, so the turn has
+several reasoning items around a command.
 "subagent" has the model spawn one subagent that replies with a word, wait
 for it, and report the word; the subagent's own thread streams on the same
 connection, so the capture runs until the main thread's turn completes.
@@ -176,6 +178,12 @@ def run():
         turn(server, thread_id, text("Reply with the single word ok."))
         server.request("thread/list", {"cwd": os.getcwd()})
         server.request("thread/read", {"threadId": thread_id, "includeTurns": True})
+    elif case == "thinking":
+        thread_id = thread(server, approvalPolicy="never", sandbox="read-only")
+        turn(server, thread_id, text(
+            "Think it through carefully: how many weekdays fall between 3 March 2031 and 17 April "
+            "2031 inclusive? Then run `date +%Y` and reply with the count and the year."),
+            accept, summary="auto", effort="high")
     elif case == "subagent":
         thread_id = thread(server)
         server.request("turn/start", {"threadId": thread_id, "input": text(

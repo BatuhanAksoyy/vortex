@@ -24,6 +24,12 @@ pub struct Script {
     pub sign_in: Option<ScriptedSignIn>,
     /// Stored conversations, by id, that `past_messages` hands out.
     pub stored: Vec<(String, Vec<PastMessage>)>,
+    /// The CLI is not installed: starting it fails as a missing program does.
+    pub missing: bool,
+    /// The environments usage was asked apart from a session with.
+    pub usage_asks: Vec<Vec<(String, String)>>,
+    /// What such an ask answers; `None` fails it.
+    pub usage: Option<kiln_agent::Usage>,
 }
 
 /// The test's ends of the latest sign-in: the page to send, the result to
@@ -46,6 +52,10 @@ impl AgentBackend for FakeBackend {
         let (event_tx, events) = async_channel::unbounded();
         let (commands, command_rx) = async_channel::unbounded();
         let mut script = self.0.borrow_mut();
+        if script.missing {
+            let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
+            return Err(anyhow::Error::new(missing).context("cannot start the CLI"));
+        }
         script.events = Some(event_tx);
         script.commands = Some(command_rx);
         script.spawned += 1;
@@ -56,6 +66,13 @@ impl AgentBackend for FakeBackend {
             commands,
             driver: Box::pin(async {}),
         })
+    }
+
+    fn ask_usage(&self, env: Vec<(String, String)>) -> Pending<kiln_agent::Usage> {
+        let mut script = self.0.borrow_mut();
+        script.usage_asks.push(env);
+        let usage = script.usage;
+        Box::pin(async move { usage.ok_or_else(|| anyhow::anyhow!("no usage")) })
     }
 
     fn past_sessions(&self, _: &Path) -> Pending<Vec<PastSession>> {

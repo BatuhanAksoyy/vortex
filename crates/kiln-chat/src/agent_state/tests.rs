@@ -128,11 +128,13 @@ fn a_partial_report_keeps_the_other_window() {
         session: Some(window(4)),
         weekly: Some(window(19)),
         limited: None,
+        ..Usage::default()
     }));
     state.apply(&AgentEvent::Usage(Usage {
         session: Some(window(5)),
         weekly: None,
         limited: None,
+        ..Usage::default()
     }));
     assert_eq!(state.usage().weekly, Some(window(19)));
     assert_eq!(state.usage().session, Some(window(5)));

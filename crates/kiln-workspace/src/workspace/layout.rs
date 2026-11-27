@@ -27,7 +27,11 @@ impl Workspace {
         let own = panel.session_settings();
         Some(SavedChat {
             folder: Some(chat.cwd().to_owned()),
-            session: chat.session_id().map(str::to_owned),
+            // Codex's conversation with nothing said yet is not worth reopening.
+            session: chat
+                .session_id()
+                .filter(|_| !chat.is_blank())
+                .map(str::to_owned),
             agent: Some(chat.agent_name().to_owned()),
             account: chat.account().map(str::to_owned),
             mode: chat.known_mode(),

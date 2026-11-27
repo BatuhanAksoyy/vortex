@@ -13,13 +13,29 @@ mod usage;
 use std::{
     collections::HashMap,
     path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Context as _;
 pub use codex_home::shared_home as codex_home;
 use serde::{Deserialize, Serialize};
 pub use usage::KnownUsage;
+
+/// How a chat asks for an added account's usage.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UsageAsk {
+    /// Ask the chat's own session.
+    Session,
+    /// Ask a process started for it alone, with this environment.
+    Apart(Vec<(String, String)>),
+    /// It was reported moments ago, or an ask is under way.
+    Fresh,
+}
+
+/// Where a Claude Code process that only asks for an account's usage keeps
+/// its configuration, and with it the usage snapshot it answers from.
+const CONFIG_VAR: &str = "CLAUDE_CONFIG_DIR";
+const USAGE_CONFIG_DIR: &str = "usage-config";
 
 /// Moves only where the CLI keeps its sign-in (on macOS, which Keychain item
 /// it uses). `CLAUDE_CONFIG_DIR` would move the session history too, so a
@@ -57,10 +73,11 @@ pub struct Accounts {
     dir: PathBuf,
     added: Vec<Account>,
     usage: HashMap<String, KnownUsage>,
-    /// When a chat last asked the CLI for an added account's usage.
-    last_ask: Option<SystemTime>,
-    /// The CLI's global configuration; `None` reads no snapshot.
-    cli_config: Option<PathBuf>,
+    /// Until when an account's usage is not asked for: an ask is under way,
+    /// or the last one was refused.
+    not_before: HashMap<String, SystemTime>,
+    /// Until when an account's asks are taken to be refused.
+    refused: HashMap<String, SystemTime>,
 }
 
 impl Accounts {
@@ -80,8 +97,8 @@ impl Accounts {
             dir,
             added,
             usage,
-            last_ask: None,
-            cli_config: None,
+            not_before: HashMap::new(),
+            refused: HashMap::new(),
         })
     }
 
@@ -92,18 +109,9 @@ impl Accounts {
             dir,
             added: Vec::new(),
             usage: HashMap::new(),
-            last_ask: None,
-            cli_config: None,
+            not_before: HashMap::new(),
+            refused: HashMap::new(),
         }
-    }
-
-    /// Reads when the CLI last fetched usage before letting a chat ask for
-    /// an added account's (`ask_usage`); without it, only Kiln's own asks
-    /// are spaced out.
-    #[must_use]
-    pub fn reading_cli_usage(mut self) -> Self {
-        self.cli_config = usage::cli_config();
-        self
     }
 
     /// The accounts added in Kiln, in the order they were added.
@@ -187,25 +195,59 @@ impl Accounts {
         self.usage.get(id).copied()
     }
 
-    /// Whether a chat with added account `id` may ask the CLI for its usage
-    /// at `now`. A yes counts as the ask. Asks are spaced out across all chats, as within a
-    /// minute of a fetch the CLI answers with the numbers it fetched, which
-    /// may be another account's; usage reported moments ago is not asked
-    /// again.
-    pub fn ask_usage(&mut self, id: &str, now: SystemTime) -> bool {
+    /// How a chat with added account `id` asks for its usage at `now`;
+    /// usage reported within `fresh_for` is not asked for again.
+    ///
+    /// A Claude Code session answers from the usage snapshot in the shared
+    /// configuration, which is the last-signed-in account's, so an added
+    /// Claude account is asked in a process of its own whose configuration
+    /// keeps that account's snapshot; such an ask counts until its answer
+    /// is in. Codex keeps each account's sign-in apart and answers with it.
+    pub fn ask_usage(&mut self, id: &str, now: SystemTime, fresh_for: Duration) -> UsageAsk {
+        let within = |at: Option<SystemTime>, gap| {
+            at.and_then(|at| now.duration_since(at).ok())
+                .is_some_and(|age| age < gap)
+        };
         let reported = self.usage(id).map(|known| known.reported_at);
-        let fresh = reported
-            .and_then(|at| now.duration_since(at).ok())
-            .is_some_and(|age| age < usage::ASK_GAP);
-        if fresh {
-            return false;
+        let waiting = self.not_before.get(id).is_some_and(|until| now < *until);
+        if within(reported, fresh_for) || waiting {
+            return UsageAsk::Fresh;
         }
-        let fetched_at = self.cli_config.as_deref().and_then(usage::cli_fetched_at);
-        if !usage::may_ask(now, self.last_ask, fetched_at) {
-            return false;
+        match self.find(id) {
+            Some(account) if account.agent == CLAUDE => {
+                self.not_before.insert(id.to_owned(), now + usage::ASKING);
+                UsageAsk::Apart(self.usage_env(id))
+            }
+            _ => UsageAsk::Session,
         }
-        self.last_ask = Some(now);
-        true
+    }
+
+    /// Account `id`'s usage ask at `now` was refused or failed. The usage
+    /// endpoint refuses an account asked too often for many minutes, and
+    /// each further ask would only start a process for nothing.
+    pub fn usage_refused(&mut self, id: &str, now: SystemTime) {
+        let until = now + usage::REFUSED_FOR;
+        self.not_before.insert(id.to_owned(), until);
+        self.refused.insert(id.to_owned(), until);
+    }
+
+    /// Until when account `id`'s usage asks are taken to be refused, as of
+    /// `now`; `None` once the time passed or usage came in since.
+    #[must_use]
+    pub fn usage_refused_until(&self, id: &str, now: SystemTime) -> Option<SystemTime> {
+        let until = *self.refused.get(id)?;
+        let reported = self.usage(id).map(|known| known.reported_at);
+        let answered = reported.is_some_and(|at| at + usage::REFUSED_FOR > until);
+        (now < until && !answered).then_some(until)
+    }
+
+    /// The environment of a Claude Code process that asks for account
+    /// `id`'s usage: its sign-in, and a configuration of its own.
+    fn usage_env(&self, id: &str) -> Vec<(String, String)> {
+        let config = self.credentials(id).join(USAGE_CONFIG_DIR);
+        let mut env = self.env_for(CLAUDE, id);
+        env.push((CONFIG_VAR.to_owned(), config.to_string_lossy().into_owned()));
+        env
     }
 
     /// Keeps the usage added account `id` reported, across restarts.

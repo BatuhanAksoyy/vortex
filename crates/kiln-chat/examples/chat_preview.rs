@@ -173,6 +173,7 @@ fn usage(limited: bool) -> Usage {
             resets_at: hours(80),
         }),
         limited: limited.then(|| Limited { until: hours(2) }),
+        long_window_days: None,
     }
 }
 

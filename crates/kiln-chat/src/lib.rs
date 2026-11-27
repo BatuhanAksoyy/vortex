@@ -1,5 +1,6 @@
 //! The agent chat panel: transcript, permission prompts and the composer.
 
+mod agent_setup;
 mod agent_state;
 mod assets;
 mod backends;
@@ -9,6 +10,7 @@ mod code_block;
 mod entry_view;
 mod hook_list;
 mod kept_notes;
+mod last_models;
 mod literal;
 mod permission_prompt;
 mod pictures;
@@ -25,9 +27,11 @@ mod subagent_view;
 mod tool_format;
 mod transcript;
 
+pub use agent_setup::{AgentSetup, Setup};
 pub use assets::Assets;
 pub use backends::{Backends, title as agent_title};
 pub use chat_view::{ChatEvent, ChatView, Stored, asking::Question, attachments::Attachment};
+pub use last_models::LastModels;
 pub use processes::{
     AgentProcesses, ProcessMeter, ProcessMeterEvent, Processes, ProcessesDialog,
     ProcessesDialogEvent, format_cpu, format_memory,

@@ -182,6 +182,10 @@ impl AgentBackend for ClaudeBackend {
     fn ask_once(&self, ask: OneShot) -> Pending<String> {
         Box::pin(crate::one_shot::ask(self.program.clone(), ask))
     }
+
+    fn ask_usage(&self, env: Vec<(String, String)>) -> Pending<kiln_agent::Usage> {
+        Box::pin(crate::usage_ask::ask(self.program.clone(), env))
+    }
 }
 
 enum Input {

@@ -66,9 +66,9 @@ pub struct Workspace {
     accounts: Entity<Accounts>,
     /// What every agent's processes use, in the status bar.
     process_meter: Entity<ProcessMeter>,
-    /// The Claude Code version, in the status bar; none in tests, which run
-    /// no real CLI.
-    cli_version: Option<(Entity<CliVersion>, Subscription)>,
+    /// Each harness's CLI version; the active chat's shows in the status
+    /// bar. None in tests, which run no real CLI.
+    cli_versions: Vec<cli_update::ShownVersion>,
     side_panel: SidePanel,
     /// The sessions' browsers, by chat.
     browsers: Vec<(EntityId, Entity<Browser>)>,
@@ -159,7 +159,7 @@ impl Workspace {
             backends: Backends::new(backend, Vec::new()),
             accounts,
             process_meter: meter,
-            cli_version: None,
+            cli_versions: Vec::new(),
             side_panel: SidePanel::default(),
             browsers: Vec::new(),
             data_dir: None,
@@ -207,11 +207,13 @@ impl Workspace {
         self
     }
 
-    /// Shows `version` in the status bar, whose panel restarts the chats
+    /// Shows `version`, the CLI of harness `agent`, in the status bar while
+    /// the active chat runs on it. Its panel restarts that harness's chats
     /// left on an older one.
     #[must_use]
     pub fn showing_cli_version(
         mut self,
+        agent: &'static str,
         version: Entity<CliVersion>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -220,13 +222,25 @@ impl Workspace {
         version.update(cx, |version, _| {
             version.count_chats_behind(move |installed, cx| {
                 let workspace = workspace.upgrade();
-                workspace.map_or(0, |it| it.read(cx).chats_behind(installed, cx).len())
+                workspace.map_or(0, |it| it.read(cx).chats_behind(agent, installed, cx).len())
             });
         });
-        let restart = cx.subscribe_in(&version, window, |this, _, event, window, cx| match event {
-            CliVersionEvent::RestartChats => this.restart_chats_behind(window, cx),
+        let restart =
+            cx.subscribe_in(
+                &version,
+                window,
+                move |this, _, event, window, cx| match event {
+                    CliVersionEvent::RestartChats => this.restart_chats_behind(agent, window, cx),
+                    CliVersionEvent::Setup(setup) => {
+                        this.cli_setup(agent, setup.clone(), window, cx);
+                    }
+                },
+            );
+        self.cli_versions.push(cli_update::ShownVersion {
+            agent,
+            view: version,
+            _restart: restart,
         });
-        self.cli_version = Some((version, restart));
         self
     }
 
@@ -365,8 +379,8 @@ impl Render for Workspace {
                     .left(self.process_meter.clone())
                     .left(root.display().to_string())
                     .right(active_file.unwrap_or_default())
-                    .when_some(self.cli_version.as_ref(), |bar, (version, _)| {
-                        bar.right(version.clone())
+                    .when_some(self.shown_cli_version(cx), |bar, version| {
+                        bar.right(version)
                     }),
             )
     }

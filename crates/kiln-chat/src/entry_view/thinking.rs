@@ -4,7 +4,11 @@
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, TestSupportExt, component::ActiveTheme, div};
+use gpui_kit::{
+    AnyElement, App, TestSupportExt,
+    component::{ActiveTheme, text::TextView},
+    div,
+};
 
 use crate::clock;
 
@@ -40,7 +44,15 @@ pub(super) fn render(
     timeline_row(muted, context, cx)
         .child(line)
         .when(expanded, |this| {
-            this.child(div().italic().text_color(muted).child(text.to_owned()))
+            // Markdown, as the agents write it: Codex sums each thought up
+            // in a bold line.
+            let words = TextView::markdown(("thinking-text", context.id), text.to_owned());
+            this.child(
+                div()
+                    .italic()
+                    .text_color(muted)
+                    .child(words.selectable(true)),
+            )
         })
         .into_any_element()
 }

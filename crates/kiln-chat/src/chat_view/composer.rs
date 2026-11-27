@@ -15,7 +15,7 @@ use gpui_kit::{
         menu::{DropdownMenu, PopupMenuItem},
         v_flex,
     },
-    div, px, white,
+    div, px,
 };
 use kiln_agent::{Effort, ModelOption, PermissionMode};
 
@@ -333,5 +333,9 @@ fn round_button(
         .rounded(cx.theme().radius)
         .bg(background)
         .cursor_pointer()
-        .child(Icon::new(icon).in_control().text_color(white()))
+        .child(
+            Icon::new(icon)
+                .in_control()
+                .text_color(crate::spinner::accent_foreground(cx)),
+        )
 }

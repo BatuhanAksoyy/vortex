@@ -4,6 +4,8 @@
 
 // Inside a `cfg(test)` module so helpers may `expect`, like unit tests.
 #[cfg(test)]
+mod account_support;
+#[cfg(test)]
 mod common;
 
 #[cfg(test)]
@@ -15,82 +17,13 @@ mod accounts {
 
     use gpui_kit::test::{TestQueryExt, TestWindowExt};
     use gpui_kit::{AppContext as _, TestAppContext};
-    use kiln_agent::{
-        Account, AgentEvent, Limited, SessionCommand, SessionInfo, TurnOutcome, Usage, UsageWindow,
-    };
+    use kiln_agent::{AgentEvent, Limited, SessionCommand, TurnOutcome, Usage, UsageWindow};
     use kiln_chat::Status;
 
+    use super::account_support::{
+        SIGN_IN_PAGE, account, add, click, finish_sign_in, ready, shown, start_sign_in,
+    };
     use super::common::{self, Harness};
-
-    const SIGN_IN_PAGE: &str = "https://claude.com/cai/oauth/authorize?test";
-
-    fn ready(cx: &mut TestAppContext) -> Harness {
-        let harness = Harness::new(cx);
-        harness.emit(
-            cx,
-            AgentEvent::Ready(SessionInfo {
-                account: Some(account("dev@example.com", "Claude Pro")),
-                ..SessionInfo::default()
-            }),
-        );
-        harness.commands();
-        harness
-    }
-
-    fn account(email: &str, plan: &str) -> Account {
-        Account {
-            email: email.into(),
-            organization: String::new(),
-            plan: plan.into(),
-        }
-    }
-
-    fn click(harness: &Harness, cx: &mut TestAppContext, id: impl Into<String>) {
-        let id = id.into();
-        harness.with_window(cx, move |window, cx| window.click(id, cx));
-    }
-
-    fn shown(harness: &Harness, cx: &mut TestAppContext, label: &str) -> bool {
-        let label = label.to_owned();
-        harness.with_window(cx, move |window, _| {
-            window.try_find_by_label(&label).is_some()
-        })
-    }
-
-    /// Starts a sign-in from the open panel; returns the sign-in's
-    /// credential store, named after the account's id.
-    fn start_sign_in(harness: &Harness, cx: &mut TestAppContext) -> String {
-        click(harness, cx, "chat-account-add");
-        let script = harness.script.borrow();
-        let (page, _, env) = script.sign_in.as_ref().expect("a sign-in started");
-        let (var, store) = env.first().cloned().expect("a credential store");
-        assert_eq!(var, "CLAUDE_SECURESTORAGE_CONFIG_DIR");
-        page.try_send(SIGN_IN_PAGE.into()).expect("send page");
-        store
-    }
-
-    fn finish_sign_in(harness: &Harness, cx: &mut TestAppContext, result: anyhow::Result<Account>) {
-        let done = harness
-            .script
-            .borrow()
-            .sign_in
-            .as_ref()
-            .map(|(_, done, _)| done.clone());
-        done.expect("a sign-in started")
-            .try_send(result)
-            .expect("finish sign-in");
-        cx.run_until_parked();
-    }
-
-    /// Adds `email` through the panel; returns its id.
-    fn add(harness: &Harness, cx: &mut TestAppContext, email: &str) -> String {
-        let store = start_sign_in(harness, cx);
-        finish_sign_in(harness, cx, Ok(account(email, "Claude Max")));
-        Path::new(&store)
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .expect("an id")
-    }
 
     /// The environment the latest process was started with.
     fn last_env(harness: &Harness) -> Vec<(String, String)> {
@@ -201,25 +134,6 @@ mod accounts {
         click(&harness, cx, format!("chat-account-{second}"));
         assert!(store_of(&last_env(&harness)).ends_with(&second));
         assert!(shown(&harness, cx, "Switched to second@example.com"));
-    }
-
-    #[gpui_kit::test]
-    fn an_added_account_asks_for_usage_only_now_and_then(cx: &mut TestAppContext) {
-        let harness = ready(cx);
-        click(&harness, cx, "chat-account");
-        add(&harness, cx, "second@example.com");
-        let usage_asks = |asked: &[SessionCommand]| {
-            let usage = asked.iter().filter(|c| **c == SessionCommand::RefreshUsage);
-            usage.count()
-        };
-        harness.emit(cx, AgentEvent::Ready(SessionInfo::default()));
-        assert_eq!(usage_asks(&harness.commands()), 1);
-        // Asked again a moment later, the CLI could answer with numbers it
-        // fetched for another account.
-        harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
-        let asked = harness.commands();
-        assert!(asked.contains(&SessionCommand::RefreshContext));
-        assert_eq!(usage_asks(&asked), 0, "{asked:?}");
     }
 
     #[gpui_kit::test]
@@ -375,10 +289,10 @@ mod accounts {
             })
             .expect("window")
         };
-        assert!(meter(cx, "42% used"), "before the account's first reply");
+        assert!(meter(cx, "Session 42%"), "before the account's first reply");
 
         harness.emit(cx, AgentEvent::Usage(session(57)));
-        assert!(meter(cx, "57% used"));
+        assert!(meter(cx, "Session 57%"));
         let reloaded = kiln_accounts::Accounts::load(data.path().to_owned()).expect("list");
         let stored = reloaded.usage(&id).expect("kept");
         assert_eq!(stored.usage.session.map(|w| w.percent), Some(57));

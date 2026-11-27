@@ -149,6 +149,9 @@ impl KeptNotes {
                 message_id,
                 duration,
             } => self.time(message_id, *duration),
+            AgentEvent::ThoughtTokens { message_id, tokens } => {
+                self.counted(message_id, *tokens);
+            }
             AgentEvent::TurnTook { duration, ended_at } => {
                 let ended_at = ended_at.unwrap_or_else(SystemTime::now);
                 self.add(Note::TurnTook {
@@ -239,6 +242,17 @@ impl KeptNotes {
                 && block.message == message_id
             {
                 *took_ms = Some(millis(duration));
+            }
+        }
+        self.changed = true;
+    }
+
+    fn counted(&mut self, message_id: &str, count: u64) {
+        for note in &mut self.notes {
+            if let Note::Thinking { block, tokens, .. } = note
+                && block.message == message_id
+            {
+                *tokens = count;
             }
         }
         self.changed = true;

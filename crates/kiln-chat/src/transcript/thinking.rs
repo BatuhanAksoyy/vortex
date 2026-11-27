@@ -30,14 +30,27 @@ impl Transcript {
     }
 
     pub(super) fn time_thinking(&mut self, message_id: &str, duration: Duration) -> Change {
+        self.update_thought(message_id, |_, took| *took = Some(duration))
+    }
+
+    /// Sets the tokens the thought took, once the agent counted them.
+    pub(super) fn thought_counted(&mut self, message_id: &str, count: u64) -> Change {
+        self.update_thought(message_id, |tokens, _| *tokens = count)
+    }
+
+    fn update_thought(
+        &mut self,
+        message_id: &str,
+        update: impl FnOnce(&mut u64, &mut Option<Duration>),
+    ) -> Change {
         let row = self.entries.iter().rposition(|(_, entry)| {
             matches!(entry, Entry::Thinking { block, .. } if block.message_id == message_id)
         });
         let Some(row) = row else {
             return Change::default();
         };
-        if let Some((_, Entry::Thinking { took, .. })) = self.entries.get_mut(row) {
-            *took = Some(duration);
+        if let Some((_, Entry::Thinking { tokens, took, .. })) = self.entries.get_mut(row) {
+            update(tokens, took);
         }
         Change {
             updated: Some(row),

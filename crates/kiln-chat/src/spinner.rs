@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, App, Global, Hsla, div, px, rgb};
+use gpui_kit::{AnyElement, App, Global, Hsla, component::ActiveTheme as _, div, px, rgb, white};
 
 use crate::entry_view::{EntryContext, timeline_row};
 
@@ -27,7 +27,8 @@ const VERBS: &[&str] = &[
 ];
 
 /// The brand color of the harness the user works with, set by the window
-/// that shows it: Kiln follows Claude's orange or Codex's blue.
+/// that shows it: Kiln follows Claude's orange, or for Codex the theme's
+/// own text color, white in a dark theme, as Codex's monochrome look.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Brand {
     #[default]
@@ -49,20 +50,35 @@ impl Brand {
     }
 
     #[must_use]
-    pub fn color(self) -> Hsla {
+    pub fn color(self, cx: &App) -> Hsla {
         match self {
             Self::Claude => rgb(0xd9_77_57).into(),
-            Self::Codex => rgb(0x3b_82_f6).into(),
+            Self::Codex => cx.theme().foreground,
         }
+    }
+
+    /// What is drawn on the brand color.
+    #[must_use]
+    pub fn foreground(self, cx: &App) -> Hsla {
+        match self {
+            Self::Claude => white(),
+            Self::Codex => cx.theme().background,
+        }
+    }
+
+    fn current(cx: &App) -> Self {
+        cx.try_global::<Self>().copied().unwrap_or_default()
     }
 }
 
 /// The brand color, used for the spinner and the send button.
 pub fn accent(cx: &App) -> Hsla {
-    cx.try_global::<Brand>()
-        .copied()
-        .unwrap_or_default()
-        .color()
+    Brand::current(cx).color(cx)
+}
+
+/// The color of an icon or text on [`accent`].
+pub fn accent_foreground(cx: &App) -> Hsla {
+    Brand::current(cx).foreground(cx)
 }
 
 pub fn render(frame: usize, turn: usize, context: &EntryContext, cx: &App) -> AnyElement {

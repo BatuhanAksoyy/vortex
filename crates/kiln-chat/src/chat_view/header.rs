@@ -71,7 +71,10 @@ impl ChatView {
             .child(self.account_button(cx))
             .child(usage_meter(
                 self.agent.usage(),
-                self.agent.usage_updated_at(),
+                UsageTimes {
+                    updated: self.agent.usage_updated_at(),
+                    refused_until: self.usage_refused_until(cx),
+                },
                 self.is_open(StripPanel::Usage),
                 cx.entity().downgrade(),
                 cx,
@@ -103,21 +106,29 @@ impl ChatView {
     }
 }
 
-/// The usage button and its panel: the session window's percent, and on a
+/// The usage button and its panel: the fuller window's percent, and on a
 /// click fresh numbers for both windows with their reset times. Shown before
 /// any numbers came, so `/usage` always has a panel to open; its open state
 /// lives in the view for that reason.
+/// When the usage shown was reported, and until when asking for fresh
+/// numbers is refused.
+#[derive(Clone, Copy)]
+struct UsageTimes {
+    updated: Option<SystemTime>,
+    refused_until: Option<SystemTime>,
+}
+
 fn usage_meter(
     usage: Usage,
-    updated: Option<SystemTime>,
+    times: UsageTimes,
     open: bool,
     view: WeakEntity<ChatView>,
     cx: &gpui_kit::App,
 ) -> impl IntoElement + use<> {
-    let (label, color) = match usage.session {
-        Some(session) => (
-            format!("{}% used", session.percent),
-            level_color(session.percent, cx),
+    let (label, color) = match fuller(&usage) {
+        Some((name, window)) => (
+            format!("{name} {}%", window.percent),
+            level_color(window.percent, cx),
         ),
         None => ("Usage".to_owned(), cx.theme().muted_foreground),
     };
@@ -135,16 +146,40 @@ fn usage_meter(
         .on_open_change(move |open, _, cx| {
             let _ = view.update(cx, |view, cx| view.set_usage_open(*open, cx));
         })
-        .content(move |_, _, cx| usage_panel(usage, updated, cx))
+        .content(move |_, _, cx| usage_panel(usage, times, cx))
 }
 
-fn usage_panel(
-    usage: Usage,
-    updated: Option<SystemTime>,
-    cx: &gpui_kit::App,
-) -> impl IntoElement + use<> {
+/// The window nearer its limit, which is the one that stops the user
+/// first; the session one on a tie. A plan may have only one, as Codex's
+/// free plan has only the weekly.
+pub(crate) fn fuller(usage: &Usage) -> Option<(&'static str, UsageWindow)> {
+    let session = usage.session.map(|window| ("Session", window));
+    let weekly = usage.weekly.map(|window| (long_name(usage), window));
+    match (session, weekly) {
+        (Some(session), Some(weekly)) if weekly.1.percent > session.1.percent => Some(weekly),
+        (session, weekly) => session.or(weekly),
+    }
+}
+
+/// What the long window is called: weekly, or monthly for a 30-day one.
+fn long_name(usage: &Usage) -> &'static str {
+    match usage.long_window_days {
+        Some(28..=31) => "Monthly",
+        Some(_) => "Long",
+        None => "Weekly",
+    }
+}
+
+fn usage_panel(usage: Usage, times: UsageTimes, cx: &gpui_kit::App) -> impl IntoElement + use<> {
     let now = SystemTime::now();
-    let updated = updated.map(|at| format!("Updated {}", clock::reset_label(at, now)));
+    let updated = (times.updated).map(|at| format!("Updated {}", clock::reset_label(at, now)));
+    let refused = times.refused_until.map(|until| {
+        format!(
+            "Claude is not giving this account's usage right now, as it was asked too often. \
+             Kiln asks again at {}; replies keep it current meanwhile.",
+            clock::reset_label(until, now)
+        )
+    });
     v_flex()
         .id("chat-usage-panel")
         .test_support()
@@ -155,7 +190,11 @@ fn usage_panel(
                 .session
                 .map(|w| usage_row("Current session", w, now, cx)),
         )
-        .children(usage.weekly.map(|w| usage_row("Weekly", w, now, cx)))
+        .children(
+            usage
+                .weekly
+                .map(|w| usage_row(long_name(&usage), w, now, cx)),
+        )
         .when(usage.session.is_none() && usage.weekly.is_none(), |this| {
             this.child(
                 div()
@@ -172,6 +211,14 @@ fn usage_panel(
                 .test_support()
                 .text_caption()
                 .text_color(cx.theme().muted_foreground)
+                .child(text)
+        }))
+        .children(refused.map(|text| {
+            div()
+                .id("chat-usage-refused")
+                .test_support()
+                .text_caption()
+                .text_color(cx.theme().warning)
                 .child(text)
         }))
 }

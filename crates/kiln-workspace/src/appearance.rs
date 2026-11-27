@@ -1,7 +1,7 @@
 use gpui_kit::{
     App, SharedString,
     component::{Theme, ThemeMode, ThemeRegistry},
-    px, rgb,
+    px,
 };
 use kiln_chat::Brand;
 use kiln_settings::{Settings, ThemeMode as ModeSetting};
@@ -70,27 +70,21 @@ fn apply_brand(cx: &mut App) {
     if cx.try_global::<Brand>().copied().unwrap_or_default() != Brand::Codex {
         return;
     }
-    let dark = Theme::global(cx).is_dark();
-    // Tailwind's blue scale, a step lighter in the dark theme to keep the
-    // contrast the orange had.
-    let [base, hover, active, link, selection] = if dark {
-        [0x3b_82_f6, 0x60_a5_fa, 0x25_63_eb, 0x7f_b0_ff, 0x3b_82_f6]
-    } else {
-        [0x25_63_eb, 0x1d_4e_d8, 0x1e_40_af, 0x1d_4e_d8, 0xcf_e0_fb]
-    };
+    // Codex's look is monochrome: the accent is the theme's own text color,
+    // white in a dark theme and near black in a light one.
     Theme::update(cx, |theme| {
         let colors = &mut theme.colors;
-        colors.primary = rgb(base).into();
-        colors.primary_hover = rgb(hover).into();
-        colors.primary_active = rgb(active).into();
-        colors.ring = rgb(base).into();
-        colors.sidebar_primary = rgb(base).into();
-        colors.link = rgb(link).into();
-        colors.selection = if dark {
-            rgb(selection).opacity(0.3).into()
-        } else {
-            rgb(selection).into()
-        };
+        let (text, page) = (colors.foreground, colors.background);
+        colors.primary = text;
+        colors.primary_hover = text.opacity(0.85);
+        colors.primary_active = text.opacity(0.7);
+        colors.primary_foreground = page;
+        colors.button_primary_foreground = page;
+        colors.ring = text.opacity(0.6);
+        colors.sidebar_primary = text;
+        colors.sidebar_primary_foreground = page;
+        colors.link = text;
+        colors.selection = text.opacity(0.2);
     });
 }
 

@@ -60,8 +60,8 @@ impl ChatView {
 
     /// Every harness the chat may ask, its own first.
     #[must_use]
-    pub fn agent_names(&self) -> Vec<String> {
-        let offered = self.offered_agents().into_iter();
+    pub fn agent_names(&self, cx: &gpui_kit::App) -> Vec<String> {
+        let offered = self.offered_agents(cx).into_iter();
         offered.map(str::to_owned).collect()
     }
 

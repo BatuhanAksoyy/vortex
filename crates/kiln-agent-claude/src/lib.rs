@@ -24,8 +24,9 @@ mod tool_server;
 mod translate;
 mod turn_end;
 mod usage;
+mod usage_ask;
 mod wire;
 
-pub use install::{Install, Method, is_newer};
+pub use install::ClaudeCli;
 pub use session::ClaudeBackend;
 pub use translate::Translator;

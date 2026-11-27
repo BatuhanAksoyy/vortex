@@ -1,77 +1,31 @@
 //! Running a chat on Claude Code or Codex: a blank chat switches between
-//! them, and a stored conversation opens on the one that stored it.
+//! them, a stored conversation opens on the one that stored it, and a
+//! missing CLI is offered for installing.
 
 // Inside a `cfg(test)` module so helpers may `expect`, like unit tests.
+#[cfg(test)]
+mod codex;
 #[cfg(test)]
 mod common;
 
 #[cfg(test)]
 mod agents {
-    use std::{cell::RefCell, path::Path, rc::Rc};
+    use std::{cell::RefCell, rc::Rc};
 
     use gpui_kit::TestAppContext;
     use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
-    use kiln_agent::{
-        AgentBackend, AgentEvent, Features, PastMessage, PastSession, Pending, Session,
-        SessionSpec, SignIn, TurnOutcome,
-    };
+    use kiln_agent::{AgentEvent, PastMessage, TurnOutcome};
     use kiln_chat::{Status, Stored};
 
-    use super::common::{FakeBackend, Harness, Script};
-
-    /// The scripted backend under Codex's name.
-    struct Codex(FakeBackend);
-
-    impl AgentBackend for Codex {
-        fn name(&self) -> &'static str {
-            "codex"
-        }
-
-        fn features(&self) -> Features {
-            Features {
-                skills_and_hooks: false,
-                prompt_cache: false,
-            }
-        }
-
-        fn spawn(&self, spec: SessionSpec) -> anyhow::Result<Session> {
-            self.0.spawn(spec)
-        }
-
-        fn past_sessions(&self, cwd: &Path) -> Pending<Vec<PastSession>> {
-            self.0.past_sessions(cwd)
-        }
-
-        fn past_messages(&self, cwd: &Path, id: &str) -> Pending<Vec<PastMessage>> {
-            self.0.past_messages(cwd, id)
-        }
-
-        fn sign_in(&self, env: Vec<(String, String)>) -> anyhow::Result<SignIn> {
-            self.0.sign_in(env)
-        }
-    }
-
-    /// A chat that also offers Codex, and the script of Codex's sessions.
-    fn offering_codex(cx: &mut TestAppContext) -> (Harness, Rc<RefCell<Script>>) {
-        let codex = Rc::new(RefCell::new(Script::default()));
-        let backend: Rc<dyn AgentBackend> = Rc::new(Codex(FakeBackend(codex.clone())));
-        (Harness::with(cx, Some(backend)), codex)
-    }
-
-    fn shown(harness: &Harness, cx: &mut TestAppContext, id: &'static str) -> bool {
-        harness.with_window(cx, move |window, _| window.try_find(id).is_some())
-    }
-
-    fn agent(harness: &Harness, cx: &mut TestAppContext) -> &'static str {
-        cx.update(|cx| harness.view.read(cx).agent_name())
-    }
+    use super::codex::{agent, click, offering_codex, shown};
+    use super::common::Harness;
 
     #[gpui_kit::test]
     fn a_chat_with_one_agent_offers_no_other(cx: &mut TestAppContext) {
         let harness = Harness::new(cx);
         assert!(!shown(&harness, cx, "chat-agent-picker"));
         assert_eq!(
-            cx.update(|cx| harness.view.read(cx).agent_names()),
+            cx.update(|cx| harness.view.read(cx).agent_names(cx)),
             ["claude"]
         );
     }
@@ -90,7 +44,7 @@ mod agents {
             assert!(!shown(&harness, cx, hidden), "Codex has no {hidden}");
         }
         assert_eq!(codex.borrow().spawned, 1, "Codex runs it now");
-        let names = cx.update(|cx| harness.view.read(cx).agent_names());
+        let names = cx.update(|cx| harness.view.read(cx).agent_names(cx));
         assert_eq!(names, ["codex", "claude"], "its own agent first");
     }
 
@@ -139,128 +93,169 @@ mod agents {
         assert!(!shown(&harness, cx, "chat-agent-claude"), "nor offered");
     }
 
-    fn click(harness: &Harness, cx: &mut TestAppContext, id: &'static str) {
-        harness.with_window(cx, |window, cx| window.click(id, cx));
-    }
-
-    /// A Claude chat that said hello and was answered.
-    fn answered(cx: &mut TestAppContext) -> (Harness, Rc<RefCell<Script>>) {
+    #[gpui_kit::test]
+    fn each_agent_starts_with_the_model_last_picked_on_it(cx: &mut TestAppContext) {
         let (harness, codex) = offering_codex(cx);
-        harness.type_and_send(cx, "hello");
-        harness.emit(
-            cx,
-            AgentEvent::Started {
-                session_id: "s-1".into(),
-                model: "claude-opus-5-5".into(),
-                cli_version: None,
-            },
-        );
-        harness.emit(
-            cx,
-            AgentEvent::TextDelta {
-                block: kiln_agent::BlockKey {
-                    message_id: "m-1".into(),
-                    index: 0,
-                },
-                text: "Hi there".into(),
-            },
-        );
-        harness.emit(cx, AgentEvent::TurnEnded(TurnOutcome::Completed));
-        (harness, codex)
+        cx.update(|cx| {
+            harness
+                .view
+                .update(cx, |view, cx| view.set_model("opus", cx));
+        });
+        click(&harness, cx, "chat-agent-codex");
+        let spec = codex.borrow().last_spec.clone().expect("Codex runs");
+        assert_eq!(spec.model, None, "nothing picked on Codex yet");
+        cx.update(|cx| {
+            harness
+                .view
+                .update(cx, |view, cx| view.set_model("gpt-6-luna", cx));
+        });
+        click(&harness, cx, "chat-agent-claude");
+        let spec = harness
+            .script
+            .borrow()
+            .last_spec
+            .clone()
+            .expect("Claude runs");
+        assert_eq!(spec.model.as_deref(), Some("opus"));
+        // A new chat, as a new tab or after a restart, starts on it too.
+        let fresh = Harness::new(cx);
+        let spec = fresh
+            .script
+            .borrow()
+            .last_spec
+            .clone()
+            .expect("Claude runs");
+        assert_eq!(spec.model.as_deref(), Some("opus"));
+        let kept = cx.update(|cx| kiln_chat::LastModels::of("codex", cx));
+        assert_eq!(kept.as_deref(), Some("gpt-6-luna"));
     }
 
     #[gpui_kit::test]
-    fn both_agents_accounts_show_in_one_panel(cx: &mut TestAppContext) {
-        let (harness, _codex) = offering_codex(cx);
-        click(&harness, cx, "chat-account");
-        for id in [
-            "chat-account-add",
-            "chat-account-add-codex",
-            "chat-account-usual-codex",
-        ] {
-            assert!(shown(&harness, cx, id), "{id}");
-        }
-    }
-
-    #[gpui_kit::test]
-    fn a_conversation_carries_on_in_codex_and_back(cx: &mut TestAppContext) {
-        let (harness, codex) = answered(cx);
-        click(&harness, cx, "chat-account");
-        click(&harness, cx, "chat-account-usual-codex");
-        assert_eq!(agent(&harness, cx), "codex");
-        let script = codex.borrow();
-        let spec = script.last_spec.as_ref().expect("Codex takes it over");
-        assert_eq!(spec.resume, None, "as a conversation of its own");
-        let told = spec.handoff.as_deref().expect("told the conversation");
-        assert!(told.contains("User: hello"), "{told}");
-        assert!(told.contains("Assistant: Hi there"), "{told}");
-        drop(script);
-        assert!(
-            harness.with_window(cx, |window, _| {
-                window.try_find_by_label("Continued in Codex").is_some()
+    fn a_codex_subagent_counts_while_it_runs(cx: &mut TestAppContext) {
+        use kiln_agent::{SubagentChange, SubagentEnd, SubagentEvent, ToolCall};
+        let (harness, codex) = offering_codex(cx);
+        click(&harness, cx, "chat-agent-codex");
+        harness.type_and_send(cx, "spawn a subagent");
+        let events = codex.borrow().events.clone().expect("Codex runs");
+        let send = |cx: &mut TestAppContext, event: AgentEvent| {
+            events.try_send(event).expect("send");
+            cx.run_until_parked();
+        };
+        let subagent = |change| {
+            AgentEvent::Subagent(SubagentEvent {
+                call: "call-1".into(),
+                change,
+            })
+        };
+        // As the Codex translator reports a subagent's start.
+        send(
+            cx,
+            AgentEvent::ToolCall(ToolCall {
+                id: "call-1".into(),
+                parent: None,
+                name: "Agent".into(),
+                input: serde_json::json!({ "description": "heron word" }),
             }),
-            "the transcript says so"
         );
-        assert_eq!(harness.status(cx), Status::Idle);
+        send(
+            cx,
+            subagent(SubagentChange::Started {
+                description: "heron word".into(),
+                kind: None,
+            }),
+        );
+        let counted = |cx: &mut TestAppContext, label: &'static str| {
+            harness.with_window(cx, move |window, _| {
+                window.try_find_by_label(label).is_some()
+            })
+        };
+        assert!(counted(cx, "Agents 1"));
+        send(
+            cx,
+            subagent(SubagentChange::Finished {
+                end: SubagentEnd::Completed,
+                summary: "heron".into(),
+                usage: None,
+            }),
+        );
+        assert!(counted(cx, "Agents 0"));
+    }
 
+    #[gpui_kit::test]
+    fn a_missing_agent_offers_to_install_it_and_starts_once_it_is_there(cx: &mut TestAppContext) {
+        let (harness, codex) = offering_codex(cx);
+        codex.borrow_mut().missing = true;
+        let asked = Rc::new(RefCell::new(Vec::new()));
+        let seen = asked.clone();
+        let _watch = cx.update(|cx| {
+            cx.subscribe(&harness.view, move |_, event: &kiln_chat::ChatEvent, _| {
+                if let kiln_chat::ChatEvent::InstallAgent(agent) = event {
+                    seen.borrow_mut().push(*agent);
+                }
+            })
+        });
+        click(&harness, cx, "chat-agent-codex");
+        assert!(shown(&harness, cx, "chat-install"), "in place of an error");
+        assert!(cx.update(|cx| kiln_chat::AgentSetup::is_missing("codex", cx)));
+        click(&harness, cx, "chat-install-agent");
+        assert_eq!(*asked.borrow(), ["codex"]);
+
+        codex.borrow_mut().missing = false;
+        cx.update(|cx| kiln_chat::AgentSetup::set("codex", None, cx));
+        harness.with_window(cx, |window, cx| {
+            harness
+                .view
+                .update(cx, |view, cx| view.cli_checked("codex", window, cx));
+        });
+        assert_eq!(codex.borrow().spawned, 1, "it starts once installed");
+        assert!(!shown(&harness, cx, "chat-install"));
+    }
+
+    #[gpui_kit::test]
+    fn a_missing_other_agent_is_not_offered(cx: &mut TestAppContext) {
+        let (harness, _codex) = offering_codex(cx);
+        assert!(shown(&harness, cx, "chat-agent-codex"));
+        cx.update(|cx| kiln_chat::AgentSetup::set("codex", Some(kiln_chat::Setup::Missing), cx));
+        harness.with_window(cx, |window, cx| {
+            harness
+                .view
+                .update(cx, |view, cx| view.cli_checked("codex", window, cx));
+        });
+        assert!(!shown(&harness, cx, "chat-agent-codex"));
+        let names = cx.update(|cx| harness.view.read(cx).agent_names(cx));
+        assert_eq!(names, ["claude"]);
+    }
+
+    #[gpui_kit::test]
+    fn codex_starting_a_conversation_before_any_message_keeps_the_chat_blank(
+        cx: &mut TestAppContext,
+    ) {
+        let (harness, codex) = offering_codex(cx);
+        click(&harness, cx, "chat-agent-codex");
         let events = codex.borrow().events.clone().expect("Codex runs");
         let started = AgentEvent::Started {
             session_id: "t-1".into(),
             model: "gpt-6-luna".into(),
-            cli_version: None,
+            cli_version: Some("0.172.0".into()),
         };
         events.try_send(started).expect("send");
         cx.run_until_parked();
-        let id = cx.update(|cx| harness.view.read(cx).session_id().map(str::to_owned));
-        assert_eq!(id.as_deref(), Some("t-1"));
-
-        let spawned = harness.script.borrow().spawned;
-        click(&harness, cx, "chat-account");
-        click(&harness, cx, "chat-account-usual-claude");
-        assert_eq!(agent(&harness, cx), "claude");
-        let script = harness.script.borrow();
-        assert_eq!(script.spawned, spawned + 1);
-        let spec = script.last_spec.as_ref().expect("Claude takes it back");
-        assert_eq!(spec.resume, None);
-        assert!(
-            spec.handoff
-                .as_deref()
-                .is_some_and(|told| told.contains("User: hello"))
-        );
-    }
-
-    #[gpui_kit::test]
-    fn at_the_limit_with_no_other_account_codex_carries_the_turn_on(cx: &mut TestAppContext) {
-        let (harness, codex) = answered(cx);
-        harness.type_and_send(cx, "write the parser");
-        let limited = AgentEvent::Usage(kiln_agent::Usage {
-            limited: Some(kiln_agent::Limited {
-                until: Some(std::time::SystemTime::now() + std::time::Duration::from_hours(1)),
-            }),
-            ..kiln_agent::Usage::default()
-        });
-        harness.emit(cx, limited);
-        let failed = TurnOutcome::Failed("usage limit reached".into());
-        harness.emit(cx, AgentEvent::TurnEnded(failed));
-        assert!(harness.with_window(cx, |window, _| {
-            window.try_find_by_label("Continue in Codex").is_some()
-        }));
-        click(&harness, cx, "chat-limit-continue");
-        assert_eq!(agent(&harness, cx), "codex");
-        let script = codex.borrow();
-        let told = script
-            .last_spec
-            .as_ref()
-            .and_then(|spec| spec.handoff.clone());
-        assert!(told.is_some_and(|told| told.contains("User: write the parser")));
-        let commands = script.commands.as_ref().expect("Codex runs");
-        let sent: Vec<_> = std::iter::from_fn(|| commands.try_recv().ok()).collect();
-        assert!(
-            sent.iter().any(|command| matches!(
-                command,
-                kiln_agent::SessionCommand::Send(message) if message.text == "Continue where you left off."
-            )),
-            "{sent:?}"
+        assert!(cx.update(|cx| harness.view.read(cx).is_blank()));
+        click(&harness, cx, "chat-agent-claude");
+        assert_eq!(agent(&harness, cx), "claude", "it still moves");
+        let view = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let chat = harness.view.read(cx);
+                (
+                    chat.session_id().map(str::to_owned),
+                    chat.cli_version().map(str::to_owned),
+                )
+            })
+        };
+        assert_eq!(
+            view(cx),
+            (None, None),
+            "Codex's id and version stay Codex's"
         );
     }
 }

@@ -7,7 +7,12 @@ use std::time::SystemTime;
 pub struct Usage {
     /// The short window (five hours for Claude).
     pub session: Option<UsageWindow>,
+    /// The long window, a week for Claude.
     pub weekly: Option<UsageWindow>,
+    /// How many days the long window spans, when the agent says and it is
+    /// no week: Codex's free plan has a single 30-day window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_window_days: Option<u16>,
     /// Set while a limit is reached and messages would be refused.
     pub limited: Option<Limited>,
 }

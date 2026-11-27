@@ -10,9 +10,9 @@ use crate::{
     items,
     protocol::{
         AccountRateLimitsUpdatedNotification, AgentMessageDeltaNotification,
-        ItemCompletedNotification, ItemStartedNotification, ModelReroutedNotification,
-        ReasoningSummaryTextDeltaNotification, ThreadItem, ThreadTokenUsageUpdatedNotification,
-        TurnCompletedNotification, TurnStartedNotification, TurnStatus,
+        ItemCompletedNotification, ItemStartedNotification, ModelReroutedNotification, ThreadItem,
+        ThreadTokenUsageUpdatedNotification, TurnCompletedNotification, TurnStartedNotification,
+        TurnStatus,
     },
     report,
     translate::{Step, Translator, decode},
@@ -59,10 +59,12 @@ impl Translator {
                 Vec::new()
             }
             "turn/completed" => self.turn_completed(params),
-            "item/started" => decode::<ItemStartedNotification>(params)
-                .map_or_default(|started| self.item_started(&started.item)),
+            "item/started" => decode::<ItemStartedNotification>(params).map_or_default(|started| {
+                self.thought_item_started(&started);
+                self.item_started(&started.item)
+            }),
             "item/completed" => decode::<ItemCompletedNotification>(params)
-                .map_or_default(|completed| self.item_completed(&completed.item)),
+                .map_or_default(|completed| self.item_completed(&completed)),
             "item/agentMessage/delta" => self.text_delta(params),
             "item/reasoning/summaryTextDelta" => self.thinking_delta(params),
             "thread/tokenUsage/updated" => self.token_usage(params),
@@ -91,7 +93,8 @@ impl Translator {
         items::started(item)
     }
 
-    fn item_completed(&mut self, item: &ThreadItem) -> Vec<AgentEvent> {
+    fn item_completed(&mut self, completed: &ItemCompletedNotification) -> Vec<AgentEvent> {
+        let item = &completed.item;
         match item {
             ThreadItem::AgentMessage(message) => {
                 let block = BlockKey {
@@ -104,15 +107,7 @@ impl Translator {
                     .collect()
             }
             ThreadItem::Reasoning(thought) => {
-                let summary = thought.summary.as_deref().unwrap_or_default().join("\n\n");
-                let block = BlockKey {
-                    message_id: thought.id.clone(),
-                    index: 0,
-                };
-                self.rest(&thought.id, &summary)
-                    .map(|text| AgentEvent::ThinkingDelta { block, text })
-                    .into_iter()
-                    .collect()
+                self.thought_completed(thought, completed.completed_at_ms)
             }
             ThreadItem::SubAgentActivity(activity) => self.subagent_activity(activity, true),
             _ => items::completed(item),
@@ -141,31 +136,17 @@ impl Translator {
         }]
     }
 
-    fn thinking_delta(&mut self, params: Value) -> Vec<AgentEvent> {
-        let Some(delta) = decode::<ReasoningSummaryTextDeltaNotification>(params) else {
-            return Vec::new();
-        };
-        self.streamed.insert(delta.item_id.clone());
-        let block = BlockKey {
-            message_id: delta.item_id,
-            index: u64::try_from(delta.summary_index).unwrap_or_default(),
-        };
-        vec![AgentEvent::ThinkingDelta {
-            block,
-            text: delta.delta,
-        }]
-    }
-
     fn token_usage(&mut self, params: Value) -> Vec<AgentEvent> {
         let Some(updated) = decode::<ThreadTokenUsageUpdatedNotification>(params) else {
             return Vec::new();
         };
         self.spent = report::spent(&updated.token_usage);
         self.context = report::context(&updated.token_usage);
-        self.context
-            .clone()
-            .map(AgentEvent::ContextUsage)
+        let reasoning = updated.token_usage.last.reasoning_output_tokens;
+        let thought = self.thought_tokens(reasoning);
+        thought
             .into_iter()
+            .chain(self.context.clone().map(AgentEvent::ContextUsage))
             .collect()
     }
 

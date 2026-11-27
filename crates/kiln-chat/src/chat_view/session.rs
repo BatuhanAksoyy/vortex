@@ -9,7 +9,6 @@ use kiln_agent::{AgentEvent, Effort, PermissionMode, SessionCommand, SessionSpec
 
 use super::{ChatView, LiveSession};
 
-const USAGE_POLL: std::time::Duration = std::time::Duration::from_mins(2);
 use crate::agent_state::{AgentState, next_mode};
 
 impl ChatView {
@@ -28,6 +27,7 @@ impl ChatView {
 
     pub fn set_model(&mut self, id: &str, cx: &mut Context<Self>) {
         self.agent.choose_model(id);
+        crate::LastModels::remember(self.backend.name(), id, cx);
         self.send_command(SessionCommand::SetModel(id.to_owned()));
         cx.notify();
     }
@@ -96,36 +96,6 @@ impl ChatView {
         }
     }
 
-    /// Asks for fresh plan usage; usage spent elsewhere (another session,
-    /// claude.ai) shows only when asked for.
-    pub fn refresh_usage(&mut self, cx: &mut Context<Self>) {
-        if self.asks_usage(cx) {
-            self.send_command(SessionCommand::RefreshUsage);
-        }
-    }
-
-    /// Whether to ask the process for usage now. An added account's asks
-    /// are spaced out across chats (`Accounts::ask_usage`), as the CLI may
-    /// otherwise answer with the numbers it fetched for another account.
-    fn asks_usage(&self, cx: &mut Context<Self>) -> bool {
-        let Some(id) = &self.account else {
-            return true;
-        };
-        self.session.is_some()
-            && self
-                .accounts
-                .update(cx, |accounts, _| accounts.ask_usage(id, SystemTime::now()))
-    }
-
-    /// Keeps the header's usage current while the chat sits idle.
-    pub(super) async fn poll_usage(this: gpui_kit::WeakEntity<Self>, cx: &mut gpui_kit::AsyncApp) {
-        let mut alive = true;
-        while alive {
-            cx.background_executor().timer(USAGE_POLL).await;
-            alive = this.update(cx, Self::refresh_usage).is_ok();
-        }
-    }
-
     /// Whether a usage limit stops messages now.
     #[must_use]
     pub fn is_limited(&self) -> bool {
@@ -170,7 +140,16 @@ impl ChatView {
     ) -> Option<async_channel::Sender<SessionCommand>> {
         if self.session.is_none() {
             match self.start_session(window, cx) {
-                Ok(session) => self.session = Some(session),
+                Ok(session) => {
+                    // A new process says its own version; until then the last
+                    // one's, maybe another harness's, would count as behind.
+                    self.cli.version = None;
+                    self.session = Some(session);
+                }
+                Err(error) if crate::agent_setup::is_not_found(&error) => {
+                    self.cli_missing(cx);
+                    return None;
+                }
                 Err(error) => {
                     let change = self.transcript.apply(AgentEvent::Exited {
                         error: Some(format!("{error:#}")),
@@ -233,11 +212,13 @@ impl ChatView {
                 // The conversation holds it from here on.
                 self.handoff = None;
                 // A copy of a conversation keeps its name until listed.
-                let title = self.conversation.take().and_then(|stored| stored.title);
+                let before = self.conversation.take();
+                let stored = before.as_ref().is_some_and(|it| it.stored);
                 self.conversation = Some(super::Conversation {
                     id: session_id.clone(),
                     fork: false,
-                    title,
+                    title: before.and_then(|it| it.title),
+                    stored,
                 });
             }
             AgentEvent::TurnEnded(outcome) => {
@@ -267,7 +248,7 @@ impl ChatView {
     }
 
     /// Times what a report makes expire: a usage limit, the prompt cache.
-    fn start_timers(&mut self, event: &AgentEvent, cx: &mut Context<Self>) {
+    pub(super) fn start_timers(&mut self, event: &AgentEvent, cx: &mut Context<Self>) {
         match event {
             AgentEvent::Usage(_) => {
                 self.remember_usage(cx);
@@ -296,7 +277,9 @@ impl ChatView {
 
     fn on_event(&mut self, event: AgentEvent, window: &mut Window, cx: &mut Context<Self>) {
         for command in AgentState::refreshes_after(&event) {
-            if *command != SessionCommand::RefreshUsage || self.asks_usage(cx) {
+            if *command == SessionCommand::RefreshUsage {
+                self.refresh_usage(cx);
+            } else {
                 self.send_command(command.clone());
             }
         }
@@ -336,6 +319,13 @@ impl ChatView {
     /// What waits for a turn to end: a restart onto a newer CLI, a recap,
     /// an added account.
     fn after_turn(&mut self, turn_ran: bool, window: &mut Window, cx: &mut Context<Self>) {
+        // The model the user last worked with, picked here or kept by the
+        // conversation they reopened, is the one the next chat starts on.
+        // Claude's `default` alias would only say to take the default.
+        let model = self.agent.selected_model().map(|option| option.id.clone());
+        if let Some(model) = model.filter(|id| turn_ran && id != "default") {
+            crate::LastModels::remember(self.backend.name(), &model, cx);
+        }
         if self.cli.restart_due {
             self.restart_process(window, cx);
         }

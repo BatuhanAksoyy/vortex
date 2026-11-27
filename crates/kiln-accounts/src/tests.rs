@@ -115,3 +115,62 @@ fn a_codex_account_has_a_codex_home_of_its_own() {
         ("CODEX_HOME".to_owned(), home.to_string_lossy().into_owned())
     );
 }
+
+const FRESH: std::time::Duration = std::time::Duration::from_secs(30);
+
+#[test]
+fn an_added_claude_account_is_asked_for_usage_apart_and_once_at_a_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut accounts = Accounts::load(dir.path().to_owned()).unwrap();
+    accounts.add(account("a", "a@example.com")).unwrap();
+    accounts.add(account("b", "b@example.com")).unwrap();
+    let codex = Account {
+        agent: "codex".into(),
+        ..account("c", "c@example.com")
+    };
+    accounts.add(codex).unwrap();
+    let now = SystemTime::now();
+    let UsageAsk::Apart(env) = accounts.ask_usage("a", now, FRESH) else {
+        panic!("a Claude account is asked apart");
+    };
+    let store = dir.path().join("accounts").join("a");
+    let var = |name: &str| {
+        env.iter()
+            .find(|(var, _)| var == name)
+            .map(|(_, value)| PathBuf::from(value))
+    };
+    assert_eq!(var("CLAUDE_SECURESTORAGE_CONFIG_DIR"), Some(store.clone()));
+    assert_eq!(var("CLAUDE_CONFIG_DIR"), Some(store.join("usage-config")));
+    assert!(
+        matches!(accounts.ask_usage("b", now, FRESH), UsageAsk::Apart(_)),
+        "no wait for another account"
+    );
+    let soon = now + std::time::Duration::from_secs(5);
+    assert_eq!(
+        accounts.ask_usage("a", soon, FRESH),
+        UsageAsk::Fresh,
+        "its ask is under way"
+    );
+    assert_eq!(accounts.ask_usage("c", soon, FRESH), UsageAsk::Session);
+}
+
+#[test]
+fn a_refused_usage_ask_is_not_repeated_for_a_while() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut accounts = Accounts::load(dir.path().to_owned()).unwrap();
+    accounts.add(account("a", "a@example.com")).unwrap();
+    let now = SystemTime::now();
+    let mins = |n| now + std::time::Duration::from_mins(n);
+    assert!(matches!(
+        accounts.ask_usage("a", now, FRESH),
+        UsageAsk::Apart(_)
+    ));
+    accounts.usage_refused("a", now);
+    assert_eq!(accounts.usage_refused_until("a", mins(1)), Some(mins(10)));
+    assert_eq!(accounts.ask_usage("a", mins(5), FRESH), UsageAsk::Fresh);
+    assert!(matches!(
+        accounts.ask_usage("a", mins(11), FRESH),
+        UsageAsk::Apart(_)
+    ));
+    assert_eq!(accounts.usage_refused_until("a", mins(11)), None);
+}

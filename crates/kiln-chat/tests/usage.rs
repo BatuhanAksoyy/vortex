@@ -48,7 +48,59 @@ mod usage {
             limited: limited_for.map(|wait| Limited {
                 until: Some(now + wait),
             }),
+            long_window_days: None,
         })
+    }
+
+    #[gpui_kit::test]
+    fn the_meter_shows_the_window_nearer_its_limit(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        // The weekly window is at 19%.
+        harness.emit(cx, usage(12, None));
+        let shown = |cx: &mut TestAppContext, label: &'static str| {
+            harness.with_window(cx, move |window, _| {
+                window.try_find_by_label(label).is_some()
+            })
+        };
+        assert!(shown(cx, "Weekly 19%"));
+        harness.emit(cx, usage(30, None));
+        assert!(shown(cx, "Session 30%"));
+    }
+
+    #[gpui_kit::test]
+    fn a_plan_with_only_a_weekly_window_shows_it(cx: &mut TestAppContext) {
+        let harness = Harness::new(cx);
+        harness.emit(cx, ready());
+        harness.emit(
+            cx,
+            AgentEvent::Usage(Usage {
+                weekly: Some(UsageWindow {
+                    percent: 8,
+                    resets_at: None,
+                }),
+                ..Usage::default()
+            }),
+        );
+        let shown = |cx: &mut TestAppContext, label: &'static str| {
+            harness.with_window(cx, move |window, _| {
+                window.try_find_by_label(label).is_some()
+            })
+        };
+        assert!(shown(cx, "Weekly 8%"));
+        // Codex's free plan has one window, of 30 days.
+        harness.emit(
+            cx,
+            AgentEvent::Usage(Usage {
+                weekly: Some(UsageWindow {
+                    percent: 8,
+                    resets_at: None,
+                }),
+                long_window_days: Some(30),
+                ..Usage::default()
+            }),
+        );
+        assert!(shown(cx, "Monthly 8%"));
     }
 
     #[gpui_kit::test]
@@ -59,7 +111,7 @@ mod usage {
         harness.emit(cx, usage(42, None));
         harness.with_window(cx, |window, _| {
             assert!(window.find_by_label("dev@example.com · Pro").visible());
-            assert!(window.find_by_label("42% used").visible());
+            assert!(window.find_by_label("Session 42%").visible());
         });
         harness.commands();
         harness.with_window(cx, |window, cx| window.click("chat-usage", cx));

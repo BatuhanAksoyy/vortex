@@ -3,10 +3,15 @@
 
 // Inside a `cfg(test)` module so helpers may `unwrap`, like unit tests.
 #[cfg(test)]
+mod common;
+
+#[cfg(test)]
 mod replay {
     use kiln_agent::{AgentEvent, Decision, PermissionRequest, SessionCommand, TurnOutcome};
     use kiln_agent_codex::{Start, Translator, protocol};
     use serde_json::Value;
+
+    use super::common::{records, text, translate};
 
     const FIXTURES: &[&str] = &[
         "controls",
@@ -19,35 +24,8 @@ mod replay {
         "history",
         "picture",
         "subagent",
+        "thinking",
     ];
-
-    fn records(name: &str) -> Vec<(String, Value)> {
-        let path = format!("{}/tests/fixtures/{name}.jsonl", env!("CARGO_MANIFEST_DIR"));
-        let text = std::fs::read_to_string(path).unwrap();
-        text.lines()
-            .map(|line| {
-                let record: Value = serde_json::from_str(line).unwrap();
-                (
-                    record["dir"].as_str().unwrap().to_owned(),
-                    record["msg"].clone(),
-                )
-            })
-            .collect()
-    }
-
-    /// Every event the server's side of the capture leads to, in order.
-    fn translate(name: &str) -> Vec<AgentEvent> {
-        let mut translator = Translator::new(Start::default());
-        let mut events = Vec::new();
-        for (dir, msg) in records(name) {
-            match dir.as_str() {
-                "in" => translator.on_sent(&msg.to_string()),
-                "out" => events.extend(translator.on_line(&msg.to_string()).events),
-                _ => {}
-            }
-        }
-        events
-    }
 
     fn permission(events: &[AgentEvent]) -> &PermissionRequest {
         events
@@ -72,14 +50,6 @@ mod replay {
                 _ => None,
             })
             .unwrap()
-    }
-
-    fn text(events: &[AgentEvent]) -> String {
-        let texts = events.iter().filter_map(|event| match event {
-            AgentEvent::TextDelta { text, .. } => Some(text.as_str()),
-            _ => None,
-        });
-        texts.collect()
     }
 
     #[test]
@@ -148,7 +118,8 @@ mod replay {
         assert!(
             events
                 .iter()
-                .any(|e| matches!(e, AgentEvent::Usage(u) if u.weekly.is_some()))
+                .any(|e| matches!(e, AgentEvent::Usage(u) if u.weekly.is_some() && u.long_window_days == Some(30))),
+            "the free plan has one 30-day window"
         );
         assert_eq!(
             events.last(),
@@ -209,92 +180,6 @@ mod replay {
         assert!(
             matches!(events.as_slice(), [AgentEvent::ModelsChanged(models)] if !models.is_empty()),
             "{events:?}"
-        );
-    }
-
-    #[test]
-    fn a_subagent_runs_inside_its_call_and_not_as_the_main_turn() {
-        use kiln_agent::{SubagentChange, SubagentEnd};
-        let events = translate("subagent");
-        let ended = events
-            .iter()
-            .filter(|e| matches!(e, AgentEvent::TurnEnded(_)));
-        assert_eq!(ended.count(), 1, "the subagent's turn is not the main one");
-        let call = events.iter().find_map(|e| match e {
-            AgentEvent::ToolCall(call) if call.name == "Agent" => Some(call),
-            _ => None,
-        });
-        let call = call.unwrap();
-        assert_eq!(call.parent, None);
-        let changes: Vec<&SubagentChange> = events
-            .iter()
-            .filter_map(|e| match e {
-                AgentEvent::Subagent(event) if event.call == call.id => Some(&event.change),
-                _ => None,
-            })
-            .collect();
-        assert!(matches!(
-            changes[0],
-            SubagentChange::Started { description, .. } if description == "heron word"
-        ));
-        assert!(
-            changes
-                .iter()
-                .any(|c| matches!(c, SubagentChange::Text(t) if t.contains("heron")))
-        );
-        assert!(matches!(
-            changes.last().unwrap(),
-            SubagentChange::Finished { end: SubagentEnd::Completed, summary, .. } if summary.contains("heron")
-        ));
-        let reported = events
-            .iter()
-            .any(|e| matches!(e, AgentEvent::ToolResult { id, .. } if *id == call.id));
-        assert!(reported, "its call ends with its report");
-        let blocks: std::collections::HashSet<_> = events
-            .iter()
-            .filter_map(|e| match e {
-                AgentEvent::TextDelta { block, .. } => Some(block.message_id.clone()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            blocks.len(),
-            1,
-            "only the main thread's answer is the chat's text"
-        );
-        assert!(text(&events).to_lowercase().contains("heron"));
-    }
-
-    #[test]
-    fn stopping_a_subagent_interrupts_its_own_turn() {
-        let mut translator = Translator::new(Start::default());
-        let mut call = None;
-        for (dir, msg) in records("subagent") {
-            if dir == "in" {
-                translator.on_sent(&msg.to_string());
-                continue;
-            }
-            let events = translator.on_line(&msg.to_string()).events;
-            call = call.or_else(|| {
-                events.iter().find_map(|e| match e {
-                    AgentEvent::ToolCall(c) if c.name == "Agent" => Some(c.id.clone()),
-                    _ => None,
-                })
-            });
-            // Once the subagent's turn runs.
-            if msg["method"] == "item/started" && msg["params"]["item"]["type"] == "agentMessage" {
-                break;
-            }
-        }
-        let out = translator
-            .on_command(SessionCommand::StopSubagent(call.unwrap()))
-            .out;
-        assert_eq!(out[0]["method"], "turn/interrupt");
-        assert!(
-            out[0]["params"]["threadId"]
-                .as_str()
-                .unwrap()
-                .ends_with("c488")
         );
     }
 

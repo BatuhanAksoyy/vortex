@@ -102,6 +102,7 @@ pub struct Translator {
     pub(crate) queued: Vec<kiln_agent::Message>,
     pub(crate) spent: SpentTokens,
     pub(crate) subagents: crate::subagents::Subagents,
+    pub(crate) thoughts: crate::thoughts::Thoughts,
 }
 
 impl Translator {
