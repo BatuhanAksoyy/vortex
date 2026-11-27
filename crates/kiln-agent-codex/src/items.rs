@@ -143,12 +143,35 @@ fn file_patch(file: &FileUpdateChange) -> Vec<kiln_agent::Hunk> {
     }
 }
 
+/// An MCP result's text, and its pictures, such as a browser screenshot.
 fn tool_result(tool: &ThreadItemMcpToolCall) -> AgentEvent {
     if let Some(error) = &tool.error {
         return result(&tool.id, error.message.clone(), true);
     }
-    let texts = (tool.result.iter())
+    let blocks: Vec<&Value> = (tool.result.iter())
         .flat_map(|result| &result.content)
-        .filter_map(|block| block.get("text").and_then(Value::as_str));
-    result(&tool.id, texts.collect::<Vec<_>>().join("\n"), false)
+        .collect();
+    let texts = (blocks.iter()).filter_map(|block| block.get("text").and_then(Value::as_str));
+    AgentEvent::ToolResult {
+        id: tool.id.clone(),
+        output: texts.collect::<Vec<_>>().join("\n"),
+        pictures: blocks.iter().filter_map(|block| picture(block)).collect(),
+        is_error: false,
+        patch: Vec::new(),
+    }
+}
+
+/// An MCP image block's picture; `None` for another block or bad base64.
+fn picture(block: &Value) -> Option<kiln_agent::Picture> {
+    use base64::Engine as _;
+    if block.get("type")? != "image" {
+        return None;
+    }
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(block.get("data")?.as_str()?)
+        .ok()?;
+    Some(kiln_agent::Picture {
+        media_type: block.get("mimeType")?.as_str()?.to_owned(),
+        data: data.into(),
+    })
 }

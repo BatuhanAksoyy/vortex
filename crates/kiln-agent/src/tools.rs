@@ -10,3 +10,26 @@ pub struct ToolServer {
     /// as it starts.
     pub commit_directives: Vec<String>,
 }
+
+impl ToolServer {
+    /// What the agent is told of Kiln's tools. Commits and pushes are
+    /// Kiln's: it holds commit messages to the project's rules.
+    #[must_use]
+    pub fn instructions(&self) -> String {
+        let name = &self.name;
+        let mut told = format!(
+            "This session runs in Kiln, an IDE whose tools are named mcp__{name}__*. Commit with \
+             mcp__{name}__commit, never with `git commit`: Kiln holds the message to the \
+             project's rules and the user may review it first. Do not push; Kiln pushes as the \
+             user set it to."
+        );
+        if !self.commit_directives.is_empty() {
+            told.push_str("\n\nThe project asks this of every commit message:");
+            for directive in &self.commit_directives {
+                told.push_str("\n- ");
+                told.push_str(directive);
+            }
+        }
+        told
+    }
+}

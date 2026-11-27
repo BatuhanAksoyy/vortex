@@ -30,6 +30,8 @@ pub struct Start {
     pub resume: Option<String>,
     /// Told to the model before the conversation, as Kiln's own guidance.
     pub instructions: Option<String>,
+    /// Kiln's own MCP server, added to the user's.
+    pub tools: Option<kiln_agent::ToolServer>,
 }
 
 /// What a message leads to: events for the chat and messages to send back.
@@ -213,8 +215,15 @@ impl Translator {
         if let Some(model) = &self.start.model {
             params["model"] = json!(model);
         }
-        if let Some(instructions) = &self.start.instructions {
+        let instructions = crate::tools::instructions(
+            self.start.tools.as_ref(),
+            self.start.instructions.as_deref(),
+        );
+        if let Some(instructions) = instructions {
             params["developerInstructions"] = json!(instructions);
+        }
+        if let Some(server) = &self.start.tools {
+            params["config"] = crate::tools::config(server);
         }
         match self.start.resume.clone() {
             Some(thread) => {

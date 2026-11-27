@@ -21,6 +21,7 @@ mod session;
 mod sign_in;
 mod subagents;
 mod thoughts;
+mod tools;
 mod translate;
 
 pub use install::CodexCli;

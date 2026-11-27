@@ -4,7 +4,7 @@ directions as JSONL, one `{"dir": "in"|"out", "msg": ...}` per line.
 
 usage: capture.py <case> <out.jsonl>
   case: controls | turn | command | deny | edit | interrupt | resume | history
-        | picture | thinking | subagent | login
+        | picture | thinking | subagent | mcp | login
 
 "controls" sends no prompt, so it spends no usage: it lists the models and
 reads the account and its rate limits, then starts a thread.
@@ -25,6 +25,9 @@ several reasoning items around a command.
 "subagent" has the model spawn one subagent that replies with a word, wait
 for it, and report the word; the subagent's own thread streams on the same
 connection, so the capture runs until the main thread's turn completes.
+"mcp" gives the thread an MCP server named kiln, as Kiln gives its own,
+with its tools approved, while every command needs approval; the model
+calls its one tool, whose result holds text and a picture.
 "login" sends no prompt: it starts a ChatGPT sign-in in a CODEX_HOME of its
 own (`./codex-home`, so the usual login is not touched), prints the sign-in
 URL and waits until the sign-in in the browser completes.
@@ -130,6 +133,35 @@ def square_png(path, size=16):
         file.write(png)
 
 
+# An MCP server on stdio with one tool, `page_title`, that answers with a
+# line of text and a red square.
+TOOL_SERVER = r'''
+import base64, json, sys
+PNG = sys.argv[1]
+def send(msg):
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
+for line in sys.stdin:
+    msg = json.loads(line)
+    method, ident = msg.get("method"), msg.get("id")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": ident, "result": {
+            "protocolVersion": msg["params"]["protocolVersion"],
+            "capabilities": {"tools": {}}, "serverInfo": {"name": "kiln", "version": "0"}}})
+    elif method == "tools/list":
+        send({"jsonrpc": "2.0", "id": ident, "result": {"tools": [{
+            "name": "page_title", "description": "The title of the page open in the browser.",
+            "inputSchema": {"type": "object", "properties": {}}}]}})
+    elif method == "tools/call":
+        picture = base64.b64encode(open(PNG, "rb").read()).decode()
+        send({"jsonrpc": "2.0", "id": ident, "result": {"content": [
+            {"type": "text", "text": "The page is titled Kiln."},
+            {"type": "image", "data": picture, "mimeType": "image/png"}]}})
+    elif ident is not None:
+        send({"jsonrpc": "2.0", "id": ident, "result": {}})
+'''
+
+
 def run():
     if case == "resume":
         first = Server(recorded=False)
@@ -198,6 +230,19 @@ def run():
         items = text("What color is this square? Reply with the color alone.")
         items.append({"type": "localImage", "path": os.path.abspath("square.png")})
         turn(server, thread(server), items)
+    elif case == "mcp":
+        square_png("square.png")
+        with open("tool_server.py", "w") as file:
+            file.write(TOOL_SERVER)
+        config = {"mcp_servers": {"kiln": {
+            "command": sys.executable,
+            "args": [os.path.abspath("tool_server.py"), os.path.abspath("square.png")],
+            "default_tools_approval_mode": "approve",
+        }}}
+        thread_id = thread(server, approvalPolicy="untrusted", sandbox="workspace-write", config=config)
+        turn(server, thread_id, text(
+            "Call the page_title tool of the kiln MCP server once, then reply with the title it "
+            "gave and the color of the picture it returned."))
     else:
         raise SystemExit(f"unknown case {case}")
     server.close()

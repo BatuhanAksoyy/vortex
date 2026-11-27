@@ -3,26 +3,6 @@
 use kiln_agent::ToolServer;
 use serde_json::{Map, Value, json};
 
-/// What the agent is told of Kiln's tools. Commits and pushes are Kiln's,
-/// so the CLI's own ways to them are closed.
-fn instructions(server: &ToolServer) -> String {
-    let name = &server.name;
-    let mut told = format!(
-        "This session runs in Kiln, an IDE whose tools are named mcp__{name}__*. Commit with \
-         mcp__{name}__commit, never with `git commit`: Kiln holds the message to the \
-         project's rules and the user may review it first. Do not push; Kiln pushes as the \
-         user set it to."
-    );
-    if !server.commit_directives.is_empty() {
-        told.push_str("\n\nThe project asks this of every commit message:");
-        for directive in &server.commit_directives {
-            told.push_str("\n- ");
-            told.push_str(directive);
-        }
-    }
-    told
-}
-
 /// The CLI's settings while Kiln commits: no line crediting Claude, and its
 /// own `git commit` and `git push` refused.
 fn settings() -> Value {
@@ -58,8 +38,8 @@ pub(crate) fn args(server: &ToolServer, handoff: Option<&str>) -> [String; 8] {
         format!("mcp__{}", server.name),
         "--append-system-prompt".to_owned(),
         handoff.map_or_else(
-            || instructions(server),
-            |handoff| format!("{}\n\n{handoff}", instructions(server)),
+            || server.instructions(),
+            |handoff| format!("{}\n\n{handoff}", server.instructions()),
         ),
         "--settings".to_owned(),
         settings().to_string(),

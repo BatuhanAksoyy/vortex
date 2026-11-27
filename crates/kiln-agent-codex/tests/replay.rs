@@ -25,6 +25,7 @@ mod replay {
         "picture",
         "subagent",
         "thinking",
+        "mcp",
     ];
 
     fn permission(events: &[AgentEvent]) -> &PermissionRequest {
@@ -258,5 +259,62 @@ mod replay {
         });
         let accepted = serde_json::json!({"id": 0, "result": {"decision": "accept"}});
         assert_eq!(answer.out, [accepted]);
+    }
+
+    #[test]
+    fn kilns_tool_server_is_given_with_its_tools_approved() {
+        let tools = kiln_agent::ToolServer {
+            name: "kiln".into(),
+            command: "/Applications/Kiln".into(),
+            args: vec!["mcp".into()],
+            env: vec![("KILN_BRIDGE_TOKEN".into(), "abc".into())],
+            commit_directives: Vec::new(),
+        };
+        let mut translator = Translator::new(Start {
+            tools: Some(tools),
+            ..Start::default()
+        });
+        let initialize = translator.begin();
+        let (_, answered) = records("mcp")
+            .into_iter()
+            .find(|(dir, msg)| dir == "out" && msg["result"]["userAgent"].is_string())
+            .unwrap();
+        let answered = serde_json::json!({"id": initialize["id"], "result": answered["result"]});
+        let out = translator.on_line(&answered.to_string()).out;
+        let thread = out
+            .iter()
+            .find(|msg| msg["method"] == "thread/start")
+            .unwrap();
+        let kiln = &thread["params"]["config"]["mcp_servers"]["kiln"];
+        assert_eq!(kiln["default_tools_approval_mode"], "approve");
+        assert_eq!(kiln["env"]["KILN_BRIDGE_TOKEN"], "abc");
+        let told = thread["params"]["developerInstructions"].as_str().unwrap();
+        assert!(told.contains("mcp__kiln__commit"), "{told}");
+    }
+
+    #[test]
+    fn an_mcp_call_shows_as_the_servers_tool_with_its_picture() {
+        let events = translate("mcp");
+        let call = events.iter().find_map(|event| match event {
+            AgentEvent::ToolCall(call) => Some(call),
+            _ => None,
+        });
+        assert_eq!(call.unwrap().name, "mcp__kiln__page_title");
+        let result = events.iter().find_map(|event| match event {
+            AgentEvent::ToolResult {
+                output,
+                pictures,
+                is_error,
+                ..
+            } => Some((output, pictures, *is_error)),
+            _ => None,
+        });
+        let (output, pictures, is_error) = result.unwrap();
+        assert_eq!(output, "The page is titled Kiln.");
+        assert!(!is_error);
+        assert_eq!(pictures.len(), 1);
+        assert_eq!(pictures[0].media_type, "image/png");
+        assert!(pictures[0].data.starts_with(b"\x89PNG"));
+        assert!(text(&events).contains("Kiln"), "{}", text(&events));
     }
 }

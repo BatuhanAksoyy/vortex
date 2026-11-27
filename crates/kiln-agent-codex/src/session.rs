@@ -47,6 +47,7 @@ impl AgentBackend for CodexBackend {
             effort: spec.effort,
             resume: spec.resume,
             instructions: spec.handoff,
+            tools: spec.tools,
         };
         let pid = child.id();
         let (event_tx, events) = async_channel::unbounded();
