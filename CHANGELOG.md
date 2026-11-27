@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.1 — 2026-11-27
+
+### Fixed
+
+- Vortex finds `claude` and `codex` when they are not on `PATH`: it also
+  looks where their installers put them (`~/.local/bin`, `~/.claude/local`,
+  `~/.npm-global/bin`, `~/.bun/bin`, `/opt/homebrew/bin`, `/usr/local/bin`).
+- Before a chat is open, Vortex no longer assumes Claude Code: the status bar
+  shows no harness's CLI status, and the colors are Vortex's own graphite
+  instead of Claude's orange.
+
+### Added
+
+- Choose where each CLI is: **Settings → Chat → Claude Code program** and
+  **Codex program** take a path (`~/` for the home folder). A new path applies
+  at once, without a restart.
+
+### Changed
+
+- The mark in the title bar is larger.
+
 ## 1.0.0 — 2026-11-27
 
 The first release of Vortex: a lightweight, native IDE for running Claude Code
