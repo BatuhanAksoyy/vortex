@@ -2,7 +2,7 @@ name: Release
 
 # Pushing a v* tag builds the app for both kinds of Mac and publishes the
 # release with its CHANGELOG.md section; nothing is released from a
-# developer's machine. Kiln offers the update from the published release.
+# developer's machine. Vortex offers the update from the published release.
 on:
   push:
     tags: ["v*"]
@@ -27,13 +27,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check the tag against the version
         run: |
-          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "kiln") | .version')"
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "vortex") | .version')"
           [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "$GITHUB_REF_NAME is not v$version"; exit 1; }
           echo "VERSION=$version" >> "$GITHUB_ENV"
       - name: Build
         run: |
-          cargo build --release --locked -p kiln --target aarch64-apple-darwin
-          cargo build --release --locked -p kiln --target x86_64-apple-darwin
+          cargo build --release --locked -p vortex --target aarch64-apple-darwin
+          cargo build --release --locked -p vortex --target x86_64-apple-darwin
       - name: Bundle
         run: |
           scripts/bundle-macos.sh aarch64-apple-darwin "$VERSION" dist
@@ -44,4 +44,4 @@ jobs:
         run: |
           scripts/release-notes.sh "$VERSION" > notes.md
           [ -s notes.md ] || git log --no-merges --format='- %s' "$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD" > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/*.zip --title "Kiln $VERSION" --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" dist/*.zip --title "Vortex $VERSION" --notes-file notes.md
