@@ -19,8 +19,6 @@ use vortex_chat::scale::{BAR_HEIGHT, ScaledButton as _};
 
 use super::Workspace;
 use crate::{
-    files_page::FilesPage,
-    git_page::GitPage,
     project::Project,
     side_panel::{MAX_BAR, Page},
 };
@@ -145,23 +143,32 @@ impl Workspace {
         }));
     }
 
-    fn toggle_diff(&self, cx: &mut Context<Self>) {
-        if let Some(project) = self.project(cx).cloned() {
-            let git = project.read(cx).git_page().clone();
-            git.update(cx, GitPage::toggle_diff);
-        }
+    fn toggle_diff(&mut self, cx: &mut Context<Self>) {
+        self.side_panel.put_away.toggle_git_diff();
+        self.save_side_panel(cx);
+        self.lay_out_pages(cx);
     }
 
-    fn toggle_list(&self, cx: &mut Context<Self>) {
-        let Some(project) = self.project(cx).cloned() else {
-            return;
-        };
-        let project = project.read(cx);
-        let (files, git) = (project.files_page().clone(), project.git_page().clone());
+    fn toggle_list(&mut self, cx: &mut Context<Self>) {
         match self.side_panel.page {
-            Page::Files => files.update(cx, FilesPage::toggle_tree),
-            Page::Git => git.update(cx, GitPage::toggle_list),
-            Page::Search => {}
+            Page::Files => self.side_panel.put_away.tree ^= true,
+            Page::Git => self.side_panel.put_away.toggle_git_list(),
+            Page::Search => return,
+        }
+        self.save_side_panel(cx);
+        self.lay_out_pages(cx);
+    }
+
+    /// Puts away in every project's pages what the side panel keeps away,
+    /// so moving to another project or window keeps the same layout.
+    pub(super) fn lay_out_pages(&self, cx: &mut Context<Self>) {
+        let away = self.side_panel.put_away;
+        let (tree, git) = (away.tree, away.git());
+        for (project, _) in &self.projects {
+            let project = project.read(cx);
+            let (files, git_page) = (project.files_page().clone(), project.git_page().clone());
+            files.update(cx, |files, cx| files.hide_tree(tree, cx));
+            git_page.update(cx, |page, cx| page.hide_sides(git, cx));
         }
     }
 

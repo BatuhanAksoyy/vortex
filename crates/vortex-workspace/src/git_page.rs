@@ -207,19 +207,13 @@ impl GitPage {
         changes.iter().position(|change| change == selected)
     }
 
-    /// Hides the list of changes, leaving the diff, or shows it again.
-    pub fn toggle_list(&mut self, cx: &mut Context<Self>) {
-        self.list_hidden = !self.list_hidden;
-        // One side always stays, or the page would be empty.
-        self.diff_hidden &= !self.list_hidden;
-        cx.notify();
-    }
-
-    /// Hides the diff, leaving the list, or shows it again.
-    pub fn toggle_diff(&mut self, cx: &mut Context<Self>) {
-        self.diff_hidden = !self.diff_hidden;
-        self.list_hidden &= !self.diff_hidden;
-        cx.notify();
+    /// Puts away the list of changes, leaving the diff, or the diff,
+    /// leaving the list, as the side panel keeps them.
+    pub fn hide_sides(&mut self, (list, diff): (bool, bool), cx: &mut Context<Self>) {
+        if (self.list_hidden, self.diff_hidden) != (list, diff) {
+            (self.list_hidden, self.diff_hidden) = (list, diff);
+            cx.notify();
+        }
     }
 
     fn toggle_section(&mut self, area: Area, cx: &mut Context<Self>) {

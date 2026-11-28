@@ -125,10 +125,12 @@ impl FilesPage {
         cx.notify();
     }
 
-    /// Hides the tree, leaving the editor, or shows it again.
-    pub fn toggle_tree(&mut self, cx: &mut Context<Self>) {
-        self.tree_hidden = !self.tree_hidden;
-        cx.notify();
+    /// Puts away the tree, leaving the editor, as the side panel keeps it.
+    pub fn hide_tree(&mut self, hidden: bool, cx: &mut Context<Self>) {
+        if self.tree_hidden != hidden {
+            self.tree_hidden = hidden;
+            cx.notify();
+        }
     }
 
     /// Selects `relative` in the tree, opening the folders above it.

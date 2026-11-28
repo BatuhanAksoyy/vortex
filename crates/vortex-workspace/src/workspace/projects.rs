@@ -50,6 +50,7 @@ impl Workspace {
         self.projects.push((project.clone(), subscription));
         let backends = self.backends.clone();
         project.update(cx, |project, cx| project.reload_sessions(&backends, cx));
+        self.lay_out_pages(cx);
         project
     }
 

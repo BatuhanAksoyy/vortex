@@ -1,5 +1,5 @@
-//! The Git page's layout: long names cut short, the diff closed, and the
-//! history's graph of every branch.
+//! The Git page's layout: long names cut short, the diff closed and kept
+//! closed, and the history's graph of every branch.
 
 use std::time::Duration;
 
@@ -75,6 +75,32 @@ async fn the_diff_closes_leaving_the_list_the_whole_page(cx: &mut TestAppContext
     click(cx, window, "side-toggle-diff");
     assert!(has(cx, window, "git-changes"), "the list again");
     assert!(!has(cx, window, "git-diff"));
+}
+
+#[gpui_kit::test]
+async fn what_is_put_away_stays_away_in_the_next_window(cx: &mut TestAppContext) {
+    let dir = changed_project();
+    let data = tempfile::tempdir().expect("data dir");
+    let (window, _) = open_workspace_keeping(cx, dir.path().to_path_buf(), Some(data.path()));
+    let window = window.into();
+    click(cx, window, "activity-files");
+    click(cx, window, "side-toggle-list");
+    assert!(!has(cx, window, "files-tree"));
+    click(cx, window, "activity-git");
+    click(cx, window, "side-toggle-diff");
+    // The panel is kept once it settles.
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+
+    let (again, _) = open_workspace_keeping(cx, dir.path().to_path_buf(), Some(data.path()));
+    let again = again.into();
+    cx.wait_for(again, Duration::from_secs(5), |window, _| {
+        window.try_find("git-changes").is_some()
+    })
+    .await;
+    assert!(!has(cx, again, "git-diff"), "the diff stays away");
+    click(cx, again, "activity-files");
+    assert!(!has(cx, again, "files-tree"), "the tree stays away");
 }
 
 #[gpui_kit::test]

@@ -1,5 +1,5 @@
-//! What the panels beside the chats show, and how wide they and the activity
-//! bar are, kept across restarts.
+//! What the panels beside the chats show, which of their parts are put
+//! away, and how wide they and the activity bar are, kept across restarts.
 
 use std::path::Path;
 
@@ -36,6 +36,19 @@ pub struct SidePanel {
     pub browser_width: Option<f32>,
     /// Its height while it is under the chats.
     pub browser_height: Option<f32>,
+    pub put_away: PutAway,
+}
+
+/// The parts of the pages the user put away.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PutAway {
+    /// The Files page's tree, leaving the editor.
+    pub tree: bool,
+    /// The Git page's changes and history, leaving the diff.
+    git_list: bool,
+    /// The Git page's diff, leaving the changes and history.
+    git_diff: bool,
 }
 
 impl Default for SidePanel {
@@ -49,7 +62,32 @@ impl Default for SidePanel {
             browser_open: false,
             browser_width: None,
             browser_height: None,
+            put_away: PutAway::default(),
         }
+    }
+}
+
+impl PutAway {
+    /// Whether the Git page's list and its diff are put away. Never both,
+    /// or the page would be empty, even from a file edited by hand.
+    pub fn git(self) -> (bool, bool) {
+        (self.git_list, self.git_diff && !self.git_list)
+    }
+
+    /// Puts the Git page's list away, or shows it again; the diff comes back
+    /// if it was away too.
+    pub fn toggle_git_list(&mut self) {
+        let (list, diff) = self.git();
+        self.git_list = !list;
+        self.git_diff = diff && list;
+    }
+
+    /// Puts the Git page's diff away, or shows it again; the list comes back
+    /// if it was away too.
+    pub fn toggle_git_diff(&mut self) {
+        let (list, diff) = self.git();
+        self.git_diff = !diff;
+        self.git_list = list && diff;
     }
 }
 
@@ -95,11 +133,29 @@ mod tests {
         panel.page_width = Some(700.);
         panel.open = true;
         panel.browser_open = true;
+        panel.put_away.toggle_git_diff();
         panel.save(&path).unwrap();
         assert_eq!(SidePanel::load(&path), panel);
         panel.set_bar_width(1000.);
         assert!((panel.bar_width() - MAX_BAR).abs() < 0.1);
         std::fs::write(&path, "{").unwrap();
         assert_eq!(SidePanel::load(&path), SidePanel::default());
+    }
+
+    #[test]
+    fn the_git_page_keeps_one_side_shown() {
+        let mut away = PutAway::default();
+        away.toggle_git_diff();
+        assert_eq!(away.git(), (false, true));
+        away.toggle_git_list();
+        assert_eq!(away.git(), (true, false), "the diff comes back");
+        away.toggle_git_diff();
+        assert_eq!(away.git(), (false, true), "the list comes back");
+        away.toggle_git_diff();
+        assert_eq!(away.git(), (false, false));
+
+        let both = r#"{ "put_away": { "git_list": true, "git_diff": true } }"#;
+        let panel: SidePanel = serde_json::from_str(both).unwrap();
+        assert_eq!(panel.put_away.git(), (true, false), "a file edited by hand");
     }
 }
