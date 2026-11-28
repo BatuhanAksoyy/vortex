@@ -6,6 +6,7 @@ mod branching;
 mod changes;
 mod committing;
 mod diff_pane;
+mod graph_lanes;
 mod history;
 mod pushing;
 
@@ -51,6 +52,8 @@ pub struct GitPage {
     patch: Option<Result<String, String>>,
     diff_load: Option<Task<()>>,
     commits: Vec<Commit>,
+    /// Where each of `commits` sits in the graph beside them.
+    graph: Vec<vortex_git::GraphRow>,
     /// The commit whose changes the diff shows, instead of a change.
     picked_commit: Option<String>,
     log_load: Option<Task<()>>,
@@ -86,6 +89,7 @@ impl GitPage {
             patch: None,
             diff_load: None,
             commits: Vec::new(),
+            graph: Vec::new(),
             picked_commit: None,
             log_load: None,
             message,

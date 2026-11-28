@@ -1,22 +1,37 @@
-//! The Git page's history: the branch's latest commits, under the changes.
-//! Picking one shows what it changed.
+//! The Git page's history: the latest commits of the branches, under the
+//! changes, with the graph of how they join. Picking one shows what it
+//! changed.
 
 use std::time::SystemTime;
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Context, FontWeight, SharedString, TestSupportExt,
+    AnyElement, Context, FontWeight, Pixels, SharedString, TestSupportExt,
     component::{ActiveTheme, h_flex, v_flex},
-    div,
+    div, px,
 };
 use vortex_chat::scale::ScaledText as _;
-use vortex_git::Commit;
+use vortex_git::{Commit, GraphRow};
 
-use super::GitPage;
+use super::{
+    GitPage,
+    graph_lanes::{self, Palette},
+};
 use crate::session_list::ago;
 
 /// Enough to look back with; older ones are for `git log`.
 const MAX_COMMITS: usize = 200;
+/// Past it a branch's name at its commit is cut short.
+const REF_MAX_WIDTH: f32 = 96.;
+
+/// What every commit's row is drawn with.
+#[derive(Clone, Copy)]
+struct Shared {
+    /// The graph's, beside each row.
+    width: Pixels,
+    palette: Palette,
+    now: SystemTime,
+}
 
 impl GitPage {
     /// Reads the commits again; the page changes only if they did.
@@ -40,6 +55,7 @@ impl GitPage {
 
     fn show_commits(&mut self, commits: Vec<Commit>, cx: &mut Context<Self>) {
         if self.commits != commits {
+            self.graph = vortex_git::graph(&commits);
             self.commits = commits;
             cx.notify();
         }
@@ -72,11 +88,13 @@ impl GitPage {
 
     pub(super) fn render_history(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let now = SystemTime::now();
-        let rows: Vec<AnyElement> = self
-            .commits
-            .iter()
-            .map(|commit| self.commit_row(commit, now, cx))
+        let shared = Shared {
+            width: graph_lanes::width(&self.graph),
+            palette: Palette::of(cx),
+            now: SystemTime::now(),
+        };
+        let rows: Vec<AnyElement> = (self.commits.iter().zip(&self.graph))
+            .map(|(commit, row)| self.commit_row(commit, row, shared, cx))
             .collect();
         v_flex()
             .id("git-history")
@@ -116,24 +134,28 @@ impl GitPage {
             )
     }
 
-    fn commit_row(&self, commit: &Commit, now: SystemTime, cx: &Context<Self>) -> AnyElement {
+    fn commit_row(
+        &self,
+        commit: &Commit,
+        row: &GraphRow,
+        shared: Shared,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme();
         let picked = self.picked_commit.as_ref() == Some(&commit.id);
         let id = commit.id.clone();
-        let about = format!(
-            "{} · {} · {}",
-            commit.short_id(),
-            commit.author,
-            ago(commit.time, now)
-        );
         let hover = theme.list_hover;
-        v_flex()
+        // Not an `h_flex`, which centers: the graph stretches to the row's height, so
+        // its lines meet those of the rows above and below.
+        div()
             .id(SharedString::from(format!("git-commit-{}", commit.id)))
             .test_support()
             .aria_label(SharedString::from(commit.subject.clone()))
+            .flex()
             .flex_none()
-            .px_3()
-            .py_1()
+            .gap_1()
+            .pl_1()
+            .pr_3()
             .border_l_2()
             .border_color(gpui_kit::transparent_black())
             .cursor_pointer()
@@ -145,14 +167,12 @@ impl GitPage {
                 this.focus(window, cx);
                 this.pick_commit(id.clone(), cx);
             }))
-            .child(div().text_sm().truncate().child(commit.subject.clone()))
-            .child(
-                div()
-                    .text_caption()
-                    .truncate()
-                    .text_color(theme.muted_foreground)
-                    .child(about),
-            )
+            .child(graph_lanes::render(
+                row.clone(),
+                shared.width,
+                shared.palette,
+            ))
+            .child(commit_text(commit, shared.now, cx))
             .into_any_element()
     }
 
@@ -193,4 +213,58 @@ impl GitPage {
                 ),
         )
     }
+}
+
+/// The commit's branches and subject over who made it and when.
+fn commit_text(
+    commit: &Commit,
+    now: SystemTime,
+    cx: &Context<GitPage>,
+) -> impl IntoElement + use<> {
+    let about = format!(
+        "{} · {} · {}",
+        commit.short_id(),
+        commit.author,
+        ago(commit.time, now)
+    );
+    v_flex()
+        .flex_1()
+        .min_w_0()
+        .py_1()
+        .child(
+            h_flex()
+                .gap_1()
+                .min_w_0()
+                .children(commit.refs.iter().map(|name| ref_badge(name, cx)))
+                .child(
+                    div()
+                        .min_w_0()
+                        .text_sm()
+                        .truncate()
+                        .child(commit.subject.clone()),
+                ),
+        )
+        .child(
+            div()
+                .text_caption()
+                .truncate()
+                .text_color(cx.theme().muted_foreground)
+                .child(about),
+        )
+}
+
+/// A branch or tag at a commit, before its subject.
+fn ref_badge(name: &str, cx: &Context<GitPage>) -> impl IntoElement + use<> {
+    let theme = cx.theme();
+    div()
+        .flex_none()
+        .max_w(px(REF_MAX_WIDTH))
+        .px_1()
+        .rounded(theme.radius)
+        .border_1()
+        .border_color(theme.border)
+        .text_caption()
+        .text_color(theme.muted_foreground)
+        .truncate()
+        .child(name.to_owned())
 }

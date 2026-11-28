@@ -6,6 +6,7 @@
 mod branches;
 mod counts;
 mod fingerprint;
+mod graph;
 mod lines;
 mod log;
 mod message;
@@ -23,6 +24,7 @@ use anyhow::{Context as _, bail};
 pub use branches::{Branch, branches, create_branch, switch};
 pub use counts::Counts;
 pub use fingerprint::Fingerprint;
+pub use graph::{Edge, GraphRow, graph};
 pub use lines::{LineChange, LineKind, base_text, line_changes, patch};
 pub use log::{Commit, log, show};
 pub use message::MessageRules;
