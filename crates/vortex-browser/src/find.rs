@@ -56,7 +56,5 @@ fn folders() -> Vec<PathBuf> {
 
 #[cfg(not(target_os = "macos"))]
 fn folders() -> Vec<PathBuf> {
-    std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).collect())
-        .unwrap_or_default()
+    std::env::var_os("PATH").map_or_default(|path| std::env::split_paths(&path).collect())
 }
