@@ -30,6 +30,7 @@ mod settings_page;
 mod shortcuts_page;
 mod side_panel;
 mod updates;
+mod whats_new;
 mod windows;
 mod workspace;
 
@@ -38,6 +39,7 @@ use gpui_kit::App;
 pub use cli_version::{CliVersion, CliVersionEvent};
 pub use updates::watch as watch_updates;
 pub use vortex_chat::Assets;
+pub use whats_new::show as show_whats_new;
 pub use windows::open_first as open_first_window;
 pub use workspace::Workspace;
 

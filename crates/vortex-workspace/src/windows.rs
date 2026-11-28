@@ -43,19 +43,33 @@ pub fn open_first(
     if let Some(dir) = &data_dir {
         cx.set_global(vortex_chat::LastModels::load(dir.join("models.json")));
     }
+    let notes = data_dir.as_deref().and_then(whats_new);
     cx.set_global(Windows { accounts, data_dir });
-    if !open(folder, true, cx) {
+    if !open(folder, true, notes, cx) {
         cx.quit();
     }
+}
+
+/// What changed since the Vortex that last ran with the data in `dir`.
+fn whats_new(dir: &std::path::Path) -> Option<String> {
+    // A Vortex that has run kept its layout there; before the version was
+    // kept too, that tells one from a first run.
+    let ran_before = dir.join("layouts.json").exists();
+    vortex_update::whats_new::since_last_run(dir, ran_before)
+        .inspect_err(|error| log::warn!("cannot keep the version that ran: {error:#}"))
+        .ok()
+        .flatten()
 }
 
 /// Opens another window on the folders to choose from. The layout stays
 /// the first window's.
 pub fn open_another(cx: &mut App) {
-    open(None, false, cx);
+    open(None, false, None, cx);
 }
 
-fn open(folder: Option<PathBuf>, first: bool, cx: &mut App) -> bool {
+/// Opens a window, with `notes` of what changed since the last run shown
+/// over it.
+fn open(folder: Option<PathBuf>, first: bool, notes: Option<String>, cx: &mut App) -> bool {
     let Some(shared) = cx.try_global::<Windows>() else {
         return false;
     };
@@ -80,6 +94,12 @@ fn open(folder: Option<PathBuf>, first: bool, cx: &mut App) -> bool {
         let claude_version = cx.new(|cx| CliVersion::new(claude_cli, cx));
         let codex_cli = Arc::new(CodexCli::new(codex));
         let codex_version = cx.new(|cx| CliVersion::new(codex_cli, cx));
+        // Deferred: the dialog needs the window's Root, made once this returns.
+        if let Some(notes) = notes {
+            window.defer(cx, move |window, cx| {
+                crate::whats_new::show(notes, window, cx);
+            });
+        }
         cx.new(|cx| {
             let workspace = Workspace::new(folder, backend, accounts, window, cx)
                 .offering(backends)

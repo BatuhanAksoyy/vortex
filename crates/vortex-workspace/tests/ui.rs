@@ -321,6 +321,30 @@ mod workspace {
     }
 
     #[gpui_kit::test]
+    async fn the_notes_of_a_new_release_show_over_the_work_until_closed(cx: &mut TestAppContext) {
+        let dir = project();
+        let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+        let window = window.into();
+        let notes = "### Added\n\n- A changelog after each update";
+        cx.update_window(window, |_, window, cx| {
+            vortex_workspace::show_whats_new(notes.to_owned(), window, cx);
+        })
+        .expect("window");
+        cx.run_until_parked();
+        let shown = cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            window.find("whats-new").label().map(str::to_owned)
+        });
+        assert_eq!(shown.expect("window").as_deref(), Some(notes));
+        assert!(has(cx, window, "chat"), "the work stays under it");
+        click(cx, window, "whats-new-close");
+        cx.wait_for(window, Duration::from_secs(2), |window, _| {
+            window.try_find("whats-new").is_none()
+        })
+        .await;
+    }
+
+    #[gpui_kit::test]
     fn split_editor_moves_the_file_beside_the_editor(cx: &mut TestAppContext) {
         let dir = project();
         let root = std::fs::canonicalize(dir.path()).expect("canonical root");

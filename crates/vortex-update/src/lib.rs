@@ -3,6 +3,7 @@
 //! dependencies.
 
 mod install;
+pub mod whats_new;
 
 use std::{cmp::Ordering, fmt, process::Command, process::Stdio};
 
