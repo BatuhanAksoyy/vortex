@@ -9,6 +9,8 @@ mod common;
 
 #[cfg(test)]
 mod account_usage {
+    use std::time::{Duration, SystemTime};
+
     use gpui_kit::TestAppContext;
     use gpui_kit::test::{TestQueryExt, TestWindowExt};
     use vortex_agent::{AgentEvent, SessionCommand, SessionInfo, TurnOutcome, Usage, UsageWindow};
@@ -71,7 +73,7 @@ mod account_usage {
             }),
             weekly: Some(UsageWindow {
                 percent: 30,
-                resets_at: None,
+                resets_at: Some(SystemTime::now() + Duration::from_hours(72)),
             }),
             ..Usage::default()
         });
@@ -84,12 +86,18 @@ mod account_usage {
             "the other account, asked apart"
         );
         harness.with_window(cx, move |window, _| {
-            let lane = window.find(lane);
-            assert!(lane.visible(), "under its name");
+            let found = window.find(lane.clone());
+            assert!(found.visible(), "under its name");
             assert_eq!(
-                lane.label(),
+                found.label(),
                 Some("Session 64% used · Weekly 30% used"),
                 "both windows in one bar"
+            );
+            let resets = window.within(lane).find("resets");
+            let said = resets.label().unwrap_or_default();
+            assert!(
+                said.starts_with("Weekly resets ") && !said.contains("Session"),
+                "only the reset that is known: {said}"
             );
         });
     }
