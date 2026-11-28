@@ -275,9 +275,6 @@ fn account_row(
         .px_1()
         .py_0p5()
         .rounded(theme.radius)
-        .child(div().flex_none().w(px(16.)).when(current, |this| {
-            this.child(Icon::new(IconName::Check).in_row())
-        }))
         .child(
             v_flex()
                 .flex_1()
@@ -299,6 +296,10 @@ fn account_row(
                     this.child(row_usage::render(&row.id, row.usage.as_ref(), cx))
                 }),
         )
+        // On the right, so every name starts at the same edge.
+        .child(div().flex_none().w(px(16.)).when(current, |this| {
+            this.child(Icon::new(IconName::Check).in_row())
+        }))
         .when(!current && !busy, |this| {
             this.cursor_pointer()
                 .hover(|style| style.bg(theme.accent))
