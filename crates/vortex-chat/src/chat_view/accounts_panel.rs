@@ -274,7 +274,7 @@ fn account_row(
         .aria_selected(current)
         .gap_2()
         .px_1()
-        .py_0p5()
+        .py_1p5()
         .rounded(theme.radius)
         // Marked by its background and name alone, so no row keeps room
         // for a mark.
