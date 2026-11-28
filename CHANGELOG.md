@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.2.0 — 2026-11-28
+
+### Fixed
+
+- Google's sign-in no longer turns the browser away as unsafe.
+- Sorting the processes page by PID, CPU or memory keeps each chat's
+  processes under its own heading.
+- An agent working in a worktree it made in the project can commit there,
+  and the turn's work is committed in that worktree, not looked for in the
+  project.
+- A Codex account just added no longer reads as signed in to no account.
+- Long project, session and branch names are cut short instead of
+  running out of the title bar menu and the Git page's branch row.
+- The branch menu scrolls only when it cannot fit.
+
+### Added
+
+- After an update, a dialog says what changed since the version you had.
+- The chat says when the conversation is compacted, with the tokens
+  before and after.
+- The advisor's consultations show in the chat, with their answers when
+  the CLI gets them.
+- The Git history is drawn as a graph of every local branch, with their
+  names, tags and merges.
+- The Git page's diff can be closed, leaving the changes and history.
+- The accounts panel shows when each usage window resets.
+
+### Changed
+
+- An account's session and weekly usage share one bar.
+- The account in use is marked by its row instead of a tick, and the rows
+  have more room.
+- What you put away in the Files and Git pages stays away in other windows
+  and after a restart.
+- A new chat starts on the account the active one runs with.
+
 ## 1.1.0 — 2026-11-27
 
 ### Fixed
