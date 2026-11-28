@@ -75,12 +75,7 @@ pub fn worktree_of(folder: &Path) -> anyhow::Result<Option<Worktree>> {
     };
     let path = PathBuf::from(path);
     let git_dir = PathBuf::from(line(&path, "--absolute-git-dir")?);
-    let common = git(
-        &path,
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-        &[0],
-    )?;
-    let common = PathBuf::from(String::from_utf8_lossy(&common.stdout).trim());
+    let common = common_dir(&path)?;
     // The main checkout's git folder is the common one; a linked
     // worktree's is a folder inside it.
     let Some(main) = common.parent().filter(|_| git_dir != common) else {
@@ -149,6 +144,30 @@ pub fn discard_worktree(worktree: &Worktree) -> anyhow::Result<()> {
     remove(worktree, true)
 }
 
+/// Whether `folder` is a checkout of the repository `project` is in: its
+/// main checkout or any of its worktrees, a folder inside one too.
+///
+/// # Errors
+/// When `git` cannot run.
+pub fn same_repository(project: &Path, folder: &Path) -> anyhow::Result<bool> {
+    let (Ok(ours), Ok(theirs)) = (common_dir(project), common_dir(folder)) else {
+        return Ok(false);
+    };
+    Ok(ours.canonicalize()? == theirs.canonicalize()?)
+}
+
+/// The git folder every worktree of `folder`'s repository shares.
+fn common_dir(folder: &Path) -> anyhow::Result<PathBuf> {
+    let common = git(
+        folder,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        &[0],
+    )?;
+    Ok(PathBuf::from(
+        String::from_utf8_lossy(&common.stdout).trim(),
+    ))
+}
+
 /// Takes the worktree and its branch away when nothing was done on them:
 /// no change in its folder, not even a new file, and no commit its base
 /// lacks. Returns whether they went.
@@ -188,4 +207,31 @@ fn remove(worktree: &Worktree, force: bool) -> anyhow::Result<()> {
 fn current_branch(root: &Path) -> anyhow::Result<String> {
     let output = git(root, &["symbolic-ref", "--quiet", "--short", "HEAD"], &[0])?;
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::repository;
+
+    #[test]
+    fn a_worktree_is_a_checkout_of_the_same_repository() {
+        let dir = repository();
+        let root = dir.path();
+        std::fs::create_dir(root.join("sub")).expect("mkdir");
+        let into = tempfile::tempdir().expect("temp dir");
+        let path = into.path().join("four");
+        let target = path.to_string_lossy();
+        super::git(
+            root,
+            &["worktree", "add", "-q", "-b", "four", &target],
+            &[0],
+        )
+        .expect("add");
+        assert!(super::same_repository(&root.join("sub"), &path).expect("read"));
+        assert!(super::same_repository(&path, root).expect("read"));
+        let other = repository();
+        assert!(!super::same_repository(root, other.path()).expect("read"));
+        let outside = super::same_repository(root, into.path()).expect("read");
+        assert!(!outside, "no repository");
+    }
 }

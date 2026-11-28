@@ -88,11 +88,16 @@ impl Workspace {
             return;
         };
         match call.request {
-            Request::Commit { message, paths } => panel.update(cx, |panel, cx| {
+            Request::Commit {
+                message,
+                paths,
+                folder,
+            } => panel.update(cx, |panel, cx| {
                 let reply = call.reply;
                 let call = CommitCall {
                     message,
                     paths,
+                    folder,
                     reply,
                 };
                 panel.ask_commit(call, window, cx);

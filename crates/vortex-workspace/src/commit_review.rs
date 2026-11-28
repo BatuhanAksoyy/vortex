@@ -115,6 +115,8 @@ impl EventEmitter<CommitReviewEvent> for CommitReview {}
 pub struct CommitCall {
     pub message: String,
     pub paths: Vec<String>,
+    /// Another checkout of the project's repository to commit in.
+    pub folder: Option<String>,
     pub reply: Sender<Reply>,
 }
 

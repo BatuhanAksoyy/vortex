@@ -1,6 +1,9 @@
 //! The chat's agent asking for a commit: a message that breaks the rules
 //! goes back to it, and with `git.commit.review` on the user decides.
 
+use std::path::{Path, PathBuf};
+
+use anyhow::bail;
 use async_channel::Sender;
 use gpui_kit::prelude::*;
 use gpui_kit::{Context, Focusable as _, Window};
@@ -18,6 +21,7 @@ impl ChatPanel {
         let CommitCall {
             message,
             paths,
+            folder,
             reply,
         } = call;
         self.turn.committed = true;
@@ -48,7 +52,10 @@ impl ChatPanel {
             rules,
             push: crate::pushing::wanted(PushPolicy::AfterCommit, &settings.git.push),
         };
-        let read = cx.background_spawn(async move { vortex_git::status(&project) });
+        let read = cx.background_spawn(async move {
+            let folder = commit_folder(&project, folder.as_deref())?;
+            Ok((vortex_git::status(&folder)?, folder))
+        });
         cx.spawn_in(window, async move |this, cx| {
             let status = read.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -60,26 +67,34 @@ impl ChatPanel {
 
     fn open_review(
         &mut self,
-        status: anyhow::Result<Status>,
+        read: anyhow::Result<(Status, PathBuf)>,
         mut asked: Pending,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let status = match status {
-            Ok(status) => status,
+        let (status, folder) = match read {
+            Ok(read) => read,
             Err(error) => {
                 let _ = asked.reply.try_send(Reply::failed(format!("{error:#}")));
                 return;
             }
         };
-        // The agent's paths are from the project folder, the status's from
-        // the repository's top.
+        if folder != asked.project {
+            // The push settings are for the project's own branch, not for
+            // one the agent made itself.
+            asked.push = None;
+            asked.project = folder;
+        }
         let targets: Vec<_> = (asked.paths.iter())
-            .map(|path| status.prefix().join(path.trim_start_matches("./")))
+            .map(|path| target(&status, path))
             .collect();
         asked.files = commit_review::files(&status, &targets);
         if asked.files.is_empty() {
-            let nothing = Reply::failed("There is nothing to commit there.");
+            let nothing = Reply::failed(format!(
+                "There is nothing to commit in {}. If the changes are in another checkout, such \
+                 as a worktree, give its absolute path as `folder`.",
+                asked.project.display()
+            ));
             let _ = asked.reply.try_send(nothing);
             return;
         }
@@ -136,8 +151,38 @@ impl ChatPanel {
     }
 }
 
+/// Where the agent's commit goes: the project, or `folder`, another
+/// checkout of its repository such as a worktree the agent made itself.
+fn commit_folder(project: &Path, folder: Option<&str>) -> anyhow::Result<PathBuf> {
+    let Some(folder) = folder else {
+        return Ok(project.to_path_buf());
+    };
+    let folder = project.join(folder);
+    if !vortex_git::same_repository(project, &folder)? {
+        bail!(
+            "Nothing was committed: {} is not a checkout of the project's repository.",
+            folder.display()
+        );
+    }
+    Ok(folder)
+}
+
+/// The agent's `path`, from the repository's top as the status has it. A
+/// relative one is from the folder committed in, which may lie below it.
+fn target(status: &Status, path: &str) -> PathBuf {
+    let path = Path::new(path);
+    if path.is_absolute() {
+        return path
+            .strip_prefix(&status.root)
+            .unwrap_or(path)
+            .to_path_buf();
+    }
+    let path = path.strip_prefix("./").unwrap_or(path);
+    status.prefix().join(path)
+}
+
 /// Pushes as the settings ask after a commit; off the main thread.
-fn push_after(project: &std::path::Path, push: Option<&vortex_settings::PushSettings>) {
+fn push_after(project: &Path, push: Option<&vortex_settings::PushSettings>) {
     let Some(push) = push else {
         return;
     };
@@ -156,4 +201,59 @@ async fn answer(commit: gpui_kit::Task<anyhow::Result<Reply>>, reply: Sender<Rep
         }
     };
     let _ = reply.try_send(answer);
+}
+
+#[cfg(test)]
+mod tests {
+    use std::process::Command;
+
+    use super::*;
+
+    fn git(root: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(["-c", "user.name=Vortex", "-c", "user.email=v@example.com"])
+            .args(args)
+            .current_dir(root)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?}");
+    }
+
+    #[test]
+    fn a_commit_goes_to_a_worktree_of_the_projects_repository_only() {
+        let project = tempfile::tempdir().expect("tempdir");
+        let root = project.path();
+        git(root, &["init", "-q", "-b", "main"]);
+        git(root, &["commit", "-q", "--allow-empty", "-m", "start"]);
+        let worktree = root.join(".claude/worktrees/fix");
+        git(
+            root,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "fix",
+                &worktree.to_string_lossy(),
+            ],
+        );
+        std::fs::write(worktree.join("new.txt"), "new\n").expect("write");
+
+        assert_eq!(commit_folder(root, None).expect("project"), root);
+        let folder = worktree.to_string_lossy();
+        let found = commit_folder(root, Some(&folder)).expect("worktree");
+        assert_eq!(found, worktree);
+        let status = vortex_git::status(&found).expect("status");
+        assert_eq!(target(&status, "./new.txt"), Path::new("new.txt"));
+        let absolute = status.root.join("new.txt");
+        assert_eq!(
+            target(&status, &absolute.to_string_lossy()),
+            Path::new("new.txt")
+        );
+
+        let other = tempfile::tempdir().expect("tempdir");
+        git(other.path(), &["init", "-q"]);
+        let refused = commit_folder(root, Some(&other.path().to_string_lossy()));
+        assert!(refused.is_err(), "another repository");
+    }
 }

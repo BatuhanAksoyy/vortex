@@ -29,7 +29,7 @@ pub use message::MessageRules;
 pub use status::{Area, Change, Kind, Status};
 pub use worktree::{
     Worktree, create_worktree, discard_worktree, merge_worktree, remove_unused_worktree,
-    worktree_of,
+    same_repository, worktree_of,
 };
 pub use write::{commit, commit_paths, push, stage, unstage};
 

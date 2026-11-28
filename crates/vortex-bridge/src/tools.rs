@@ -8,10 +8,12 @@ use crate::settings_tools::{self, SettingsCall};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Request {
     Browse(Browse),
-    /// Commit `paths`, or every change when empty, with `message`.
+    /// Commit `paths`, or every change when empty, with `message`; in
+    /// `folder` when the agent works outside its project folder.
     Commit {
         message: String,
         paths: Vec<String>,
+        folder: Option<String>,
     },
     Settings(SettingsCall),
 }
@@ -180,10 +182,11 @@ fn question_tools() -> [Value; 2] {
 fn commit_tool() -> Value {
     tool(
         "commit",
-        "Commits changes in the project's repository with `message`; use it instead of `git commit`. Without `paths` every change is committed, new files too; with them only those files, relative to the project folder. Write the message as the project's history does: a short first line, a blank line, then why. Do not credit yourself or any tool in it. Vortex takes such lines out, checks the message against the project's rules and may show it to the user to approve or edit first; the call waits for that and says what was committed, or why not.",
+        "Commits changes in the project's repository with `message`; use it instead of `git commit`. Without `paths` every change is committed, new files too; with them only those files, relative to the project folder. Working in another checkout of the repository, such as a worktree, give its absolute path as `folder`; `paths` are then relative to it. Write the message as the project's history does: a short first line, a blank line, then why. Do not credit yourself or any tool in it. Vortex takes such lines out, checks the message against the project's rules and may show it to the user to approve or edit first; the call waits for that and says what was committed, or why not.",
         &json!({
             "message": {"type": "string"},
             "paths": {"type": "array", "items": {"type": "string"}},
+            "folder": {"type": "string"},
         }),
         &["message"],
     )
@@ -256,9 +259,15 @@ fn commit(arguments: &Value) -> Result<Request, String> {
             .ok_or_else(|| "`paths` must be a list of strings".to_owned())?,
         _ => return Err("`paths` must be a list of strings".to_owned()),
     };
+    let folder = match &arguments["folder"] {
+        Value::Null => None,
+        Value::String(folder) => Some(folder.clone()),
+        _ => return Err("`folder` must be a string".to_owned()),
+    };
     Ok(Request::Commit {
         message: message.to_owned(),
         paths,
+        folder,
     })
 }
 
@@ -327,8 +336,18 @@ mod tests {
         let expected = Request::Commit {
             message: "Fix".into(),
             paths: vec!["a.rs".into()],
+            folder: None,
         };
         assert_eq!(committed, Ok(expected));
+        let elsewhere = parse("commit", &json!({"message": "Fix", "folder": "/w/one"}));
+        let expected = Request::Commit {
+            message: "Fix".into(),
+            paths: Vec::new(),
+            folder: Some("/w/one".into()),
+        };
+        assert_eq!(elsewhere, Ok(expected));
+        let wrong = parse("commit", &json!({"message": "Fix", "folder": 3})).unwrap_err();
+        assert!(wrong.contains("`folder`"), "{wrong}");
         let wrong = parse("commit", &json!({"message": "Fix", "paths": "a.rs"})).unwrap_err();
         assert!(wrong.contains("`paths`"), "{wrong}");
         let wrong = parse("browser_click", &json!({"ref": "e3"})).unwrap_err();
