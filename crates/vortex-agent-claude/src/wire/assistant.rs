@@ -47,6 +47,37 @@ pub enum AssistantBlock {
     Text {
         text: String,
     },
+    /// A tool the API runs itself, such as the advisor.
+    ServerToolUse {
+        id: String,
+        name: String,
+        #[serde(default)]
+        input: Value,
+    },
+    /// What the advisor answered; its words may come only encrypted, for
+    /// the model.
+    AdvisorToolResult {
+        tool_use_id: String,
+        #[serde(default)]
+        content: AdvisorContent,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AdvisorContent {
+    AdvisorResult {
+        #[serde(default)]
+        text: String,
+    },
+    AdvisorToolResultError {
+        #[serde(default)]
+        error_code: String,
+    },
+    /// Redacted, as `advisor_redacted_result`, or of a kind not known yet.
+    #[default]
     #[serde(other)]
     Other,
 }

@@ -5,7 +5,7 @@
 mod assistant;
 mod user;
 
-pub use assistant::{Assistant, AssistantBlock, AssistantMessage};
+pub use assistant::{AdvisorContent, Assistant, AssistantBlock, AssistantMessage};
 pub use user::{ToolUseResult, User, UserBlock, UserContent, UserMessage};
 
 use std::collections::HashMap;

@@ -5,7 +5,7 @@ usage: capture.py <case> <out.jsonl>
   case: allow | edit | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
         | running | attach | followup | models | suggestion | thinking | recap
-        | nested | stop | background | compact
+        | nested | stop | background | compact | advisor
 
 "background" has the model start a short shell command in the background and
 end its turn while it runs, to record how the CLI reports a backgrounded
@@ -88,6 +88,9 @@ summary of the conversation the model writes. It keeps its session and
 copies it beside the output as `<out>-session.jsonl`.
 "compact" runs one tiny turn, then the `/compact` command, to record how the
 CLI reports compacting the conversation and the boundary it leaves.
+"advisor" runs one turn on Sonnet with Opus as the advisor model (the
+`advisorModel` setting), whose model is asked to consult the advisor once, to
+record how the server-side advisor tool's call and answer arrive.
 "running" sends no prompt, so it spends no usage: it starts a process and
 copies the record the CLI keeps of it under `<config>/sessions/` while it
 runs, which tells other clients the conversation is open.
@@ -120,6 +123,7 @@ PROMPTS = {
     "edit": "Read lines.txt with the Read tool, then use the Edit tool once to replace the line `four` with `FOUR` and the line `five` with `5`, then reply with the single word done.",
     "background": "Run the shell command `perl -e \"sleep 5\"` with the Bash tool and run_in_background true, then reply with the single word started without waiting for it.",
     "compact": "Reply with the single word ok.",
+    "advisor": "Consult the advisor tool once about whether a function named add should take two numbers or a list. Then reply with one sentence saying what it advised.",
     "plan": "Plan how to create the file vortex-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -279,6 +283,8 @@ proc = subprocess.Popen(
     + (["--forward-subagent-text"] if case in ("subagent", "followup", "nested", "stop") else [])
     + (["--prompt-suggestions"] if case == "suggestion" else [])
     + (["--thinking-display", "summarized"] if case == "thinking" else [])
+    + (["--model", "sonnet", "--settings", json.dumps({"advisorModel": "opus"})]
+       if case == "advisor" else [])
     + (["--resume", resumed] if resumed else []),
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     env=env, text=True, bufsize=1,

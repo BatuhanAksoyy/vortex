@@ -27,6 +27,9 @@ const DETAIL_KEYS: &[&str] = &[
 /// How a tool is named in its row: MCP tools, which the CLI calls
 /// `mcp__<server>__<tool>`, by their own words, as `Browser Click`.
 pub fn title(tool: &str) -> String {
+    if tool == "advisor" {
+        return "Advisor".to_owned();
+    }
     let Some(name) = tool
         .strip_prefix("mcp__")
         .and_then(|rest| rest.split_once("__"))
@@ -81,6 +84,10 @@ pub fn summary(tool: &str, output: &str) -> String {
         "Glob" => format!("Found {}", plural(count, "file")),
         // The CLI answers with JSON meant for the model.
         "SendMessage" if output.starts_with(r#"{"success":true"#) => "Sent".to_owned(),
+        // The CLI gets the advice encrypted, for the model alone.
+        "advisor" if output.trim().is_empty() => {
+            "Advised the model; the advice is not shown".to_owned()
+        }
         _ => output
             .lines()
             .map(str::trim)
@@ -194,6 +201,12 @@ mod tests {
         assert_eq!(summary("Glob", "a.rs"), "Found 1 file");
         assert_eq!(summary("Grep", "\nFound 3 files\nx"), "Found 3 files");
         assert_eq!(summary("Task", ""), "No output");
+        assert_eq!(
+            summary("advisor", ""),
+            "Advised the model; the advice is not shown"
+        );
+        assert_eq!(summary("advisor", "Take two numbers."), "Take two numbers.");
+        assert_eq!(title("advisor"), "Advisor");
         assert_eq!(
             summary(
                 "SendMessage",
