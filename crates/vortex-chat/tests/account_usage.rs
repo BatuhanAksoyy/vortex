@@ -69,6 +69,10 @@ mod account_usage {
                 percent: 64,
                 resets_at: None,
             }),
+            weekly: Some(UsageWindow {
+                percent: 30,
+                resets_at: None,
+            }),
             ..Usage::default()
         });
         // Closed and opened again.
@@ -80,10 +84,12 @@ mod account_usage {
             "the other account, asked apart"
         );
         harness.with_window(cx, move |window, _| {
-            let lane = window.within(lane);
-            assert!(
-                lane.find_by_label("Session 64% used").visible(),
-                "under its name"
+            let lane = window.find(lane);
+            assert!(lane.visible(), "under its name");
+            assert_eq!(
+                lane.label(),
+                Some("Session 64% used · Weekly 30% used"),
+                "both windows in one bar"
             );
         });
     }
