@@ -145,6 +145,13 @@ impl Workspace {
         }));
     }
 
+    fn toggle_diff(&self, cx: &mut Context<Self>) {
+        if let Some(project) = self.project(cx).cloned() {
+            let git = project.read(cx).git_page().clone();
+            git.update(cx, GitPage::toggle_diff);
+        }
+    }
+
     fn toggle_list(&self, cx: &mut Context<Self>) {
         let Some(project) = self.project(cx).cloned() else {
             return;
@@ -298,6 +305,13 @@ impl Workspace {
                     .text_color(theme.muted_foreground)
                     .child(project.name()),
             )
+            .when(self.side_panel.page == Page::Git, |this| {
+                this.child(
+                    button("side-toggle-diff", "Show or Hide the Diff")
+                        .control_icon(Lucide::PanelRight)
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_diff(cx))),
+                )
+            })
             .child(
                 button("side-maximize", resize)
                     .control_icon(icon)

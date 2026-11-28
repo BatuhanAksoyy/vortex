@@ -41,6 +41,8 @@ pub struct GitPage {
     /// The sections folded away.
     collapsed: HashSet<Area>,
     list_hidden: bool,
+    /// The diff side closed, leaving the list the whole page.
+    diff_hidden: bool,
     list_focus: FocusHandle,
     list_scroll: ScrollHandle,
     diff: Entity<DiffState>,
@@ -77,6 +79,7 @@ impl GitPage {
             selected: None,
             collapsed: HashSet::new(),
             list_hidden: false,
+            diff_hidden: false,
             list_focus: cx.focus_handle(),
             list_scroll: ScrollHandle::new(),
             diff: cx.new(|cx| DiffState::new([], cx)),
@@ -203,6 +206,15 @@ impl GitPage {
     /// Hides the list of changes, leaving the diff, or shows it again.
     pub fn toggle_list(&mut self, cx: &mut Context<Self>) {
         self.list_hidden = !self.list_hidden;
+        // One side always stays, or the page would be empty.
+        self.diff_hidden &= !self.list_hidden;
+        cx.notify();
+    }
+
+    /// Hides the diff, leaving the list, or shows it again.
+    pub fn toggle_diff(&mut self, cx: &mut Context<Self>) {
+        self.diff_hidden = !self.diff_hidden;
+        self.list_hidden &= !self.diff_hidden;
         cx.notify();
     }
 
@@ -240,8 +252,17 @@ impl GitPage {
 
 impl Render for GitPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let list = (!self.list_hidden).then(|| self.render_changes(cx));
-        div().id("git-page").test_support().size_full().child(
+        let list = (!self.list_hidden).then(|| {
+            v_resizable("git-sides")
+                .with_state(&self.splits[1])
+                .child(resizable_panel().child(self.render_changes(cx)))
+                .child(resizable_panel().child(self.render_history(cx)))
+        });
+        let page = div().id("git-page").test_support().size_full();
+        if self.diff_hidden {
+            return page.children(list);
+        }
+        page.child(
             h_resizable("git-panels")
                 .with_state(&self.splits[0])
                 .child(
@@ -249,12 +270,7 @@ impl Render for GitPage {
                         .size(window.rem_size() * LIST_WIDTH_REMS)
                         .fixed()
                         .visible(!self.list_hidden)
-                        .children(list.map(|list| {
-                            v_resizable("git-sides")
-                                .with_state(&self.splits[1])
-                                .child(resizable_panel().child(list))
-                                .child(resizable_panel().child(self.render_history(cx)))
-                        })),
+                        .children(list),
                 )
                 .child(resizable_panel().child(self.render_diff(cx))),
         )

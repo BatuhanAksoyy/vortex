@@ -1,4 +1,4 @@
-//! The Git page's layout: long names cut short.
+//! The Git page's layout: long names cut short and the diff closed.
 
 use std::time::Duration;
 
@@ -46,4 +46,32 @@ async fn a_long_branch_name_is_cut_short_in_its_row(cx: &mut TestAppContext) {
         item.size.width <= px(320.),
         "cut short in the menu: {item:?}"
     );
+}
+
+#[gpui_kit::test]
+async fn the_diff_closes_leaving_the_list_the_whole_page(cx: &mut TestAppContext) {
+    let dir = changed_project();
+    let (window, _) = open_workspace(cx, dir.path().to_path_buf());
+    let window = window.into();
+    click(cx, window, "activity-git");
+    cx.wait_for(window, Duration::from_secs(5), |window, _| {
+        window.try_find("git-diff").is_some()
+    })
+    .await;
+    click(cx, window, "side-toggle-diff");
+    assert!(!has(cx, window, "git-diff"), "closed");
+    let (page, list) = cx
+        .update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            let page = window.find("git-page").bounds().size.width;
+            (page, window.find("git-changes").bounds().size.width)
+        })
+        .expect("window");
+    assert_eq!(list, page, "the list fills the page");
+    click(cx, window, "side-toggle-list");
+    assert!(has(cx, window, "git-diff"), "one side always stays");
+    assert!(!has(cx, window, "git-changes"));
+    click(cx, window, "side-toggle-diff");
+    assert!(has(cx, window, "git-changes"), "the list again");
+    assert!(!has(cx, window, "git-diff"));
 }
