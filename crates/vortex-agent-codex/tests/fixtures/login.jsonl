@@ -1,0 +1,10 @@
+{"dir": "in", "msg": {"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "vortex", "title": "Vortex", "version": "0.0.0"}}}}
+{"dir": "out", "msg": {"id": 1, "result": {"userAgent": "vortex/0.153.4 (Mac OS 27.0.1; arm64) Apple_Terminal/488 (vortex; 0.0.0)", "codexHome": "/work/codex-home", "platformFamily": "unix", "platformOs": "macos"}}}
+{"dir": "in", "msg": {"method": "initialized"}}
+{"dir": "in", "msg": {"id": 2, "method": "account/login/start", "params": {"type": "chatgpt"}}}
+{"dir": "out", "msg": {"method": "remoteControl/status/changed", "params": {"status": "disabled", "serverName": "host.local", "installationId": "00000000-0000-0000-0000-000000000000", "environmentId": null}, "emittedAtMs": 1795799006809}}
+{"dir": "out", "msg": {"id": 2, "result": {"type": "chatgpt", "loginId": "dc882df4-5505-4e8c-8005-d83088f28284", "authUrl": "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid%20profile%20email%20offline_access%20api.connectors.read%20api.connectors.invoke&code_challenge=UJbAWK14hcbnAhQfKdxBdr9lOc80BPzveVmEJi_Ch1w&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&state=qFdWC8ullxOP5xCxrJzri84G6UApb3HX8Tyj06PXCfw&originator=vortex"}}}
+{"dir": "out", "msg": {"method": "account/login/completed", "params": {"loginId": "dc882df4-5505-4e8c-8005-d83088f28284", "success": true, "error": null, "onboardingEntrypoint": null}, "emittedAtMs": 1795799040016}}
+{"dir": "out", "msg": {"method": "account/updated", "params": {"authMode": "chatgpt", "planType": "free"}, "emittedAtMs": 1795799040027}}
+{"dir": "in", "msg": {"id": 3, "method": "account/read", "params": {"refreshToken": false}}}
+{"dir": "out", "msg": {"id": 3, "result": {"account": {"type": "chatgpt", "email": "person.example", "planType": "free"}, "requiresOpenaiAuth": true}}}

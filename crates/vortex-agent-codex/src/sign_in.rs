@@ -31,11 +31,7 @@ async fn run(
         anyhow::bail!("Codex gave no sign-in page");
     };
     let _ = page.send(address.to_owned()).await;
-    let completed = client.until("account/login/completed").await?;
-    if completed.get("success").and_then(Value::as_bool) != Some(true) {
-        let error = completed.get("error").and_then(Value::as_str);
-        anyhow::bail!("{}", error.unwrap_or("The sign-in did not finish."));
-    }
+    signed_in(&mut client).await?;
     let read = client
         .request("account/read", json!({ "refreshToken": false }))
         .await?;
@@ -44,4 +40,26 @@ async fn run(
         .as_ref()
         .and_then(report::account)
         .ok_or_else(|| anyhow::anyhow!("Codex signed in to no ChatGPT account"))
+}
+
+/// Waits until the sign-in has finished and the app-server has taken it up.
+/// It reports the login done before it loads the new sign-in, and until it
+/// says `account/updated` it reads as signed in to no account.
+async fn signed_in(client: &mut Client) -> anyhow::Result<()> {
+    let (mut completed, mut updated) = (false, false);
+    while !(completed && updated) {
+        let (method, params) = client.notification().await?;
+        match method.as_str() {
+            "account/login/completed" => {
+                if params.get("success").and_then(Value::as_bool) != Some(true) {
+                    let error = params.get("error").and_then(Value::as_str);
+                    anyhow::bail!("{}", error.unwrap_or("The sign-in did not finish."));
+                }
+                completed = true;
+            }
+            "account/updated" => updated = true,
+            _ => {}
+        }
+    }
+    Ok(())
 }

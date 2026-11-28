@@ -94,13 +94,18 @@ impl Client {
     /// Waits for notification `method` and returns its parameters.
     pub async fn until(&mut self, method: &str) -> anyhow::Result<Value> {
         loop {
-            if let Incoming::Notification {
-                method: came,
-                params,
-            } = self.read().await?
-                && came == method
-            {
+            let (came, params) = self.notification().await?;
+            if came == method {
                 return Ok(params);
+            }
+        }
+    }
+
+    /// Waits for the next notification and returns its method and parameters.
+    pub async fn notification(&mut self) -> anyhow::Result<(String, Value)> {
+        loop {
+            if let Incoming::Notification { method, params } = self.read().await? {
+                return Ok((method, params));
             }
         }
     }

@@ -180,7 +180,9 @@ def run():
     elif case == "login":
         started = server.request("account/login/start", {"type": "chatgpt"})
         print("Sign in at:", started.get("authUrl"), flush=True)
+        # The account reads as none until the server says account/updated.
         server.until("account/login/completed")
+        server.until("account/updated")
         server.request("account/read", {"refreshToken": False})
     elif case == "turn":
         turn(server, thread(server), text("Reply with the single word ok."), summary="concise", effort="low")

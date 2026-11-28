@@ -80,4 +80,16 @@ mod process {
         );
         assert!(events.contains(&AgentEvent::TurnEnded(TurnOutcome::Completed)));
     }
+
+    #[test]
+    fn a_sign_in_reports_the_account_once_codex_has_taken_it_up() {
+        let fixture = format!("{}/tests/fixtures/login.jsonl", env!("CARGO_MANIFEST_DIR"));
+        let sign_in = CodexBackend::new(env!("CARGO_BIN_EXE_fake-codex"))
+            .sign_in(vec![("VORTEX_FAKE_CODEX_FIXTURE".into(), fixture)])
+            .unwrap();
+        let account = futures::executor::block_on(sign_in.done).unwrap();
+        assert!(sign_in.url.try_recv().unwrap().starts_with("https://"));
+        assert_eq!(account.email, "person.example");
+        assert_eq!(account.plan, "ChatGPT Free");
+    }
 }

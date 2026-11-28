@@ -28,6 +28,7 @@ mod replay {
         "subagent",
         "thinking",
         "mcp",
+        "login",
     ];
 
     fn permission(events: &[AgentEvent]) -> &PermissionRequest {
