@@ -22,6 +22,9 @@ use super::{GitPage, committing::Done};
 
 const MENU_WIDTH: f32 = 260.;
 const MENU_HEIGHT: f32 = 420.;
+/// Branches past this many make the menu scroll; fewer fit, and a menu
+/// that fits would still show a scrollbar.
+const SCROLLED_PAST: usize = 12;
 
 /// The box naming a new branch, while it is open.
 pub(super) struct NewBranch {
@@ -124,11 +127,13 @@ impl GitPage {
                     .child(Icon::new(Lucide::ChevronDown).in_row()),
             )
             .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
-                let menu = menu
-                    .min_w(px(MENU_WIDTH))
-                    .max_h(px(MENU_HEIGHT))
-                    .scrollable(true)
-                    .label("Branches");
+                let menu = menu.min_w(px(MENU_WIDTH));
+                let menu = if branches.len() > SCROLLED_PAST {
+                    menu.max_h(px(MENU_HEIGHT)).scrollable(true)
+                } else {
+                    menu
+                };
+                let menu = menu.label("Branches");
                 let menu = branches
                     .iter()
                     .fold(menu, |menu, branch| menu.item(branch_item(branch, &view)));
