@@ -67,7 +67,8 @@ impl Order {
 }
 
 /// The processes of `agents` matching `query`, by command, PID or chat,
-/// in `order`.
+/// in `order`. Each agent's processes stay together, in the agents' order,
+/// so a sorted page still shows them under their chat.
 pub fn rows<'a>(agents: &[&'a AgentProcesses], query: &str, order: Order) -> Vec<Row<'a>> {
     let query = query.trim().to_lowercase();
     let mut rows: Vec<Row<'a>> = agents
@@ -88,10 +89,12 @@ pub fn rows<'a>(agents: &[&'a AgentProcesses], query: &str, order: Order) -> Vec
         Sort::Cpu => a.process.cpu.total_cmp(&b.process.cpu),
         Sort::Memory => a.process.memory.cmp(&b.process.memory),
     };
-    if order.descending {
-        rows.sort_by(|a, b| ascending(b, a));
-    } else {
-        rows.sort_by(ascending);
+    for group in rows.chunk_by_mut(|a, b| a.agent == b.agent) {
+        if order.descending {
+            group.sort_by(|a, b| ascending(b, a));
+        } else {
+            group.sort_by(ascending);
+        }
     }
     rows
 }
@@ -199,12 +202,25 @@ mod tests {
     }
 
     #[test]
+    fn sorted_rows_stay_with_their_chat() {
+        let [build, mut release] = agents();
+        release
+            .processes
+            .push(process(21, 1, "cargo build", 90.0, 5000));
+        let agents = [&build, &release];
+        let cpu = Order::default().then_by(Sort::Cpu);
+        assert_eq!(pids(&rows(&agents, "", cpu)), [12, 10, 21, 20]);
+        let lowest = cpu.then_by(Sort::Cpu);
+        assert_eq!(pids(&rows(&agents, "", lowest)), [10, 12, 20, 21]);
+    }
+
+    #[test]
     fn a_second_click_on_a_column_turns_it_around() {
         let agents = agents();
         let agents: Vec<_> = agents.iter().collect();
         let memory = Order::default().then_by(Sort::Memory);
         let smallest = memory.then_by(Sort::Memory);
-        assert_eq!(pids(&rows(&agents, "", smallest)), [20, 10, 12]);
+        assert_eq!(pids(&rows(&agents, "", smallest)), [10, 12, 20]);
         assert_eq!(
             smallest.then_by(Sort::Memory),
             Order::default(),

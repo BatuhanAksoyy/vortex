@@ -173,8 +173,8 @@ mod processes {
         click(cx, window, "processes-sort-memory");
         click(cx, window, "processes-sort-memory");
         assert!(
-            !has(cx, window, format!("processes-chat-{}", agent.id())),
-            "sorted rows leave their chat's heading"
+            has(cx, window, format!("processes-chat-{}", agent.id())),
+            "sorted rows stay under their chat's heading"
         );
         press(cx, window, "escape");
         assert!(!has(cx, window, "all-processes-overlay".into()));

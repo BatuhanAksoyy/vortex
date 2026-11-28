@@ -14,34 +14,28 @@ use gpui_kit::{
     div, rems,
 };
 
-const CHAT_REMS: f32 = 10.0;
 const PID_REMS: f32 = 4.5;
 const CPU_REMS: f32 = 4.0;
 const MEMORY_REMS: f32 = 5.5;
 pub(super) const STOP_REMS: f32 = 3.5;
 
 /// The cells after a row's name.
-pub(super) struct Cells<A, B, C, D> {
-    pub chat: A,
-    pub pid: B,
-    pub cpu: C,
-    pub memory: D,
+pub(super) struct Cells<A, B, C> {
+    pub pid: A,
+    pub cpu: B,
+    pub memory: C,
 }
 
-/// A row with the page's columns; the chat's only when `chat` is set.
+/// A row with the page's columns.
 pub(super) fn columns(
-    chat: bool,
     name: impl IntoElement,
-    cells: Cells<impl IntoElement, impl IntoElement, impl IntoElement, impl IntoElement>,
+    cells: Cells<impl IntoElement, impl IntoElement, impl IntoElement>,
 ) -> gpui_kit::Div {
     let number =
         |width: f32, cell: AnyElement| div().w(rems(width)).flex().justify_end().child(cell);
     h_flex()
         .gap_3()
         .child(div().flex_1().min_w_0().child(name))
-        .when(chat, |this| {
-            this.child(div().w(rems(CHAT_REMS)).min_w_0().child(cells.chat))
-        })
         .child(number(PID_REMS, cells.pid.into_any_element()))
         .child(number(CPU_REMS, cells.cpu.into_any_element()))
         .child(number(MEMORY_REMS, cells.memory.into_any_element()))
@@ -56,10 +50,8 @@ pub(super) fn chat_heading(rows: &[Row], cx: &App) -> AnyElement {
         (row.agent, row.chat.clone())
     });
     columns(
-        false,
         div().truncate().child(chat.clone()),
         Cells {
-            chat: div(),
             pid: div(),
             cpu: div().child(cpu(cpu_total)),
             memory: div().child(memory(memory_total)),

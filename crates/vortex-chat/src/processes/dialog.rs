@@ -128,15 +128,10 @@ impl ProcessesDialog {
         cx.notify();
     }
 
-    /// Whether the rows sit under their chat's heading, which they do in
-    /// the tree order of every agent.
+    /// Whether the rows sit under their chat's heading, which they do on
+    /// the page of every agent, sorted or not.
     fn grouped(&self) -> bool {
-        matches!(self.scope, Scope::All) && self.order.sort == Sort::Tree
-    }
-
-    /// Whether the rows name their chat: sorted, they leave its heading.
-    fn chat_column(&self) -> bool {
-        matches!(self.scope, Scope::All) && !self.grouped()
+        matches!(self.scope, Scope::All)
     }
 
     fn title(&self, cx: &App) -> SharedString {
@@ -237,10 +232,8 @@ impl ProcessesDialog {
 
     fn header(&self, cx: &Context<Self>) -> impl IntoElement {
         columns(
-            self.chat_column(),
             self.heading("processes-sort-tree", "Process", Sort::Tree, cx),
             Cells {
-                chat: div().child("Chat"),
                 pid: self.heading("processes-sort-pid", "PID", Sort::Pid, cx),
                 cpu: self.heading("processes-sort-cpu", "CPU", Sort::Cpu, cx),
                 memory: self.heading("processes-sort-memory", "Memory", Sort::Memory, cx),
@@ -273,10 +266,8 @@ impl ProcessesDialog {
             .child(process.command.clone());
         let stop = (!row.is_agent()).then(|| stop_button(format!("process-stop-{pid}"), pid));
         columns(
-            self.chat_column(),
             name,
             Cells {
-                chat: div().truncate().child(row.chat.clone()),
                 pid: div().child(pid.to_string()),
                 cpu: div().child(cpu(process.cpu)),
                 memory: div().child(memory(process.memory)),
