@@ -14,6 +14,7 @@ mod program;
 mod setup;
 mod skills;
 mod subagent;
+mod tool_call;
 mod tools;
 mod usage;
 
@@ -29,6 +30,7 @@ pub use program::Program;
 pub use setup::{install, install_command, is_installed, on_path};
 pub use skills::{Skill, SkillLock, SkillState};
 pub use subagent::{SubagentChange, SubagentEnd, SubagentEvent, SubagentUsage};
+pub use tool_call::{Hunk, ToolCall};
 pub use tools::ToolServer;
 pub use usage::{ContextCategory, ContextKind, ContextUsage, Limited, Usage, UsageWindow};
 
@@ -38,8 +40,6 @@ use std::{
     pin::Pin,
     time::{Duration, SystemTime},
 };
-
-use serde_json::Value;
 
 /// Set by a parent Claude Code process. Inherited, they make a spawned CLI
 /// behave as a nested session of whatever terminal launched Vortex, so no
@@ -368,28 +368,9 @@ pub enum AgentEvent {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ToolCall {
-    pub id: String,
-    /// The tool call of the subagent that made this call, if any.
-    pub parent: Option<String>,
-    pub name: String,
-    pub input: Value,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TurnOutcome {
     Completed,
     Interrupted,
     Failed(String),
-}
-
-/// One hunk of a file change, as `git diff` shows it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Hunk {
-    /// The first line's number in the file before and after the change.
-    pub old_start: usize,
-    pub new_start: usize,
-    /// Each line led by ` ` (unchanged), `-` (removed) or `+` (added).
-    pub lines: Vec<String>,
 }

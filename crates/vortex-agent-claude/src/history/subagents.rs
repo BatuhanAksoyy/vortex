@@ -20,7 +20,7 @@ use vortex_agent::{
 };
 
 use super::messages::tagged;
-use crate::{subagent, translate, wire};
+use crate::{subagent, tool_events, wire};
 
 pub struct StoredAgent {
     id: String,
@@ -133,13 +133,13 @@ fn segments(call: &str, text: &str) -> VecDeque<Vec<AgentEvent>> {
                 message,
                 tool_use_result,
                 ..
-            } => translate::tool_results(wire::User {
+            } => tool_events::tool_results(wire::User {
                 message,
                 tool_use_result,
             }),
             Line::Assistant { message } => {
                 let mut events = subagent::message(call, &message);
-                events.extend(translate::calls(message.content, Some(call)));
+                events.extend(tool_events::calls(message.content, Some(call)));
                 events
             }
             Line::Other => continue,

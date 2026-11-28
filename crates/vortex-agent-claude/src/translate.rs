@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 use vortex_agent::{
     AgentEvent, BlockKey, HookEdit, PermissionRequest, Remember, SessionCommand, SkillState,
-    SubagentChange, ToolCall,
+    SubagentChange,
 };
 
 use crate::{
@@ -14,7 +14,9 @@ use crate::{
     control::{self, Asked},
     hooks, outgoing,
     recap::Recaps,
-    skills, stream, subagent, system, turn_end, usage,
+    skills, stream, subagent, system,
+    tool_events::{calls, tool_results},
+    turn_end, usage,
     wire::{self, Line},
 };
 
@@ -289,25 +291,6 @@ fn tool_calls(message: wire::Assistant) -> Vec<AgentEvent> {
     )
 }
 
-/// The tool calls among `content`, made under `parent` if a subagent made
-/// them.
-pub(crate) fn calls(content: Vec<wire::AssistantBlock>, parent: Option<&str>) -> Vec<AgentEvent> {
-    content
-        .into_iter()
-        .filter_map(|block| match block {
-            wire::AssistantBlock::ToolUse { id, name, input } => {
-                Some(AgentEvent::ToolCall(ToolCall {
-                    id,
-                    parent: parent.map(str::to_owned),
-                    name,
-                    input,
-                }))
-            }
-            wire::AssistantBlock::Text { .. } | wire::AssistantBlock::Other => None,
-        })
-        .collect()
-}
-
 /// A slash command's output arrives whole, as text blocks of a message no
 /// model wrote; it is shown like a reply.
 fn command_output(message: wire::Assistant) -> Vec<AgentEvent> {
@@ -325,35 +308,6 @@ fn command_output(message: wire::Assistant) -> Vec<AgentEvent> {
                 })
             }
             _ => None,
-        })
-        .collect()
-}
-
-pub(crate) fn tool_results(message: wire::User) -> Vec<AgentEvent> {
-    let wire::UserContent::Blocks(blocks) = message.message.content else {
-        return Vec::new();
-    };
-    let mut patch = wire::ToolUseResult::patch(message.tool_use_result);
-    blocks
-        .into_iter()
-        .filter_map(|block| match block {
-            wire::UserBlock::ToolResult {
-                tool_use_id,
-                content,
-                is_error,
-            } => {
-                let (output, pictures) = content.into_parts();
-                Some(AgentEvent::ToolResult {
-                    id: tool_use_id,
-                    output,
-                    pictures,
-                    is_error,
-                    // The CLI sends one result per message, so the patch is
-                    // its only result's.
-                    patch: std::mem::take(&mut patch),
-                })
-            }
-            wire::UserBlock::Other => None,
         })
         .collect()
 }

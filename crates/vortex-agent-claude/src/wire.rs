@@ -2,8 +2,10 @@
 //! line types and subtypes decode to `Other` so new CLI versions degrade
 //! gracefully instead of failing.
 
+mod assistant;
 mod user;
 
+pub use assistant::{Assistant, AssistantBlock, AssistantMessage};
 pub use user::{ToolUseResult, User, UserBlock, UserContent, UserMessage};
 
 use std::collections::HashMap;
@@ -188,52 +190,6 @@ pub enum Delta {
     Text { text: String },
     #[serde(rename = "thinking_delta")]
     Thinking { thinking: String },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Assistant {
-    pub message: AssistantMessage,
-    pub parent_tool_use_id: Option<String>,
-    /// Set on the output of a slash command the CLI ran itself; that output
-    /// is never streamed.
-    #[serde(default)]
-    pub local_command_run: Option<CommandRun>,
-    /// On the message that holds a thinking block: how long the model
-    /// thought.
-    #[serde(default)]
-    pub thinking_duration_ms: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CommandRun {
-    #[serde(default)]
-    pub command: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AssistantMessage {
-    #[serde(default)]
-    pub id: String,
-    #[serde(default)]
-    pub model: String,
-    pub content: Vec<AssistantBlock>,
-    #[serde(default)]
-    pub usage: Option<PromptUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum AssistantBlock {
-    ToolUse {
-        id: String,
-        name: String,
-        input: Value,
-    },
-    Text {
-        text: String,
-    },
     #[serde(other)]
     Other,
 }

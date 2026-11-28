@@ -20,6 +20,7 @@ mod skills;
 mod stream;
 mod subagent;
 mod system;
+mod tool_events;
 mod tool_server;
 mod translate;
 mod turn_end;
