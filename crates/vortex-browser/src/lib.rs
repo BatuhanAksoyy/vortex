@@ -14,6 +14,7 @@ mod element;
 mod event;
 mod find;
 mod guest;
+mod identity;
 mod input;
 mod keys;
 mod metrics;

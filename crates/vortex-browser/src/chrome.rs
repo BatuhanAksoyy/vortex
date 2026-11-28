@@ -24,8 +24,11 @@ use crate::{
 /// process instead would take `unsafe`.
 const CONNECT: &str = r#"exec 3<&0 4>&1 </dev/null >/dev/null; exec "$@""#;
 
-const ARGS: [&str; 8] = [
+const ARGS: [&str; 9] = [
     "--headless=new",
+    // Else `navigator.webdriver` is set, which sign-in pages such as
+    // Google's take for a bot and turn away.
+    "--disable-blink-features=AutomationControlled",
     // Not a port, which any program on the machine could connect to.
     "--remote-debugging-pipe",
     "--no-first-run",

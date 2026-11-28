@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use crate::{
     event::{Frame, PageEvent},
     guest,
+    identity::Identity,
     input::{MouseInput, Wheel},
     keys::Key,
     native, permission,
@@ -92,7 +93,7 @@ pub struct Page {
     /// Where downloads arrive.
     pub(crate) received: Arc<Path>,
     /// What the page is told the browser is.
-    agent: String,
+    identity: Identity,
     phone: Arc<AtomicBool>,
 }
 
@@ -112,9 +113,7 @@ impl Page {
             .await?;
         let session = text(&attached, "sessionId")?;
         let version = transport.call("Browser.getVersion", json!({}), None);
-        // Without a window it names itself differently, and sites that
-        // only know Chrome turn it away.
-        let agent = text(&version.await?, "userAgent")?.replace("HeadlessChrome", "Chrome");
+        let identity = Identity::from_version(&version.await?)?;
         let (sender, events) = async_channel::unbounded();
         transport.listen(&session, &target, sender);
         let page = Self {
@@ -122,7 +121,7 @@ impl Page {
             target,
             session,
             received,
-            agent,
+            identity,
             phone: Arc::default(),
         };
         page.send("Page.enable", &json!({}));
@@ -201,14 +200,9 @@ impl Page {
 
     pub fn resize(&self, viewport: Viewport) {
         self.phone.store(viewport.phone, Ordering::Relaxed);
-        let agent = if viewport.phone {
-            phone_agent(&self.agent)
-        } else {
-            self.agent.clone()
-        };
         self.send(
             "Emulation.setUserAgentOverride",
-            &json!({"userAgent": agent}),
+            &self.identity.emulation(viewport.phone),
         );
         let metrics = json!({
             "width": viewport.width,
@@ -300,19 +294,6 @@ impl Page {
 
 /// The same browser as it is on a phone, for sites with pages of their own
 /// for phones.
-fn phone_agent(agent: &str) -> String {
-    let system = agent
-        .split_once('(')
-        .and_then(|(_, rest)| rest.split_once(')'))
-        .map_or("", |(system, _)| system);
-    if system.is_empty() {
-        return agent.to_owned();
-    }
-    agent
-        .replacen(system, "Linux; Android 10; K", 1)
-        .replace(" Safari/", " Mobile Safari/")
-}
-
 fn text(value: &Value, key: &str) -> anyhow::Result<String> {
     let text = value[key].as_str();
     Ok(text
@@ -323,13 +304,6 @@ fn text(value: &Value, key: &str) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_phone_is_named_with_the_same_version() {
-        let desktop = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36";
-        let phone = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Mobile Safari/537.36";
-        assert_eq!(phone_agent(desktop), phone);
-    }
 
     #[test]
     fn the_first_blank_page_is_nothing_to_go_back_to() {

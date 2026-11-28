@@ -204,6 +204,16 @@ mod installed {
         assert!(page.loaded().await);
     }
 
+    /// As a browser with a window: sign-in pages turn others away.
+    async fn named_as_chrome(page: &Page) {
+        assert_eq!(page.evaluate("navigator.webdriver").await.unwrap(), "false");
+        let brands = "navigator.userAgentData.brands.map(b => b.brand).join()";
+        let brands = page.evaluate(brands).await.unwrap();
+        assert!(brands.contains("Google Chrome"), "{brands}");
+        let agent = page.evaluate("navigator.userAgent").await.unwrap();
+        assert!(!agent.contains("Headless"), "{agent}");
+    }
+
     async fn drive(chrome: &Chrome, file: &Path) {
         let (page, events) = chrome.open_page(VIEWPORT).await.unwrap();
         let url = format!("file://{}", file.display());
@@ -216,6 +226,7 @@ mod installed {
         let history = page.history().await.unwrap();
         assert_eq!(history.title, "Vortex test");
         assert!(!history.can_go_back());
+        named_as_chrome(&page).await;
         type_and_select(&page).await;
         exchange(&page, &events, file).await;
         assert!(page.navigate("http://127.0.0.1:1/").await.is_err());
