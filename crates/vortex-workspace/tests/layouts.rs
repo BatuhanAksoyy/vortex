@@ -136,9 +136,10 @@ mod layouts {
         let layouts = dir.path().join("layouts.json");
         let (first, second) = two_accounts(dir.path());
         let accounts = || Accounts::load(dir.path().to_owned()).expect("list");
+        let first_run = Stored::default();
         let before = open_in(
             cx,
-            Stored::default(),
+            first_run.clone(),
             Some(layouts.clone()),
             accounts(),
             Some(env!("CARGO_MANIFEST_DIR").into()),
@@ -147,6 +148,20 @@ mod layouts {
         click(cx, before, "chat-account");
         click_in(cx, before, format!("chat-account-{second}"));
         click(cx, before, "chat-split-right");
+        let started = first_run.0.borrow().last().map(|spec| spec.env.clone());
+        assert_eq!(
+            started,
+            Some(accounts().env(&second)),
+            "a new tab goes on with the account last used"
+        );
+        // The new tab is the right-hand pane; it moves to the first account.
+        for id in ["chat-account".to_owned(), format!("chat-account-{first}")] {
+            cx.update_window(before, |_, window, cx| {
+                window.within(("resizable-panel", 1_usize)).click(id, cx);
+            })
+            .expect("window");
+            cx.run_until_parked();
+        }
         pick(cx, before, "s-old");
 
         let backend = Stored::default();
@@ -166,7 +181,7 @@ mod layouts {
             spec.env.clone()
         };
         assert_eq!(env("s-new"), accounts().env(&second), "the one picked");
-        assert_eq!(env("s-old"), accounts().env(&first), "the first added");
+        assert_eq!(env("s-old"), accounts().env(&first), "the one moved to");
         assert_eq!(spawned(&backend), 2, "no restart to switch accounts");
     }
 

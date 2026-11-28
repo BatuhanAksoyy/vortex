@@ -91,13 +91,19 @@ impl Workspace {
         // A new tab goes on in the mode the user last worked in.
         let active = (self.active_chat.as_ref()).map(|active| active.read(cx).chat().read(cx));
         let mode = active.and_then(ChatView::known_mode);
-        // And with the harness the user last worked with.
+        // And with the harness and account the user last worked with.
         let agent = active.map_or("", ChatView::agent_name);
+        let account = active.and_then(ChatView::account).map(str::to_owned);
         let panel = self.new_chat_panel(project, agent, window, cx);
         let chat = panel.read(cx).chat().clone();
-        if let Some(mode) = mode {
-            chat.update(cx, |chat, cx| chat.start_in_mode(mode, cx));
-        }
+        chat.update(cx, |chat, cx| {
+            if let Some(mode) = mode {
+                chat.start_in_mode(mode, cx);
+            }
+            if let Some(account) = &account {
+                chat.start_with_account(account, cx);
+            }
+        });
         let beside = self.focused_group(cx);
         let id = PanelId::from(panel.entity_id());
         self.dock.update(cx, |dock, cx| {
