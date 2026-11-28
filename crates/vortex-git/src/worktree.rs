@@ -156,6 +156,28 @@ pub fn same_repository(project: &Path, folder: &Path) -> anyhow::Result<bool> {
     Ok(ours.canonicalize()? == theirs.canonicalize()?)
 }
 
+/// The other checkouts of the repository `project` is in that lie inside
+/// `project`, such as the worktrees an agent makes under it, each by its
+/// top folder. Worktrees elsewhere, like Vortex's own for other chats, are
+/// left out.
+///
+/// # Errors
+/// When `git` cannot run or `project` is not in a repository.
+pub fn nested_checkouts(project: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    let inside = project.canonicalize()?;
+    let listed = git(project, &["worktree", "list", "--porcelain"], &[0])?;
+    let listed = String::from_utf8_lossy(&listed.stdout);
+    let checkouts = (listed.lines())
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .map(PathBuf::from)
+        .filter(|path| {
+            // A worktree whose folder is gone is still listed until pruned.
+            let found = path.canonicalize().ok();
+            found.is_some_and(|found| found != inside && found.starts_with(&inside))
+        });
+    Ok(checkouts.collect())
+}
+
 /// The git folder every worktree of `folder`'s repository shares.
 fn common_dir(folder: &Path) -> anyhow::Result<PathBuf> {
     let common = git(
@@ -233,5 +255,34 @@ mod tests {
         assert!(!super::same_repository(root, other.path()).expect("read"));
         let outside = super::same_repository(root, into.path()).expect("read");
         assert!(!outside, "no repository");
+    }
+
+    #[test]
+    fn only_the_worktrees_inside_the_project_are_nested_in_it() {
+        let dir = repository();
+        let root = dir.path();
+        let add = |path: &std::path::Path, branch: &str| {
+            let target = path.to_string_lossy();
+            let args = ["worktree", "add", "-q", "-b", branch, &target];
+            super::git(root, &args, &[0]).expect("add");
+        };
+        let inside = root.join(".claude/worktrees/fix");
+        add(&inside, "fix");
+        let elsewhere = tempfile::tempdir().expect("temp dir");
+        add(&elsewhere.path().join("other"), "other");
+        let gone = root.join("gone");
+        add(&gone, "gone");
+        std::fs::remove_dir_all(&gone).expect("remove");
+
+        let nested = super::nested_checkouts(root).expect("read");
+        let nested: Vec<_> = nested
+            .iter()
+            .map(|path| path.canonicalize().expect("real"))
+            .collect();
+        assert_eq!(nested, [inside.canonicalize().expect("real")]);
+        assert_eq!(
+            super::nested_checkouts(&inside).expect("read"),
+            Vec::<std::path::PathBuf>::new()
+        );
     }
 }

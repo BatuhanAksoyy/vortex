@@ -30,8 +30,8 @@ pub use log::{Commit, log, show};
 pub use message::MessageRules;
 pub use status::{Area, Change, Kind, Status};
 pub use worktree::{
-    Worktree, create_worktree, discard_worktree, merge_worktree, remove_unused_worktree,
-    same_repository, worktree_of,
+    Worktree, create_worktree, discard_worktree, merge_worktree, nested_checkouts,
+    remove_unused_worktree, same_repository, worktree_of,
 };
 pub use write::{commit, commit_paths, push, stage, unstage};
 
