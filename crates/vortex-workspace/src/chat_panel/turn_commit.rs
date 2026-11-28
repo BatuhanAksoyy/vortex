@@ -3,13 +3,16 @@
 //! diff and what the turn was about. With `git.commit.trigger` at
 //! `task_done` it is offered once a turn ends with the work done, as the
 //! writer judges it; the chat's Commit button asks for it at any time.
-//! Either way it waits for the user like the agent's own commit.
+//! Either way it waits for the user like the agent's own commit. The work
+//! is followed in the project and in the worktrees nested in it, where an
+//! agent may work on a branch of its own.
 
+mod checkouts;
 mod writing;
 
 use std::{
-    collections::BTreeSet,
-    path::{Path, PathBuf},
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
 };
 
 use gpui_kit::{
@@ -17,23 +20,21 @@ use gpui_kit::{
     component::{WindowExt as _, notification::Notification},
 };
 use vortex_chat::ChatEvent;
-use vortex_git::{Fingerprint, MessageRules, Status};
+use vortex_git::{MessageRules, Status};
 use vortex_settings::{CommitTrigger, PushPolicy, PushSettings, Settings};
 
 use super::ChatPanel;
 use crate::commit_review::{self, Pending};
+use checkouts::{Snapshot, Work, first_work};
 use writing::{Writer, Written};
-
-/// The most of the diff the model reads; enough to tell what a turn did.
-const MAX_DIFF: usize = 30_000;
 
 /// What the files held when the turn started, and what the chat's turns
 /// changed since its work was last committed.
 #[derive(Default)]
 pub(super) struct TurnWatch {
-    before: Option<Fingerprint>,
-    /// Paths from the repository's top.
-    touched: BTreeSet<PathBuf>,
+    before: Option<Snapshot>,
+    /// By the top folder of the checkout they are in, the paths from it.
+    touched: BTreeMap<PathBuf, BTreeSet<PathBuf>>,
     /// The agent committed through Vortex during the turn.
     pub committed: bool,
     work: Option<Task<()>>,
@@ -41,6 +42,8 @@ pub(super) struct TurnWatch {
     writing: Option<Task<()>>,
     /// Follows the project's git status, to forget what is changed no more.
     repo: Option<Subscription>,
+    /// Reads the checkouts again after a commit.
+    recount: Option<Task<()>>,
 }
 
 /// Why the chat's work is committed.
@@ -50,13 +53,6 @@ enum Why {
     TurnEnded,
     /// The user pressed Commit & push.
     Asked,
-}
-
-/// What the chat changed that is not committed yet.
-struct Work {
-    status: Status,
-    paths: Vec<PathBuf>,
-    diff: String,
 }
 
 impl ChatPanel {
@@ -84,18 +80,8 @@ impl ChatPanel {
         let follow = cx.subscribe(
             &repo,
             |this, repo, _: &crate::repo_status::StatusRead, cx| {
-                let Some(status) = repo.read(cx).status() else {
-                    return;
-                };
-                let changed: BTreeSet<&Path> = (status.changes.iter())
-                    .map(|change| change.path.as_path())
-                    .collect();
-                let before = this.turn.touched.len();
-                this.turn
-                    .touched
-                    .retain(|path| changed.contains(path.as_path()));
-                if this.turn.touched.len() != before {
-                    cx.notify();
+                if let Some(status) = repo.read(cx).status().cloned() {
+                    this.still_changed(std::slice::from_ref(&status), cx);
                 }
             },
         );
@@ -104,7 +90,38 @@ impl ChatPanel {
 
     /// The files the chat changed that wait for a commit.
     pub(super) fn touched(&self) -> usize {
-        self.turn.touched.len()
+        self.turn.touched.values().map(BTreeSet::len).sum()
+    }
+
+    /// Keeps of the chat's files in the checkouts `statuses` are of those
+    /// still changed there; the other checkouts' stay.
+    fn still_changed(&mut self, statuses: &[Status], cx: &mut Context<Self>) {
+        let before = self.touched();
+        self.turn.touched.retain(|root, paths| {
+            let Some(status) = statuses.iter().find(|status| &status.root == root) else {
+                return true;
+            };
+            paths.retain(|path| status.changes.iter().any(|change| &change.path == path));
+            !paths.is_empty()
+        });
+        if self.touched() != before {
+            cx.notify();
+        }
+    }
+
+    /// Forgets what a commit took, whichever checkout it was made in; the
+    /// project's own status is followed already, but not a worktree's.
+    pub(super) fn recount(&mut self, cx: &mut Context<Self>) {
+        self.turn.touched.retain(|root, _| root.exists());
+        let roots: Vec<PathBuf> = self.turn.touched.keys().cloned().collect();
+        let read = cx.background_spawn(async move {
+            let read = roots.iter().map(|root| vortex_git::status(root));
+            read.filter_map(Result::ok).collect::<Vec<_>>()
+        });
+        self.turn.recount = Some(cx.spawn(async move |this, cx| {
+            let statuses = read.await;
+            let _ = this.update(cx, |this, cx| this.still_changed(&statuses, cx));
+        }));
     }
 
     /// Whether Vortex is writing a commit message for the chat.
@@ -114,17 +131,20 @@ impl ChatPanel {
 
     fn read_before(&mut self, cx: &mut Context<Self>) {
         let project = self.project.read(cx).root().to_path_buf();
-        let read = cx.background_spawn(async move { vortex_git::status(&project) });
+        let read = cx.background_spawn(async move { checkouts::read(&project) });
         self.turn.work = Some(cx.spawn(async move |this, cx| {
-            let before = read.await.ok().map(|status| Fingerprint::of(&status));
+            let before = read.await.ok().map(|statuses| Snapshot::of(&statuses));
             let _ = this.update(cx, |this, cx| this.started_from(before, cx));
         }));
     }
 
-    fn started_from(&mut self, before: Option<Fingerprint>, cx: &mut Context<Self>) {
+    fn started_from(&mut self, before: Option<Snapshot>, cx: &mut Context<Self>) {
         // What is no longer changed was committed, by any means.
         if let Some(before) = &before {
-            self.turn.touched.retain(|path| before.holds(path));
+            self.turn.touched.retain(|root, paths| {
+                paths.retain(|path| before.holds(root, path));
+                !paths.is_empty()
+            });
         }
         self.turn.before = before;
         cx.notify();
@@ -138,8 +158,8 @@ impl ChatPanel {
         };
         let project = self.project.read(cx).root().to_path_buf();
         let read = cx.background_spawn(async move {
-            let status = vortex_git::status(&project)?;
-            anyhow::Ok(before.changed_since(&Fingerprint::of(&status)))
+            let statuses = checkouts::read(&project)?;
+            anyhow::Ok(before.changed_since(&Snapshot::of(&statuses)))
         });
         self.turn.work = Some(cx.spawn_in(window, async move |this, cx| {
             let Ok(changed) = read.await else {
@@ -153,12 +173,14 @@ impl ChatPanel {
 
     fn collected(
         &mut self,
-        changed: Vec<PathBuf>,
+        changed: Vec<(PathBuf, Vec<PathBuf>)>,
         completed: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.turn.touched.extend(changed);
+        for (root, paths) in changed {
+            self.turn.touched.entry(root).or_default().extend(paths);
+        }
         cx.notify();
         let commit = self.settings(cx).git.commit;
         let auto = commit.enabled && commit.trigger == CommitTrigger::TaskDone;
@@ -195,8 +217,10 @@ impl ChatPanel {
             push: push_for(why, &settings),
         };
         let project = self.project.read(cx).root().to_path_buf();
-        let touched: Vec<PathBuf> = self.turn.touched.iter().cloned().collect();
-        let read = cx.background_spawn(async move { work_on(&project, &touched) });
+        let touched: Vec<(PathBuf, Vec<PathBuf>)> = (self.turn.touched.iter())
+            .map(|(root, paths)| (root.clone(), paths.iter().cloned().collect()))
+            .collect();
+        let read = cx.background_spawn(async move { first_work(&project, &touched) });
         let (asked, answered) = self.chat.read(cx).last_turn();
         self.turn.writing = Some(cx.spawn_in(window, async move |this, cx| {
             let work = read.await.ok().flatten();
@@ -260,7 +284,9 @@ impl Plan {
             cleaned: message,
             reply,
             rules: self.rules,
-            push: self.push,
+            // The push settings are for the project's own branch, not for
+            // one the agent made itself.
+            push: self.push.filter(|_| !work.nested),
         }
     }
 }
@@ -273,33 +299,4 @@ fn push_for(why: Why, settings: &Settings) -> Option<PushSettings> {
         Why::Asked => (push.policy != PushPolicy::Never).then(|| push.clone()),
         Why::TurnEnded => crate::pushing::wanted(PushPolicy::AfterCommit, push),
     }
-}
-
-/// The chat's `touched` files that are still changed, and their diff;
-/// `None` when none is.
-fn work_on(project: &std::path::Path, touched: &[PathBuf]) -> anyhow::Result<Option<Work>> {
-    let status = vortex_git::status(project)?;
-    let changes: Vec<_> = (status.changes.iter())
-        .filter(|change| touched.contains(&change.path))
-        .collect();
-    if changes.is_empty() {
-        return Ok(None);
-    }
-    let mut paths: Vec<PathBuf> = changes.iter().map(|change| change.path.clone()).collect();
-    paths.dedup();
-    let mut diff = String::new();
-    for change in changes {
-        if diff.len() >= MAX_DIFF {
-            break;
-        }
-        diff.push_str(&vortex_git::diff(&status.root, change)?);
-    }
-    if let Some((end, _)) = diff.char_indices().nth(MAX_DIFF) {
-        diff.truncate(end);
-    }
-    Ok(Some(Work {
-        status,
-        paths,
-        diff,
-    }))
 }

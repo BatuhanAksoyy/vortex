@@ -129,13 +129,20 @@ impl ChatPanel {
                 push_after(&project, push.as_ref());
                 Ok(commit_review::committed_reply(&id, &cleaned, &sent))
             });
-            cx.background_spawn(answer(commit, reply)).detach();
+            cx.spawn(async move |this, cx| {
+                answer(commit, reply).await;
+                let _ = this.update(cx, Self::recount);
+            })
+            .detach();
             return;
         }
         let review = cx.new(|cx| CommitReview::new(pending, window, cx));
         let closed = cx.subscribe_in(&review, window, |this, _, event, window, cx| {
             let CommitReviewEvent::Closed { committed } = event;
             this.made_commit |= committed;
+            if *committed {
+                this.recount(cx);
+            }
             this.review = None;
             this.chat.focus_handle(cx).focus(window, cx);
             cx.notify();
