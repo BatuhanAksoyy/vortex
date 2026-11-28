@@ -5,7 +5,7 @@ usage: capture.py <case> <out.jsonl>
   case: allow | edit | deny | interrupt | controls | plan | usage | fallback | commands | ask
         | questions | skills | hooks | effort | subagent | resume | login | history
         | running | attach | followup | models | suggestion | thinking | recap
-        | nested | stop | background
+        | nested | stop | background | compact
 
 "background" has the model start a short shell command in the background and
 end its turn while it runs, to record how the CLI reports a backgrounded
@@ -86,6 +86,8 @@ token estimates and the turn's thinking tokens arrive.
 "recap" runs one tiny turn, then the `/recap` command, whose output is a
 summary of the conversation the model writes. It keeps its session and
 copies it beside the output as `<out>-session.jsonl`.
+"compact" runs one tiny turn, then the `/compact` command, to record how the
+CLI reports compacting the conversation and the boundary it leaves.
 "running" sends no prompt, so it spends no usage: it starts a process and
 copies the record the CLI keeps of it under `<config>/sessions/` while it
 runs, which tells other clients the conversation is open.
@@ -117,6 +119,7 @@ PROMPTS = {
     "recap": "Write a haiku about rust. Reply with only the haiku.",
     "edit": "Read lines.txt with the Read tool, then use the Edit tool once to replace the line `four` with `FOUR` and the line `five` with `5`, then reply with the single word done.",
     "background": "Run the shell command `perl -e \"sleep 5\"` with the Bash tool and run_in_background true, then reply with the single word started without waiting for it.",
+    "compact": "Reply with the single word ok.",
     "plan": "Plan how to create the file vortex-plan.txt containing the word hi. Keep the plan to one sentence and present it right away without exploring, then carry it out.",
 }
 
@@ -489,9 +492,9 @@ for line in proc.stdout:
             send({"type": "user", "message": {"role": "user", "content": FOLLOWUP},
                   "parent_tool_use_id": None, "session_id": ""})
             continue
-    if kind == "result" and case == "recap" and not interrupted:
+    if kind == "result" and case in ("recap", "compact") and not interrupted:
         interrupted = True
-        send({"type": "user", "message": {"role": "user", "content": "/recap"},
+        send({"type": "user", "message": {"role": "user", "content": f"/{case}"},
               "parent_tool_use_id": None, "session_id": ""})
         continue
     # The prediction comes after the turn's result.

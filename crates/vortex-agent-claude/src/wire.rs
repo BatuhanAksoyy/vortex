@@ -53,10 +53,21 @@ pub enum System {
         #[serde(default)]
         claude_code_version: Option<String>,
     },
-    /// Sent when the session's state changes, e.g. its permission mode.
+    /// Sent when the session's state changes, e.g. its permission mode,
+    /// or while it compacts the conversation: `compacting`, repeated as
+    /// it goes on, then none with how it went in `compact_result`.
     Status {
         #[serde(default, rename = "permissionMode")]
         permission_mode: Option<String>,
+        #[serde(default)]
+        status: Option<String>,
+        #[serde(default)]
+        compact_result: Option<String>,
+    },
+    /// The conversation was compacted: earlier messages were replaced by
+    /// a summary.
+    CompactBoundary {
+        compact_metadata: CompactMetadata,
     },
     CommandsChanged {
         commands: Vec<WireCommand>,
@@ -100,6 +111,15 @@ pub enum System {
     },
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CompactMetadata {
+    /// `auto` when the context filled up, `manual` for `/compact`.
+    pub trigger: String,
+    pub pre_tokens: u64,
+    #[serde(default)]
+    pub post_tokens: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]

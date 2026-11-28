@@ -347,6 +347,14 @@ pub enum AgentEvent {
     },
     /// The agent started over with an empty conversation, e.g. on `/clear`.
     ConversationReset,
+    /// The agent began compacting the conversation, or stopped; it may
+    /// say it began more than once while it goes on.
+    Compacting(bool),
+    /// The conversation was compacted: a summary replaced its earlier
+    /// messages.
+    Compacted(Compaction),
+    /// Compacting the conversation failed.
+    CompactFailed,
     TurnEnded(TurnOutcome),
     /// How long the turn now ending took; not sent for a slash command the
     /// agent ran itself. `ended_at` is set for a stored turn.
@@ -366,6 +374,15 @@ pub enum AgentEvent {
     Exited {
         error: Option<String>,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Compaction {
+    /// The context filled up, rather than the user asking.
+    pub automatic: bool,
+    /// The conversation's tokens before, and after when the agent says.
+    pub before: u64,
+    pub after: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

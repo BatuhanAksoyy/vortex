@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+mod conversation;
 mod entry;
 mod subagent;
 mod thinking;
@@ -54,6 +55,8 @@ pub struct Transcript {
     answered: bool,
     /// Tokens of a thought reported before its first words.
     unclaimed_thinking: u64,
+    /// The agent is compacting the conversation.
+    compacting: bool,
 }
 
 impl Transcript {
@@ -67,6 +70,12 @@ impl Transcript {
 
     pub fn status(&self) -> Status {
         self.status
+    }
+
+    /// Whether the agent is compacting the conversation, which takes a
+    /// while and writes nothing.
+    pub fn compacting(&self) -> bool {
+        self.compacting
     }
 
     /// The conversation's name: its first message's first line, so a pasted
@@ -194,10 +203,10 @@ impl Transcript {
                 text,
                 is_error: true,
             }),
-            AgentEvent::ConversationReset => {
-                self.clear();
-                Change::default()
-            }
+            AgentEvent::ConversationReset
+            | AgentEvent::Compacting(_)
+            | AgentEvent::Compacted(_)
+            | AgentEvent::CompactFailed => self.reshape(&event),
             // The agent went on by itself, e.g. to take a subagent's report
             // after the turn that started it ended. Only the main
             // conversation's requests are reported.
@@ -335,6 +344,7 @@ impl Transcript {
     /// The CLI waits on only for what subagents still running asked.
     fn end_turn(&mut self, outcome: TurnOutcome) -> Change {
         self.status = Status::Idle;
+        self.compacting = false;
         self.unclaimed_thinking = 0;
         let withdrawn = std::mem::take(&mut self.withdrawn);
         if outcome != TurnOutcome::Completed {
@@ -357,6 +367,7 @@ impl Transcript {
 
     fn exit(&mut self, error: Option<String>) -> Change {
         self.status = Status::Ended;
+        self.compacting = false;
         self.pending.clear();
         self.stop_all_subagents();
         let (text, is_error) = match error {

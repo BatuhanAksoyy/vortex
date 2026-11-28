@@ -112,9 +112,18 @@ pub fn accent_foreground(cx: &App) -> Hsla {
     Brand::current(cx).foreground(cx)
 }
 
-pub fn render(frame: usize, turn: usize, context: &EntryContext, cx: &App) -> AnyElement {
+/// What the row says: the turn's verb, or what takes the agent so long.
+pub enum Doing {
+    Turn(usize),
+    Compacting,
+}
+
+pub fn render(frame: usize, doing: &Doing, context: &EntryContext, cx: &App) -> AnyElement {
     let glyph = GLYPHS[frame % GLYPHS.len()];
-    let verb = VERBS[turn % VERBS.len()];
+    let verb = match doing {
+        Doing::Turn(turn) => VERBS[turn % VERBS.len()],
+        Doing::Compacting => "Compacting the conversation",
+    };
     // The glyph replaces the dot, so the row is drawn with a transparent one.
     timeline_row(gpui_kit::transparent_black(), context, cx)
         .child(

@@ -1,7 +1,7 @@
 //! The CLI's `system` lines: the session starting, its state changing, the
 //! commands on offer, and the subagents it runs.
 
-use vortex_agent::AgentEvent;
+use vortex_agent::{AgentEvent, Compaction};
 
 use crate::{
     control,
@@ -11,6 +11,24 @@ use crate::{
 
 pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
     let event = match system {
+        wire::System::Status {
+            permission_mode,
+            status,
+            compact_result,
+        } => {
+            return status_events(
+                permission_mode.as_deref(),
+                status.as_deref(),
+                compact_result.as_deref(),
+            );
+        }
+        wire::System::CompactBoundary { compact_metadata } => {
+            Some(AgentEvent::Compacted(Compaction {
+                automatic: compact_metadata.trigger == "auto",
+                before: compact_metadata.pre_tokens,
+                after: compact_metadata.post_tokens,
+            }))
+        }
         wire::System::Init {
             session_id,
             model,
@@ -24,10 +42,6 @@ pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
             estimated_tokens_delta,
         } => (estimated_tokens_delta > 0)
             .then_some(AgentEvent::ThinkingTokens(estimated_tokens_delta)),
-        wire::System::Status { permission_mode } => permission_mode
-            .as_deref()
-            .and_then(control::parse_mode)
-            .map(AgentEvent::ModeChanged),
         wire::System::CommandsChanged { commands } => Some(AgentEvent::CommandsChanged(
             control::slash_commands(commands),
         )),
@@ -36,6 +50,30 @@ pub fn events(system: wire::System, tasks: &mut Tasks) -> Vec<AgentEvent> {
         task => task_event(task, tasks),
     };
     event.into_iter().collect()
+}
+
+/// What a `status` line says: a new permission mode, compacting under way,
+/// or how compacting went.
+fn status_events(
+    permission_mode: Option<&str>,
+    status: Option<&str>,
+    compact_result: Option<&str>,
+) -> Vec<AgentEvent> {
+    let mode = permission_mode
+        .and_then(control::parse_mode)
+        .map(AgentEvent::ModeChanged);
+    let compacting = (status == Some("compacting")).then_some(AgentEvent::Compacting(true));
+    let compacted = compact_result.map(|result| {
+        if result == "success" {
+            vec![AgentEvent::Compacting(false)]
+        } else {
+            vec![AgentEvent::Compacting(false), AgentEvent::CompactFailed]
+        }
+    });
+    mode.into_iter()
+        .chain(compacting)
+        .chain(compacted.into_iter().flatten())
+        .collect()
 }
 
 /// A subagent's or other task's start, progress or end.

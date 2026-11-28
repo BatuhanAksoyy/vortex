@@ -180,7 +180,12 @@ impl ChatView {
                 line_below: false,
                 found_text: None,
             };
-            return spinner::render(self.spinner_frame, self.transcript.turns(), &context, cx);
+            let doing = if self.transcript.compacting() {
+                spinner::Doing::Compacting
+            } else {
+                spinner::Doing::Turn(self.transcript.turns())
+            };
+            return spinner::render(self.spinner_frame, &doing, &context, cx);
         };
         let context = EntryContext {
             id,
