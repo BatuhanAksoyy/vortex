@@ -134,6 +134,15 @@ mod accounts {
         click(&harness, cx, format!("chat-account-{second}"));
         assert!(store_of(&last_env(&harness)).ends_with(&second));
         assert!(shown(&harness, cx, "Switched to second@example.com"));
+        click(&harness, cx, "chat-account");
+        let picked = harness.with_window(cx, move |window, _| {
+            [first, second].map(|id| window.find(format!("chat-account-{id}")).selected())
+        });
+        assert_eq!(
+            picked,
+            [Some(false), Some(true)],
+            "the one in use is marked"
+        );
     }
 
     #[gpui_kit::test]

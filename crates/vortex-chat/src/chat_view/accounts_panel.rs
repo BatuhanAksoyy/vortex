@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Anchor, App, Context, Hsla, SharedString, TestSupportExt, WeakEntity,
+    Anchor, App, Context, FontWeight, Hsla, SharedString, TestSupportExt, WeakEntity,
     component::{
         ActiveTheme, Icon, IconName, Sizable,
         button::{Button, ButtonVariants},
@@ -24,7 +24,7 @@ mod row_usage;
 use super::ChatView;
 use crate::{
     backends::title,
-    scale::{ScaledButton as _, ScaledIcon as _, ScaledText as _},
+    scale::{ScaledButton as _, ScaledText as _},
     transcript::Status,
 };
 
@@ -271,10 +271,14 @@ fn account_row(
         .id(SharedString::from(format!("chat-account-{}", row.id)))
         .test_support()
         .aria_label(SharedString::from(row.name.clone()))
+        .aria_selected(current)
         .gap_2()
         .px_1()
         .py_0p5()
         .rounded(theme.radius)
+        // Marked by its background and name alone, so no row keeps room
+        // for a mark.
+        .when(current, |this| this.bg(theme.list_active))
         .child(
             v_flex()
                 .flex_1()
@@ -282,7 +286,14 @@ fn account_row(
                 .child(
                     h_flex()
                         .gap_2()
-                        .child(div().flex_1().min_w_0().truncate().child(row.name.clone()))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .when(current, |name| name.font_weight(FontWeight::SEMIBOLD))
+                                .child(row.name.clone()),
+                        )
                         .child(
                             div()
                                 .flex_none()
@@ -296,10 +307,6 @@ fn account_row(
                     this.child(row_usage::render(&row.id, row.usage.as_ref(), cx))
                 }),
         )
-        // On the right, so every name starts at the same edge.
-        .child(div().flex_none().w(px(16.)).when(current, |this| {
-            this.child(Icon::new(IconName::Check).in_row())
-        }))
         .when(!current && !busy, |this| {
             this.cursor_pointer()
                 .hover(|style| style.bg(theme.accent))
