@@ -104,7 +104,7 @@ impl GitPage {
     pub(super) fn render_branch_menu(&self, branch: &str, cx: &Context<Self>) -> impl IntoElement {
         let branches = self.branches.clone();
         let view = cx.entity().downgrade();
-        Button::new("git-branch")
+        let menu = Button::new("git-branch")
             .ghost()
             .control()
             .min_w_0()
@@ -140,7 +140,10 @@ impl GitPage {
                             let _ = create.update(cx, |this, cx| this.open_new_branch(window, cx));
                         }),
                 )
-            })
+            });
+        // The menu's own wrapper is as wide as the name; a block around it
+        // narrows it, and the button in it, when the row has no room.
+        div().min_w_0().child(menu)
     }
 
     pub(super) fn render_new_branch(&self, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
@@ -157,7 +160,7 @@ impl GitPage {
 
 fn branch_item(branch: &Branch, view: &WeakEntity<GitPage>) -> PopupMenuItem {
     let (name, view) = (branch.name.clone(), view.clone());
-    PopupMenuItem::new(branch.name.clone())
+    PopupMenuItem::element(crate::menu_label::truncated(branch.name.clone().into()))
         .checked(branch.current)
         .on_click(move |_, window, cx| {
             let name = name.clone();

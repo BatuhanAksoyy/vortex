@@ -18,7 +18,7 @@ use gpui_kit::{
 use vortex_chat::scale::{ScaledButton as _, ScaledIcon as _};
 
 use super::Workspace;
-use crate::{chat_panel::ChatPanel, project::folder_name};
+use crate::{chat_panel::ChatPanel, menu_label::truncated, project::folder_name};
 
 const MENU_WIDTH: f32 = 280.;
 /// Recent folders past this many are left to the projects page.
@@ -104,7 +104,7 @@ impl Workspace {
 
 fn session_item(shown: &Shown, view: &WeakEntity<Workspace>) -> PopupMenuItem {
     let (panel, view) = (shown.panel.clone(), view.clone());
-    PopupMenuItem::new(shown.label.clone())
+    PopupMenuItem::element(truncated(shown.label.clone()))
         .checked(shown.active)
         .on_click(move |_, window, cx| {
             let Some(panel) = panel.upgrade() else {
@@ -116,7 +116,7 @@ fn session_item(shown: &Shown, view: &WeakEntity<Workspace>) -> PopupMenuItem {
 
 fn folder_item(folder: &Path, view: &WeakEntity<Workspace>) -> PopupMenuItem {
     let (path, view) = (folder.to_path_buf(), view.clone());
-    PopupMenuItem::new(folder_name(folder))
+    PopupMenuItem::element(truncated(folder_name(folder).into()))
         .icon(Icon::new(gpui_kit::assets::IconName::FolderOpen))
         .on_click(move |_, window, cx| {
             let _ = view.update(cx, |this, cx| this.open_folder(&path, window, cx));

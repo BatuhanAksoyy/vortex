@@ -14,6 +14,7 @@ mod editor_pane;
 mod file_icon;
 mod files_page;
 mod git_page;
+mod menu_label;
 mod name_prompt;
 mod pickers;
 mod programs;

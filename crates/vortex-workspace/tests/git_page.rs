@@ -15,6 +15,8 @@ mod git_page {
 
     use super::project::*;
 
+    mod layout;
+
     #[gpui_kit::test]
     async fn the_git_page_lists_changes_and_shows_their_diff(cx: &mut TestAppContext) {
         let dir = project();
